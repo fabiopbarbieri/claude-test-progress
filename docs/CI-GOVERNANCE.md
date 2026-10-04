@@ -85,6 +85,13 @@ Dois rulesets separados se aplicam a `refs/heads/main`:
   e conversas resolvidas; bloqueia force push e exclusão. Não tem bypass,
   inclusive para o proprietário. A exceção de autorização não dispensa qualidade.
 
+No painel de uma PR, a restrição de atualização aparece como
+`Cannot update this protected ref`. O mantenedor autorizado dispõe da opção
+`Merge without waiting for requirements to be met (bypass rules)` para liberar
+a regra de autorização antes de confirmar o merge. Essa exceção não libera os
+checks ou demais requisitos de `main-quality`, que não permite bypass.
+O controle foi observado na conta proprietária, sem marcar a opção nem fazer merge.
+
 Foram configuradas **zero aprovações obrigatórias** enquanto há um único
 mantenedor: o autor não pode aprovar sua própria PR. O descarte de aprovações
 antigas está ativo; aprovação do último push e de CODEOWNERS não são exigidas.
