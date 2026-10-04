@@ -63,7 +63,8 @@ sucesso, falha, skip e cancelamento; não inicia suítes de um app do usuário.
 Não é necessário configurar uma chave de API para esses checks.
 
 `check-long-running.py` inicia clientes separados do coletor e comprova que uma
-suíte silenciosa continua após o cliente sair e após o timeout de uma consulta.
+suíte silenciosa continua após o cliente sair, por um intervalo maior que o limite
+de tempo de uma consulta do Mod.
 Também verifica sinal periódico sem resultados fabricados, duração final fixa,
 cancelamento, contadores preservados após rotação do log e recuperação após perda
 do worker (este último caso exige Linux). O tempo silencioso padrão é de 6 segundos;
