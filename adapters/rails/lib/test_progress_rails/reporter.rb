@@ -21,13 +21,17 @@ module TestProgressRails
   end
 
   def self.install(progress)
-    # Register explicitly: opt-in reporting also works with --no-plugins. This
-    # does not re-enable the runner's discovery of any other Minitest plugins.
-    Minitest.define_singleton_method(:plugin_test_progress_rails_init) do |_options|
-      # Rails' fail-fast reporter raises Interrupt from record. Put our additive
-      # reporter first so the triggering failure is counted before that raise.
-      reporter.reporters.unshift(TestProgressRails::Reporter.new(progress))
+    # Minitest 5.20 skips plugin discovery if extensions is pre-populated.
+    # Attach only after native initialization, without changing that registry
+    # or discovery timing. Explicit instrumentation also works with --no-plugins.
+    installation = Module.new do
+      define_method(:init_plugins) do |options|
+        super(options)
+        # Rails' fail-fast reporter raises Interrupt from record. Put ours first
+        # so the triggering failure is counted before that raise.
+        reporter.reporters.unshift(TestProgressRails::Reporter.new(progress))
+      end
     end
-    Minitest.extensions.unshift("test_progress_rails")
+    Minitest.singleton_class.prepend(installation)
   end
 end

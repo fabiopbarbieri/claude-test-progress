@@ -46,6 +46,7 @@ jobs:
         run: |
           gem install rails --version "$RAILS_VERSION" --no-document
           gem install minitest --version "$MINITEST_VERSION" --no-document
+          gem install mutex_m --version '0.3.0' --no-document
           gem install capybara --version '3.40.0' --no-document
           gem install selenium-webdriver --version '4.50.0' --no-document
       - run: python3 scripts/check.py

@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -34,6 +35,7 @@ require "rails/commands"
     write(app, "Gemfile", '''source "https://rubygems.org"
 gem "rails", ENV.fetch("RAILS_VERSION", ">= 7.2")
 gem "minitest", ENV.fetch("MINITEST_VERSION", ">= 5.20"), "< 6"
+gem "mutex_m"
 gem "capybara", "~> 3.40"
 gem "selenium-webdriver", "~> 4.0"
 ''')
@@ -138,7 +140,14 @@ def check(ruby, app, name, args, counts, expected_exit, extra_env=None):
     assert events, (name, result.stdout, result.stderr)
     assert len({event["scope"] for event in events}) == 1, (name, events)
     last = events[-1]
-    assert [last[k] for k in ("passed", "failed", "skipped")] == counts, (name, last)
+    if counts is None:
+        # Some Rails versions load tests through a native plugin, so explicitly
+        # disabling plugins can also select zero tests. Preserve that behavior.
+        summary = re.search(r"(\d+) runs, \d+ assertions, (\d+) failures, (\d+) errors, (\d+) skips", native.stdout)
+        assert summary, (name, native.stdout, native.stderr)
+        total, failures, errors, skips = map(int, summary.groups())
+        counts = [total - failures - errors - skips, failures + errors, skips]
+    assert [last[k] for k in ("passed", "failed", "skipped")] == counts, (name, last, result.stdout, result.stderr)
     assert last["final"], (name, last)
     print(name + ": OK", flush=True)
     return result, events
@@ -203,6 +212,21 @@ def main():
         check(options.ruby, app, "bundle-boot-selection",
               ["test", "test/models/outcomes_test.rb", "-n", "test_a_pass"], [1, 0, 0], 0,
               {"FIXTURE_CLEAN_BOOT": "1"})
+        write(app, "test/minitest/fixture_plugin.rb", '''module Minitest
+  def self.plugin_fixture_options(parser, options)
+    parser.on("--fixture-flag") { options[:fixture_flag] = true }
+  end
+  def self.plugin_fixture_init(options)
+    puts "native fixture plugin enabled" if options[:fixture_flag]
+  end
+end
+''')
+        result, unused = check(options.ruby, app, "native-plugin-discovery",
+                               ["test", "test/models/outcomes_test.rb", "-n", "test_a_pass", "--fixture-flag"],
+                               [1, 0, 0], 0)
+        assert "native fixture plugin enabled" in result.stdout
+        check(options.ruby, app, "no-plugin-discovery",
+              ["test", "test/integration/welcome_test.rb", "--no-plugins"], None, 0)
         check(options.ruby, app, "line-filter",
               ["test", "test/models/outcomes_test.rb:3"], [1, 0, 0], 0)
         unused, events = check(options.ruby, app, "fail-fast",
