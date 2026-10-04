@@ -29,6 +29,10 @@ alterar o parser ou acrescentar nomes à lista de adapters. A implementação
 ficaria em `adapters/<runner>/`, acompanhada de guia e configuração de exemplo.
 O aplicativo continua responsável pelo runner, ambiente e dependências.
 
+[Ruby / RSpec Core 3.13.x](../adapters/ruby/README.md) já possui adaptador opt-in
+serial com listener aditivo, exemplo backend e verificação em fixtures temporárias.
+Não é mais candidato; seus limites e a matriz Ruby ficam no guia do adaptador.
+
 ## Candidatos
 
 Dificuldades são estimativas para execução finita, não compatibilidade validada.
@@ -36,7 +40,6 @@ Dificuldades são estimativas para execução finita, não compatibilidade valid
 | Runner candidato | Dificuldade estimada | Abordagem e decisão pendente |
 | --- | --- | --- |
 | Go / `go test` | Baixa–média | Wrapper traduz [`go test -json`](https://go.dev/cmd/test2json/?m=old). Separar eventos de pacote e teste evita duplicação; definir contagem de subtests e total parcial. |
-| Ruby / RSpec | Baixa | [Formatter](https://rspec.info/documentation/3.9/rspec-core/RSpec/Core/Formatters.html) recebe resultados dos exemplos; pending pode representar ignorados. Minitest exige avaliação separada. |
 | JS/TS / Jest | Baixa–média | [Reporter próprio](https://jestjs.io/docs/configuration#reporters-arraymodulename--modulename-options), mantendo o padrão; reconciliar casos, skip/todo e erros de suíte. Fixar versão suportada. |
 | JS/TS / Vitest | Baixa–média | [Reporter](https://vitest.dev/api/advanced/reporters) acompanha coleta, casos e finalização; tratar módulos paralelos e erros fora dos casos. |
 | C#/.NET / VSTest | Média | [Logger compilado](https://github.com/microsoft/vstest/blob/main/docs/report.md) emite snapshots; distribuir e carregar a DLL acrescenta trabalho. [`dotnet test`](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-test) também pode usar MTP, que exige outra integração. |
