@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "backend": {
+    "command": ["./mvnw", "test"],
+    "cwd": ".",
+    "adapter": "auto",
+    "env": {}
+  },
+  "frontend": {
+    "command": ["npx", "--no-install", "ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
+    "cwd": "frontend",
+    "adapter": "auto",
+    "env": {}
+  }
+}

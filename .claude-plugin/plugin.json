@@ -1,0 +1,10 @@
+{
+  "name": "test-progress",
+  "version": "0.1.0",
+  "description": "Acompanha a execução de testes de backend e frontend em segundo plano, com contadores observados e demonstração sintética.",
+  "author": { "name": "Fabio Barbieri", "url": "https://github.com/fabiopbarbieri" },
+  "homepage": "https://github.com/fabiopbarbieri/claude-test-progress",
+  "repository": "https://github.com/fabiopbarbieri/claude-test-progress",
+  "license": "MIT",
+  "keywords": ["tests", "progress", "pytest", "unittest", "junit", "karma"]
+}

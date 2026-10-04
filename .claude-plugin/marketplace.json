@@ -1,0 +1,14 @@
+{
+  "name": "test-progress-marketplace",
+  "description": "Marketplace independente do Test Progress para Claude Code.",
+  "owner": {
+    "name": "Fabio Barbieri"
+  },
+  "plugins": [
+    {
+      "name": "test-progress",
+      "source": "./",
+      "description": "Progresso de testes Java, Angular e Python no Claude Code."
+    }
+  ]
+}

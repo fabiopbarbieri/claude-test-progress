@@ -1,0 +1,16 @@
+{
+  "name": "claude-test-progress",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=14.0.0" },
+  "description": "Background test progress for Claude Code: JUnit, Karma, pytest and unittest.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/fabiopbarbieri/claude-test-progress.git"
+  },
+  "scripts": {
+    "check": "python3 scripts/check.py"
+  }
+}

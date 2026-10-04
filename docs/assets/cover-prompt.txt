@@ -1,0 +1,13 @@
+Use case: cover-art
+Asset type: GitHub README cover for a Claude Code Mod named Test Progress
+Primary request: Create a polished, restrained editorial technology cover that communicates test progress tracking across backend and frontend work.
+Scene/backdrop: deep charcoal graphite field, subtle fine-grain texture, quiet dark atmosphere.
+Subject: two distinct abstract horizontal progress tracks crossing the composition, each formed from a thin precise line, small checkpoint dots, and a few understated status indicators in muted green, amber, and coral; abstract interface-inspired marks only, not a literal dashboard or screenshot.
+Style/medium: clean contemporary editorial graphic design, crisp vector-like geometry, precise typography, professional open-source developer tooling aesthetic.
+Composition/framing: wide 2:1 horizontal composition, generous negative space, strong left-aligned title at left-center, two tracks flow horizontally across the lower-right area, clear visual hierarchy, safe margins for README display.
+Lighting/mood: calm, focused, confident, understated.
+Color palette: graphite and near-black background, warm off-white text, restrained green, amber, coral accents.
+Materials/textures: subtle matte paper and fine digital grain; avoid glossy gradients and heavy glow.
+Text (verbatim): “Test Progress” as the large exact title; “Claude Code Mod” as a smaller exact subtitle. Render spelling exactly, with no additional words.
+Constraints: illustrative cover art only, no personal data, no unsupported product claims, no CI claim, no measurements, no numerical metrics, no dates.
+Avoid: fake screenshot, dashboard screenshot, logos or marks of Anthropic or Claude, terminal windows, code snippets, badges, charts with values, UI cards, watermarks, extra text, misspelled lettering, clutter, neon colors.

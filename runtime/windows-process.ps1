@@ -1,0 +1,174 @@
+﻿param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('Run', 'Identity', 'State', 'Group', 'Kill', 'SecureDirectory')]
+    [string] $Action,
+    [string] $JobFile,
+    [int] $ProcessId,
+    [string] $StartTime,
+    [string] $Owner,
+    [string] $JobName,
+    [int] $SessionId = -1,
+    [string] $Directory
+)
+
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+Add-Type -Path (Join-Path $PSScriptRoot 'WindowsProcessHost.cs')
+
+function Write-Control($Value) {
+    [Console]::Out.WriteLine(($Value | ConvertTo-Json -Compress -Depth 8))
+}
+function Write-AtomicJson([string] $Path, $Value) {
+    $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        $json = ($Value | ConvertTo-Json -Compress -Depth 8) + "`n"
+        [IO.File]::WriteAllText($temporary, $json, (New-Object System.Text.UTF8Encoding($false)))
+        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, $null) }
+        else { [IO.File]::Move($temporary, $Path) }
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+    }
+}
+function Assert-Absolute([string] $Path) {
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not [IO.Path]::IsPathRooted($Path)) {
+        throw 'An absolute path is required.'
+    }
+}
+
+if ($Action -eq 'Identity') {
+    Write-Control ([TestProgress.WindowsProcessHost]::Identity($ProcessId))
+    exit 0
+}
+if ($Action -eq 'State') {
+    Write-Control @{ state = [TestProgress.WindowsProcessHost]::State($ProcessId, $StartTime, $Owner) }
+    exit 0
+}
+if ($Action -eq 'Group') {
+    Write-Control @{ state = [TestProgress.WindowsProcessHost]::Group($JobName, $SessionId) }
+    exit 0
+}
+if ($Action -eq 'Kill') {
+    [TestProgress.WindowsProcessHost]::KillOwned($ProcessId, $StartTime, $Owner)
+    Write-Control @{ killed = $true }
+    exit 0
+}
+if ($Action -eq 'SecureDirectory') {
+    Assert-Absolute $Directory
+    $item = Get-Item -LiteralPath $Directory -Force
+    if (-not $item.PSIsContainer) { throw 'Private state path must be a directory.' }
+    # Reject junctions/symlinks in the full chain before changing any ACL.
+    $ancestor = $item
+    while ($null -ne $ancestor) {
+        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Reparse points are not allowed in a private state path.'
+        }
+        $ancestor = $ancestor.Parent
+    }
+    $identity = [TestProgress.WindowsProcessHost]::Identity($PID)
+    $user = New-Object Security.Principal.SecurityIdentifier($identity.owner)
+    $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
+    $original = Get-Acl -LiteralPath $Directory
+    if ($original.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) {
+        throw 'Private state directory has a different owner.'
+    }
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    $acl.SetOwner($user)
+    $acl.SetAccessRuleProtection($true, $false)
+    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    foreach ($principal in @($user, $system)) {
+        $rule = New-Object Security.AccessControl.FileSystemAccessRule($principal,
+            [Security.AccessControl.FileSystemRights]::FullControl, $inheritance,
+            [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
+        $acl.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $Directory -AclObject $acl
+    $verified = Get-Acl -LiteralPath $Directory
+    if (-not $verified.AreAccessRulesProtected -or
+        $verified.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) {
+        throw 'Private state ACL could not be verified.'
+    }
+    $rules = @($verified.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+    if ($rules.Count -ne 2) { throw 'Private state ACL has unexpected entries.' }
+    foreach ($rule in $rules) {
+        if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+            $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl -or
+            $rule.IdentityReference.Value -notin @($user.Value, $system.Value)) {
+            throw 'Private state ACL has unexpected permissions.'
+        }
+    }
+    Write-Control @{ secured = $true; owner = $user.Value }
+    exit 0
+}
+
+Assert-Absolute $JobFile
+$job = [IO.File]::ReadAllText($JobFile) | ConvertFrom-Json
+if ([string]::IsNullOrEmpty($job.runId) -or $job.lane -notin @('backend', 'frontend')) {
+    throw 'Invalid run identity or lane.'
+}
+$runGuid = [Guid]::Empty
+if (-not [Guid]::TryParse([string]$job.runId, [ref]$runGuid)) { throw 'Run identity must be a UUID.' }
+$JobName = 'Local\claude-test-progress-' + $runGuid.ToString('D')
+Assert-Absolute $job.cwd
+Assert-Absolute $job.directory
+if ($null -eq $job.windowsCommand -or [string]::IsNullOrEmpty($job.windowsCommand.file)) {
+    throw 'The private job is missing its validated windowsCommand.'
+}
+Assert-Absolute $job.windowsCommand.file
+$commandArguments = [string[]] @($job.windowsCommand.args)
+$cancelFile = Join-Path $job.directory ($job.lane + '.cancel.json')
+$sidecar = $JobFile + '.windows.json'
+$brokerIdentity = [TestProgress.WindowsProcessHost]::Identity($PID)
+$proof = @{ schema = 1; runId = $job.runId; brokerIdentity = $brokerIdentity;
+    jobName = $JobName; contained = $false; treeEmpty = $false; exitCode = $null; cancelled = $false }
+$hostProcess = $null
+$code = 125
+try {
+    # The only stdout/stderr writer is the native command; proof stays in the sidecar.
+    $hostProcess = New-Object TestProgress.WindowsProcessHost($job.windowsCommand.file, $commandArguments, $job.cwd, $JobName)
+    $proof.contained = $true
+    $proof.brokerIdentity = @{ platform = 'win32'; pid = $brokerIdentity.pid;
+        startTime = $brokerIdentity.startTime; owner = $brokerIdentity.owner;
+        sessionId = $brokerIdentity.sessionId; jobName = $JobName; managedBroker = $true; contained = $true }
+    Write-AtomicJson $sidecar $proof
+    # No user command executes before both containment and its durable proof exist.
+    if ([IO.File]::Exists($cancelFile)) {
+        $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
+        if ($cancel.runId -eq $job.runId) {
+            $proof.cancelled = $true
+            $hostProcess.Cancel()
+        }
+    }
+    if (-not $proof.cancelled) { $hostProcess.Resume() }
+    while ($hostProcess.ActiveProcesses() -ne 0) {
+        if (-not $proof.cancelled -and [IO.File]::Exists($cancelFile)) {
+            $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
+            if ($cancel.runId -eq $job.runId) {
+                $proof.cancelled = $true
+                $hostProcess.Cancel()
+            }
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    $proof.treeEmpty = $true
+    $code = $hostProcess.ExitCode()
+    $proof.exitCode = $code
+    Write-AtomicJson $sidecar $proof
+} catch {
+    $proof.error = $_.Exception.Message
+    if ($null -ne $hostProcess -and $hostProcess.Contained) {
+        try {
+            $hostProcess.Cancel()
+            $deadline = [DateTime]::UtcNow.AddMilliseconds(1500)
+            while ($hostProcess.ActiveProcesses() -ne 0 -and [DateTime]::UtcNow -lt $deadline) {
+                Start-Sleep -Milliseconds 25
+            }
+            $proof.treeEmpty = $hostProcess.ActiveProcesses() -eq 0
+        } catch { $proof.treeEmpty = $false }
+    }
+    try { Write-AtomicJson $sidecar $proof } catch { }
+    [Console]::Error.WriteLine('Windows broker: ' + $proof.error)
+} finally {
+    if ($null -ne $hostProcess) { $hostProcess.Dispose() }
+}
+exit $code

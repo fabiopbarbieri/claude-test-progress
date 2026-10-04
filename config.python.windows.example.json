@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "backend": {
+    "command": [
+      ".venv\\Scripts\\python.exe",
+      "C:\\ferramentas\\claude-test-progress\\adapters\\python\\run.py",
+      "pytest",
+      "-q",
+      "tests"
+    ],
+    "cwd": ".",
+    "adapter": "events",
+    "env": {}
+  }
+}
