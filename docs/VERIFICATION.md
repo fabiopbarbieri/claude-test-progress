@@ -5,6 +5,12 @@ carregamento pelo Claude e aceite de apps/plataformas.
 
 ## Observado
 
+- **Suíte longa, Linux / Claude Code 2.1.289:** um unittest real com 60 segundos
+  de silêncio continuou depois da saída do cliente headless. Novos clientes com
+  o mesmo diretório e ID consultaram 1/2 em execução e depois 2/2, exit 0. Início
+  e consultas pelo Mod responderam em menos de 1 segundo neste ambiente; o
+  heartbeat avançou sem inventar resultados. É uma amostra de 60 segundos,
+  não um ensaio de várias horas nem evidência de Windows ou da pane visual.
 - **Claude Code 2.1.289:** validação estrita do marketplace e dos hooks passou.
   Marketplace local adicionado e plugin instalado com configuração/cache
   temporários isolados. `/test-progress paths --text` executou pelo Claude e
@@ -44,6 +50,8 @@ carregamento pelo Claude e aceite de apps/plataformas.
 python3 scripts/check.py --smoke
 # Se pytest estiver instalado neste Python:
 python3 scripts/check.py --smoke --pytest
+python3 scripts/check-long-running.py
+claude plugin test .
 claude plugin validate . --strict
 claude plugin validate .claude-plugin/plugin.json --strict
 bash scripts/scan-secrets.sh
@@ -53,6 +61,19 @@ bash scripts/scan-secrets.sh
 arquivos proibidos na distribuição. O smoke cria amostras temporárias para
 sucesso, falha, skip e cancelamento; não inicia suítes de um app do usuário.
 Não é necessário configurar uma chave de API para esses checks.
+
+`check-long-running.py` inicia clientes separados do coletor e comprova que uma
+suíte silenciosa continua após o cliente sair e após o timeout de uma consulta.
+Também verifica sinal periódico sem resultados fabricados, duração final fixa,
+cancelamento, contadores preservados após rotação do log e recuperação após perda
+do worker (este último caso exige Linux). O tempo silencioso padrão é de 6 segundos;
+`TEST_PROGRESS_QUIET_SECONDS=60 python3 scripts/check-long-running.py` o amplia.
+
+`claude plugin test` usa o [test kit oficial de Mods](https://code.claude.com/docs/en/plugins/mods/test).
+Os dois testes de contrato simulam respostas do coletor: verificam o resumo de
+atividade de uma suíte longa e a repetição de uma consulta que falhou, sem novo
+start ou cancelamento. Esses testes locais não executam modelo nem suíte real;
+o workflow Quality executa os testes do coletor, mas ainda não instala o Claude.
 
 Na preparação desta versão, `scripts/check.py --smoke --pytest` passou no
 checkout independente: gates estáticos, unittest (pass/fail/skip), cancelamento

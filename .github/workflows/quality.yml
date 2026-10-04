@@ -37,6 +37,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install 'pytest==${{ matrix.pytest }}'
       - run: python scripts/check.py --smoke --pytest
+      - run: python scripts/check-long-running.py
 
   secrets:
     name: Secrets (tree and history)
