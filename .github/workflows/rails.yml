@@ -1,0 +1,52 @@
+name: Rails adapter
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rails-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rails:
+    name: Rails ${{ matrix.rails }} (Ruby ${{ matrix.ruby }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ruby: '3.3'
+            rails: '7.2.4'
+            minitest: '5.20.0'
+          - ruby: '3.4'
+            rails: '8.0.5.1'
+            minitest: '5.25.4'
+          - ruby: '3.4'
+            rails: '8.1.4'
+            minitest: '5.25.4'
+    env:
+      RAILS_VERSION: ${{ matrix.rails }}
+      MINITEST_VERSION: ${{ matrix.minitest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install fixture dependencies
+        run: |
+          gem install rails --version "$RAILS_VERSION" --no-document
+          gem install minitest --version "$MINITEST_VERSION" --no-document
+          gem install capybara --version '3.40.0' --no-document
+          gem install selenium-webdriver --version '4.50.0' --no-document
+      - run: python3 scripts/check.py
+      - run: python3 scripts/check-rails.py

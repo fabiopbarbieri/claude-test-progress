@@ -6,6 +6,11 @@ executou os runners candidatos.
 
 ## O que existe hoje
 
+[Rails/Minitest](../adapters/rails/README.md) tem integração própria para
+`test`, `test:system` e `test:all`, com contadores ao vivo e total desconhecido
+até a conclusão. Inclui testes Ruby de backend, views e system; os limites
+observados estão em [VALIDATION](../adapters/rails/VALIDATION.md).
+
 Há integrações para [JUnit 5/Maven](../adapters/junit/README.md),
 [Karma](../adapters/karma/README.md) e
 [pytest/unittest](../adapters/python/README.md). Pytest é serial; pytest-xdist

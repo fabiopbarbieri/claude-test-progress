@@ -34,6 +34,7 @@ de tempo restante e integração com uma plataforma de CI não são calculadas.
 | Coletor | **Node 14+** instalado; sem dependências npm do plugin |
 | Linux / WSL | Bash e ferramentas usuais do sistema; descoberta nvm usa GNU `sort -V` |
 | Windows nativo | PowerShell **5.1 ou 7** e Node local; implementação disponível, aceite em Windows pendente |
+| Rails / Minitest | [Rails 7.2/8.0/8.1 e Minitest 5](adapters/rails/README.md), incluindo views e system tests em Ruby na área backend |
 | Java / Maven | Fallback por logs do Maven; [listener JUnit 5](adapters/junit/README.md) opcional, JDK 11+ para compilá-lo |
 | Angular / Karma | [Reporter Karma](adapters/karma/README.md) ou fallback por logs; CLI e browser já instalados no app |
 | Angular 9 | [Node do app independente](ANGULAR9.md); a matriz histórica lista Node 10/12, enquanto o coletor requer 14+ |
