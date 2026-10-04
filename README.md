@@ -188,3 +188,10 @@ de anexá-los: eles podem conter dados ou segredos produzidos pelo seu app.
 
 Código distribuído sob a [licença MIT](LICENSE). Claude Code é um produto da
 Anthropic; este projeto é independente.
+
+## Evolução avaliada
+
+- [Adicionar outros runners](docs/EXTENDING.md): pontos de extensão, candidatos
+  e dificuldade estimada. Os runners candidatos ainda não são suportados.
+- [CI e governança](docs/CI-GOVERNANCE.md): checks existentes, lacunas e proposta
+  de regras para PRs e `main`. As regras propostas ainda não estão ativadas.

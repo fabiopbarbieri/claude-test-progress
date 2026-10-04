@@ -1,3 +1,5 @@
+Generated with the built-in image_gen tool. The exact generation prompt follows.
+
 Use case: cover-art
 Asset type: GitHub README cover for a Claude Code Mod named Test Progress
 Primary request: Create a polished, restrained editorial technology cover that communicates test progress tracking across backend and frontend work.

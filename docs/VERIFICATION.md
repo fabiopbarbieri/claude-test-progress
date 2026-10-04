@@ -11,6 +11,10 @@ carregamento pelo Claude e aceite de apps/plataformas.
   retornou os caminhos da instalação ativa. `/test-progress demo --text` iniciou
   workers: backend simulado terminou 8/8, uma falha, exit 1; frontend simulado
   terminou 12/12, um ignorado, exit 0. Isso não é inspeção visual da pane.
+- **Distribuição GitHub:** o marketplace foi clonado por SSH e instalado pelo
+  Claude em um segundo ambiente isolado. `paths --text` apontou para a cópia no
+  cache, e a demo dessa instalação terminou com os mesmos resultados 8/8 e
+  12/12. Não dependeu do caminho do checkout original.
 - **Linux, Node 26.7.0:** o coletor executou amostras Python reais com pytest e
   unittest. Contadores e códigos de saída foram confrontados com resultados
   esperados; falhas deliberadas apareceram como falha e não como sucesso.
@@ -28,9 +32,11 @@ carregamento pelo Claude e aceite de apps/plataformas.
 - **Privacidade da exportação:** somente fontes e documentação pública foram
   copiadas. Histórico anterior, builds Java, dependências, tipos gerados, caches,
   configurações reais e logs ficaram fora. Gitleaks 8.30.1 foi obtido da release
-  oficial e seu SHA-256 foi conferido; a primeira varredura dos arquivos não
-  encontrou segredos. A publicação requer repetir sobre o conjunto final e o
-  histórico novo, usando [scan-secrets.sh](../scripts/scan-secrets.sh).
+  oficial e seu SHA-256 foi conferido. As varreduras do checkout, histórico novo,
+  exportação limpa e clone SSH do GitHub não encontraram segredos. O clone limpo
+  também passou em `scripts/check.py --smoke --pytest`. GitHub Secret Scanning e
+  push protection estão ativos. Repita os gates para cada mudança com
+  [scan-secrets.sh](../scripts/scan-secrets.sh).
 
 ## Checks reproduzíveis
 
@@ -54,9 +60,10 @@ e pytest (pass/fail/skip), incluindo um diretório com espaços.
 
 O [workflow Quality](../.github/workflows/quality.yml) define duas combinações:
 Node 14.0.0/Python 3.8/pytest 8.3.5 e Node 24/Python 3.14/pytest 9.1.1, além de
-Gitleaks nos arquivos e em todo o histórico. A existência do workflow não
-significa que uma execução de CI já tenha passado; consulte o resultado do SHA
-que pretende usar na aba Actions.
+Gitleaks nos arquivos e em todo o histórico. A
+[primeira execução remota](https://github.com/fabiopbarbieri/claude-test-progress/actions/runs/37236035815)
+passou nos três jobs para o SHA `9c1cafe0606852a6a47ffd90eb6b8dbab187643d`.
+Consulte sempre o resultado do SHA que pretende usar na aba Actions.
 
 ## Aceite ainda pendente
 
@@ -67,8 +74,9 @@ que pretende usar na aba Actions.
 - Apps reais Java/Surefire e Angular/Karma/browser, forks/módulos e toolchains
   específicas. O listener JUnit e o reporter não foram aceitos em todos esses
   cenários só pela existência de código ou compilação.
-- Python 3.8 e pytest 7 como conjunto mínimo: sintaxe e APIs revisadas;
-  execução completa de todas as versões possíveis não foi feita.
+- Pytest 7 como versão mínima: sintaxe e APIs revisadas, mas ainda sem uma
+  combinação pytest 7 no CI. Python 3.8 passou com pytest 8.3.5; isso não comprova
+  todas as combinações de versões possíveis.
 
 ## Referências de distribuição
 
