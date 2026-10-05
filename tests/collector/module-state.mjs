@@ -131,6 +131,13 @@ try {
   atomicJson(replacementFile, { content: 'x'.repeat(2048) });
   assert.throws(() => readPrivate(replacementFile, 1024), /limite/, 'the opened fd must still obey the byte limit');
   fs.unlinkSync(replacementFile);
+  const tailFile = path.join(context.directory, 'tail.log');
+  fs.writeFileSync(tailFile, `${'é'.repeat(40)}\nsecond\nthird\n`, { mode: 0o600 });
+  assert.strictEqual(readPrivate(tailFile, 1024, { tail: 10 }), 'third\n', 'a tail starts after the first, partial line');
+  assert.strictEqual(readPrivate(tailFile, 1024, { tail: 15 }), 'second\nthird\n', 'a split UTF-8 character is dropped with its line');
+  assert.strictEqual(readPrivate(tailFile, 1024, { tail: 4096 }), fs.readFileSync(tailFile, 'utf8'), 'a short file is read whole');
+  assert.throws(() => readPrivate(tailFile, 16, { tail: 8 }), /limite/, 'a tail read still obeys the file limit');
+  fs.unlinkSync(tailFile);
   const teardown = namespace(cwd, randomUUID());
   try {
     const loc = files(teardown.directory, 'api');
