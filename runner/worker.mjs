@@ -216,6 +216,16 @@ process.on('unhandledRejection', (error) => {
 const hooks = job.testHooks || {};
 if (hooks.readyFailure) throw new Error('Falha injetada na preparação do worker');
 if (hooks.readyDelayMs) await pause(hooks.readyDelayMs);
+if (hooks.readyGateFile) {
+  // A test can hold preparation until it has injected its ownership race.
+  // The real batch deadline and abort still bound the wait.
+  for (;;) {
+    const manifest = readBatch(job.directory, job.batchId);
+    if (manifest.state === 'aborted' || Date.now() >= Date.parse(manifest.deadlineAt) ||
+        fs.existsSync(hooks.readyGateFile)) break;
+    await pause();
+  }
+}
 updateClaim(job.directory, job.moduleId, job.runId, { readyAt: timestamp() });
 persist({ phase: 'ready' });
 for (;;) {

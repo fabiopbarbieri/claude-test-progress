@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { namespace, files, readJson, jobFile, atomicJson } from '../../runner/state.mjs';
 import { windowsProof } from '../../runner/windows-proof.mjs';
-import { windowsGroupState, windowsIdentity, windowsKillOwnedBroker } from '../../runner/windows-process.mjs';
+import { windowsGroupState, windowsKillOwnedBroker } from '../../runner/windows-process.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 
 assert.strictEqual(process.platform, 'win32', 'Native Windows APIs must actually execute');
@@ -22,6 +22,7 @@ console.log(`Native private namespace startup without prewarming: ${Date.now() -
 const config = path.join(app, 'modules.json');
 const suite = path.join(app, 'tree with spaces.mjs');
 const capturedTrees = [];
+const capturedProcesses = new Map();
 const parentPath = process.env.PATH;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 fs.writeFileSync(suite, `import fs from 'fs';
@@ -56,13 +57,20 @@ function collect(action, target = 'all', env = process.env) {
   assert.strictEqual(result.status, value.ok ? 0 : 1);
   return value;
 }
-async function waitFor(predicate, timeout = 45000) {
+function start(target = 'all', env = process.env) {
+  const value = collect('start', target, env);
+  assert.strictEqual(value.ok, true, JSON.stringify({ error: value.error, actionResults: value.actionResults,
+    diagnostics: value.stateDiagnostics, jobs: Object.fromEntries(Object.entries(value.jobs).map(([id, job]) =>
+      [id, { status: job.status, phase: job.phase, error: job.error }])) }));
+  return value;
+}
+async function waitFor(predicate, timeout = 45000, expectedErrors = []) {
   const deadline = Date.now() + timeout;
   let last;
   while (Date.now() < deadline) {
     last = collect('status');
     if (predicate(last)) return last;
-    if (Object.values(last.jobs).some(job => job.status === 'error')) break;
+    if (Object.entries(last.jobs).some(([id, job]) => job.status === 'error' && !expectedErrors.includes(id))) break;
     await sleep(100);
   }
   const diagnostics = Object.keys(last.jobs).map(id => {
@@ -79,14 +87,32 @@ function captureTree(id, job) {
   assert(proof && proof.contained === true && proof.resumed === true, 'Command acknowledged only after contained and resumed proof');
   assert.strictEqual(windowsGroupState(proof.brokerIdentity), 'present');
   capturedTrees.push(proof.brokerIdentity);
+  const pids = ['parent', 'child', 'grandchild'].map(role => Number(fs.readFileSync(path.join(app, `${id}.${role}.pid`), 'utf8')));
+  const result = shell(['-Command', 'Add-Type -Path $env:TEST_PROGRESS_GATE_HOST; ' +
+    '$pids=$env:TEST_PROGRESS_GATE_PIDS | ConvertFrom-Json; ' +
+    '$identities=@($pids | ForEach-Object { [TestProgress.WindowsProcessHost]::Identity([int]$_) }); ' +
+    'ConvertTo-Json -InputObject $identities -Compress'],
+  { ...process.env, TEST_PROGRESS_GATE_HOST: path.join(root, 'runtime/WindowsProcessHost.cs'),
+    TEST_PROGRESS_GATE_PIDS: JSON.stringify(pids) });
+  assert.strictEqual(result.status, 0, 'Cannot capture the live descendant identities');
+  const identities = JSON.parse(result.stdout.trim());
+  assert(identities.length === 3 && identities.every((identity, index) => identity?.pid === pids[index]), 'All three descendants must be alive before cancellation');
+  capturedProcesses.set(id, identities);
   return proof;
 }
 function assertEmpty(identity) { assert.strictEqual(windowsGroupState(identity), 'empty', 'Named Job Object must prove tree empty'); }
 function assertPidsGone(id) {
-  for (const role of ['parent', 'child', 'grandchild']) {
-    const pid = Number(fs.readFileSync(path.join(app, `${id}.${role}.pid`), 'utf8'));
-    assert.strictEqual(windowsIdentity(pid), null, `${role} survived cancellation`);
-  }
+  const identities = capturedProcesses.get(id);
+  assert(identities, 'Descendant identities must be captured before cancellation');
+  const result = shell(['-Command', 'Add-Type -Path $env:TEST_PROGRESS_GATE_HOST; ' +
+    '$identities=$env:TEST_PROGRESS_GATE_IDENTITIES | ConvertFrom-Json; ' +
+    '$states=@($identities | ForEach-Object { [TestProgress.WindowsProcessHost]::State([int]$_.pid,[string]$_.startTime,[string]$_.owner) }); ' +
+    'ConvertTo-Json -InputObject $states -Compress'],
+  { ...process.env, TEST_PROGRESS_GATE_HOST: path.join(root, 'runtime/WindowsProcessHost.cs'),
+    TEST_PROGRESS_GATE_IDENTITIES: JSON.stringify(identities) });
+  assert.strictEqual(result.status, 0, 'Cannot query the captured descendant identities');
+  assert.deepStrictEqual(JSON.parse(result.stdout.trim()), ['empty', 'empty', 'empty'],
+    'Parent, child and grandchild must be absent by their original creation time and owner');
 }
 function assertPrivateCreation() {
   const control = path.join(root, 'runtime/windows-process.ps1');
@@ -163,7 +189,7 @@ async function main() {
     configure({ api: module('api'), broken: module('broken', { command: ['missing-gate-executable.exe'] }) });
     assert.strictEqual(collect('start').ok, false);
     assert(!fs.existsSync(path.join(app, 'api.parent.pid')), 'Invalid all must have zero command effects');
-    assert.strictEqual(collect('start', 'api').ok, true);
+    start('api');
     let state = await waitFor(value => value.jobs.api && value.jobs.api.resolved === 1 &&
       fs.existsSync(path.join(app, 'api.grandchild.pid')));
     const firstProof = captureTree('api', state.jobs.api);
@@ -185,7 +211,7 @@ async function main() {
 
     // Two IDs use the same language/runtime but keep independent run identities.
     configure({ api: module('api'), billing: module('billing') });
-    assert.strictEqual(collect('start').ok, true);
+    start();
     state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1 &&
       fs.existsSync(path.join(app, 'billing.grandchild.pid')));
     assert.notStrictEqual(state.jobs.api.runId, state.jobs.billing.runId);
@@ -221,7 +247,7 @@ async function main() {
     fs.writeFileSync(batchSuite, "console.log('@@TEST_PROGRESS@@'+JSON.stringify({scope:'native-batch',total:1,resolved:1,passed:1,failed:0,skipped:0,totalStable:true}));\n");
     fs.writeFileSync(batch, `@echo off\r\necho %~1> "batch-result.txt"\r\n"${process.execPath}" "${batchSuite}"\r\nexit /b 0\r\n`);
     configure({ batch: module('batch', { command: [batch, 'simple value'], adapter: 'events' }) });
-    assert.strictEqual(collect('start', 'batch').ok, true);
+    start('batch');
     await waitFor(value => value.jobs.batch && value.jobs.batch.status === 'completed');
     assert.strictEqual(fs.readFileSync(path.join(app, 'batch-result.txt'), 'utf8').trim(), 'simple value');
     configure({ batch: module('batch', { command: [batch, 'value&unexpected'], adapter: 'events' }) });
@@ -235,7 +261,7 @@ async function main() {
     const pathKey = Object.keys(runtimeEnv).find(key => key.toUpperCase() === 'PATH');
     runtimeEnv[pathKey] = path.dirname(projectNode) + ';' + runtimeEnv[pathKey];
     configure({ web: module('web', { command: ['node', suite, 'parent'], runtime: 'node-project' }) });
-    assert.strictEqual(collect('start', 'web', runtimeEnv).ok, true);
+    start('web', runtimeEnv);
     state = await waitFor(value => value.jobs.web && value.jobs.web.resolved === 1 &&
       fs.existsSync(path.join(app, 'web.grandchild.pid')));
     const webProof = captureTree('web', state.jobs.web);
@@ -251,12 +277,12 @@ async function main() {
     // Kill only an authenticated broker belonging to this gate; its Job Object closes the entire tree.
     fs.unlinkSync(path.join(app, '.nvmrc'));
     configure({ api: module('api'), billing: module('billing') });
-    assert.strictEqual(collect('start').ok, true);
+    start();
     state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
     const lostBroker = captureTree('api', state.jobs.api);
     const compensated = captureTree('billing', state.jobs.billing);
     windowsKillOwnedBroker(lostBroker.brokerIdentity);
-    await waitFor(value => value.jobs.api.infrastructureFailure === true && value.jobs.billing.status === 'cancelled');
+    await waitFor(value => value.jobs.api.infrastructureFailure === true && value.jobs.billing.status === 'cancelled', 45000, ['api']);
     assertEmpty(lostBroker.brokerIdentity);
     assertEmpty(compensated.brokerIdentity);
     console.log('Authenticated broker loss, Job Object tree cleanup and detached batch compensation: OK');

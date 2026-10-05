@@ -44,6 +44,23 @@ Node 14 cobre sucesso posterior, falha limitada, limpeza do temporário e recusa
 de destino substituído por link durante a repetição; os cenários simulados não
 substituem o stress Windows real.
 
+Em `d70ef3f`, o stress de compartilhamento passou nas quatro combinações nativas,
+e PS5.1/Node14 completou o gate inteiro. As demais combinações expuseram dois
+problemas de teste: consultar somente o PID podia encontrar um processo novo
+com o mesmo número, e a espera interrompia a compensação ao observar o erro de
+infraestrutura esperado no módulo cujo broker foi encerrado. O gate agora captura
+as identidades dos três descendentes ainda vivos, exige `State=empty` após
+cancelamento e continua aguardando o irmão quando o erro é esperado.
+
+A CI Quality também expôs uma corrida na remoção de claim/lock/gate. Leituras
+opcionais reautenticam o caminho quando ele desaparece após `lstat`; a inspeção
+repete conjuntos inconsistentes antes de publicar diagnósticos. Aquisição de
+gate individual e de lote repete quando o dono anterior o remove após `EEXIST`,
+mantendo os prazos e a recusa de links. Regressões determinísticas cobrem seis
+remoções durante leitura, gates liberados/persistentes/inseguros e o gate de lote.
+O isolamento Node14 passou em 30 execuções consecutivas; o gate de troca de
+ownership usa uma barreira explícita, sem depender de uma janela de 1,2 segundos.
+
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
 Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório

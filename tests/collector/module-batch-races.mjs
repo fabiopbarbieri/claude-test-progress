@@ -109,12 +109,15 @@ async function main() {
     return new Promise((resolve, reject) => { child.on('error', reject); child.on('close', () => resolve(JSON.parse(out))); });
   }
   try {
-    const launching = launch({ ui: { readyDelayMs: 1200 } });
+    const readyGateFile = path.join(cwd, 'release-preparation');
+    const launching = launch({ ui: { readyGateFile } });
     const deadline = Date.now() + 5000;
     while (!readJson(files(context.directory, 'api').claim)?.readyAt && Date.now() < deadline) await pause(25);
+    assert(readJson(files(context.directory, 'api').claim)?.readyAt, 'api must be ready while ui is held before injecting ownership replacement');
     const original = readJson(files(context.directory, 'api').snapshot);
     const replaced = { ...original, runId: randomUUID() };
     atomicJson(files(context.directory, 'api').snapshot, replaced);
+    fs.writeFileSync(readyGateFile, 'release');
     const result = await launching;
     assert.strictEqual(result.ok, false, 'snapshot ownership changed during preparation must abort');
     assert(!fs.existsSync(path.join(cwd, 'api')) && !fs.existsSync(path.join(cwd, 'ui')), 'ownership failure before release must execute zero commands');

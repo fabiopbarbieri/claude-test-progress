@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { namespace, inspectState, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock } from '../../runner/state.mjs';
 import { processIdentity } from '../../runner/process-identity.mjs';
+import { batchFiles, changeBatch } from '../../runner/module-batch.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'module-state-'));
 const context = namespace(cwd, randomUUID());
@@ -115,6 +116,93 @@ try {
   atomicJson(replacementFile, { content: 'x'.repeat(2048) });
   assert.throws(() => readPrivate(replacementFile, 1024), /limite/, 'the opened fd must still obey the byte limit');
   fs.unlinkSync(replacementFile);
+  const teardown = namespace(cwd, randomUUID());
+  try {
+    const loc = files(teardown.directory, 'api');
+    const terminal = { schemaVersion: 2, moduleId: 'api', runId: randomUUID(), status: 'completed', exitCode: 0 };
+    for (const step of ['mutation-realpath', 'lock-realpath', 'claim-realpath', 'claim-open', 'claim-after-open', 'cancel-realpath']) {
+      atomicJson(loc.snapshot, terminal);
+      fs.mkdirSync(loc.lock, { mode: 0o700 });
+      atomicJson(loc.claim, terminal);
+      atomicJson(loc.cancel, terminal);
+      const gate = path.join(teardown.directory, 'api.mutation');
+      fs.mkdirSync(gate, { mode: 0o700 });
+      const originalRealpath = fs.realpathSync;
+      const originalOpen = fs.openSync;
+      let injected = false;
+      const target = step.startsWith('mutation') ? gate : step.startsWith('lock') ? loc.lock : step.startsWith('claim') ? loc.claim : loc.cancel;
+      function removeObserved() {
+        injected = true;
+        fs.unlinkSync(loc.claim);
+        fs.rmdirSync(loc.lock);
+        fs.unlinkSync(loc.cancel);
+        fs.rmdirSync(gate);
+      }
+      fs.realpathSync = function(file, ...args) {
+        if (!step.endsWith('open') && file === target && !injected) removeObserved();
+        return originalRealpath(file, ...args);
+      };
+      fs.openSync = function(file, ...args) {
+        if (step === 'claim-after-open' && file === target && !injected) {
+          const fd = originalOpen(file, ...args);
+          removeObserved();
+          return fd;
+        }
+        if (step.endsWith('open') && file === target && !injected) removeObserved();
+        return originalOpen(file, ...args);
+      };
+      try {
+        const observed = inspectState(teardown.directory);
+        assert(injected, `teardown injection ${step} must execute`);
+        assert.strictEqual(observed.jobs.api?.status, 'completed', `${step} must preserve the authenticated terminal snapshot`);
+        assert.strictEqual(observed.blocked, false, `${step} must not create legacy diagnostics from obsolete reads`);
+        assert(!observed.stateDiagnostics.api, `${step} must not retain diagnostics from a discarded observation`);
+      } finally { fs.realpathSync = originalRealpath; fs.openSync = originalOpen; }
+    }
+    fs.unlinkSync(loc.snapshot);
+    const gate = path.join(teardown.directory, 'api.mutation');
+    fs.mkdirSync(gate, { mode: 0o700 });
+    const originalLstat = fs.lstatSync;
+    let releasedBetweenAttempts = false;
+    fs.lstatSync = function(file, ...args) {
+      if (file === gate && !releasedBetweenAttempts) {
+        releasedBetweenAttempts = true;
+        fs.rmdirSync(gate);
+      }
+      return originalLstat(file, ...args);
+    };
+    const retryRun = randomUUID();
+    try {
+      acquireLock(teardown.directory, 'api', retryRun);
+      assert(releasedBetweenAttempts, 'The previous mutation must disappear after EEXIST');
+      assert.strictEqual(readJson(loc.claim).runId, retryRun, 'Lock acquisition must retry a normally released mutation');
+    } finally { fs.lstatSync = originalLstat; }
+    releaseLock(teardown.directory, 'api', retryRun);
+    fs.mkdirSync(gate, { mode: 0o700 });
+    const started = Date.now();
+    assert.throws(() => acquireLock(teardown.directory, 'api', randomUUID()), /bloqueado por alteração/);
+    assert(Date.now() - started < 2000, 'A persistent mutation remains bounded and requires recovery');
+    fs.rmdirSync(gate);
+    fs.symlinkSync(cwd, gate, process.platform === 'win32' ? 'junction' : 'dir');
+    assert.throws(() => acquireLock(teardown.directory, 'api', randomUUID()), /inseguro|Link/);
+    fs.unlinkSync(gate);
+    const batchId = randomUUID();
+    const batch = batchFiles(teardown.directory, batchId);
+    atomicJson(batch.manifest, { schemaVersion: 2, batchId, state: 'preparing', entries: [{ moduleId: 'api', runId: retryRun }] });
+    fs.mkdirSync(batch.gate, { mode: 0o700 });
+    releasedBetweenAttempts = false;
+    fs.lstatSync = function(file, ...args) {
+      if (file === batch.gate && !releasedBetweenAttempts) {
+        releasedBetweenAttempts = true;
+        fs.rmdirSync(batch.gate);
+      }
+      return originalLstat(file, ...args);
+    };
+    try {
+      const updated = changeBatch(teardown.directory, batchId, value => ({ ...value, observed: true }));
+      assert(releasedBetweenAttempts && updated.observed, 'Batch changes must also retry a normally released mutation');
+    } finally { fs.lstatSync = originalLstat; }
+  } finally { removePath(teardown.directory, { recursive: true, force: true }); }
   const runId = randomUUID();
   acquireLock(context.directory, 'api', runId);
   assert(inspectState(context.directory).stateDiagnostics.api.length, 'lock without snapshot is visible');

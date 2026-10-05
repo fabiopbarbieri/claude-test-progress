@@ -26,8 +26,9 @@ function collect(action,moduleId='all',ok=true) {
 }
 async function finished(moduleId) {
   const deadline=Date.now()+15000;
-  do {collect('status');if(!['preparing','running'].includes(jobs[moduleId]?.status))return jobs[moduleId];await sleep(80);}while(Date.now()<deadline);
-  throw new Error('Fixture timed out');
+  let state;
+  do {state=collect('status');if(jobs[moduleId]&&!['preparing','running'].includes(jobs[moduleId].status))return jobs[moduleId];await sleep(80);}while(Date.now()<deadline);
+  throw new Error(`Fixture ${moduleId} timed out: ${JSON.stringify(state)}`);
 }
 const fixture=mode=>({command:[process.execPath,path.join(root,'tests/collector/fixtures/events-suite.mjs'),mode],adapter:'events'});
 async function main() {

@@ -15,13 +15,23 @@ export const validRunId = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-
 // Keep the state boundary independent from configuration and discovery.
 const validId = validModuleId;
 export function securePath(file, directory = false, absent = false) {
-  let info;
-  try { info = fs.lstatSync(file); }
-  catch (error) { if (absent && error.code === 'ENOENT') return null; throw error; }
-  if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
-      (process.getuid && info.uid !== process.getuid())) throw new Error(`Caminho de estado inseguro: ${file}`);
-  if (fs.realpathSync(file) !== path.resolve(file)) throw new Error(`Link no caminho de estado: ${file}`);
-  return info;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let info;
+    try { info = fs.lstatSync(file); }
+    catch (error) { if (absent && error.code === 'ENOENT') return null; throw error; }
+    if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
+        (process.getuid && info.uid !== process.getuid())) throw new Error(`Caminho de estado inseguro: ${file}`);
+    let resolved;
+    try { resolved = fs.realpathSync(file); }
+    catch (error) {
+      // A normal teardown may remove an optional entry after lstat. Reauthenticate
+      // from the beginning so a replacement link is still rejected.
+      if (absent && error.code === 'ENOENT' && attempt < 7) continue;
+      throw error;
+    }
+    if (resolved !== path.resolve(file)) throw new Error(`Link no caminho de estado: ${file}`);
+    return info;
+  }
 }
 export function readPrivate(file, limit = 1024 * 1024) {
   const noFollow = fs.constants.O_NOFOLLOW || 0;
@@ -160,8 +170,9 @@ function mutateLock(directory, moduleId, operation) {
     try { fs.mkdirSync(gate, { mode: 0o700 }); break; }
     catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      securePath(gate, true);
       if (Date.now() >= deadline) throw new Error(`Módulo ${moduleId} bloqueado por alteração de lock; recuperação manual necessária.`);
+      try { securePath(gate, true); }
+      catch (error) { if (error.code === 'ENOENT') continue; throw error; }
       Atomics.wait(wait, 0, 0, 10);
     }
   }
@@ -220,13 +231,36 @@ export function inspectState(directory) {
   for (const moduleId of stateIds(directory)) {
     const loc = files(directory, moduleId);
     try {
-      if (securePath(path.join(directory, `${moduleId}.mutation`), true, true)) diagnose(moduleId, 'Gate de alteração de lock presente; nenhuma recuperação por idade ou PID.');
-      const snapshot = readJson(loc.snapshot);
-      const lock = securePath(loc.lock, true, true);
-      const claim = lock ? readJson(loc.claim) : null;
+      let snapshot, lock, claim, pendingCancel, gate;
+      // Claims and locks are removed separately under the mutation gate. Do not
+      // diagnose an obsolete lock or hide a valid result from an earlier read.
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          gate = securePath(path.join(directory, `${moduleId}.mutation`), true, true);
+          snapshot = readJson(loc.snapshot);
+          lock = securePath(loc.lock, true, true);
+          claim = lock ? readJson(loc.claim) : null;
+          pendingCancel = readJson(loc.cancel);
+          const currentLock = securePath(loc.lock, true, true);
+          const currentGate = securePath(path.join(directory, `${moduleId}.mutation`), true, true);
+          if (attempt < 7 && (Boolean(gate) !== Boolean(currentGate) || Boolean(lock) !== Boolean(currentLock) ||
+              (lock && currentLock && (lock.dev !== currentLock.dev || lock.ino !== currentLock.ino)) ||
+              (lock && !validRecord(claim, moduleId, snapshot?.runId ?? null)))) continue;
+          if (!lock && snapshot && (ACTIVE.has(snapshot.status) || snapshot.recoveryRequired) && attempt < 7) {
+            const latest = readJson(loc.snapshot);
+            if (JSON.stringify(latest) !== JSON.stringify(snapshot)) continue;
+          }
+          break;
+        } catch (error) {
+          // A claim fd can remain open after its parent lock is removed. Retry
+          // the whole observation rather than read through an unauthenticated parent.
+          if (error.code === 'ENOENT' && attempt < 7) continue;
+          throw error;
+        }
+      }
+      if (gate) diagnose(moduleId, 'Gate de alteração de lock presente; nenhuma recuperação por idade ou PID.');
       if (lock && !validRecord(claim, moduleId)) diagnose(moduleId, 'Lock legado, desconhecido ou claim inválido; conservado.', true);
       if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot legado ou incompatível; novos starts bloqueados.', true); continue; }
-      const pendingCancel = readJson(loc.cancel);
       if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento legado ou inválido; conservado.', true);
       if (!snapshot) { if (lock) diagnose(moduleId, 'Lock sem snapshot; conservado.'); continue; }
       if (!['preparing', 'running', 'error', 'failed', 'completed', 'cancelled'].includes(snapshot.status)) {

@@ -29,8 +29,9 @@ export function changeBatch(directory, batchId, operation) {
     try { fs.mkdirSync(loc.gate, { mode: 0o700 }); break; }
     catch (error) {
       if (error.code !== 'EEXIST') throw error;
-      securePath(loc.gate, true);
       if (Date.now() >= deadline) throw new Error('Gate de lote ocupado; estado conservado');
+      try { securePath(loc.gate, true); }
+      catch (error) { if (error.code === 'ENOENT') continue; throw error; }
       Atomics.wait(wait, 0, 0, 10);
     }
   }
