@@ -11,6 +11,7 @@ let identityGeneration = 0;
 let sessionOwner = '';
 let sessionWorkspace = '';
 let showDemo = false;
+let workspace = null;
 let busy = false;
 let lastError = '';
 let selectedLogs = '';
@@ -35,7 +36,7 @@ function progressBar(job) {
 }
 
 function countSummary(job, icons = false) {
-  if (icons) return `${job.resolved} 🏁 / ${job.total === null ? '🧪 sem testes' : `${job.total} 🧪${job.totalStable ? '' : ' · total parcial'}`}`;
+  if (icons) return `${job.resolved} 🏁 / ${job.total === null ? '🧪 sem testes' : `${job.total} 🧪`}`;
   const denominator = job.total === null ? 'total desconhecido' :
     `${job.total} no total${job.totalStable ? '' : ' · total parcial'}`;
   return `${job.resolved} resolvidos / ${denominator}`;
@@ -60,10 +61,17 @@ function shortSummary(lane, job) {
   return `${lane}${simulation}: ${ratio}${partial} · ${labels[job.status] ?? job.status} · ${job.failed} falha(s)`;
 }
 
+const configuredLanes = () => workspace?.configuredLanes ?? LANES;
+function visibleLanes() {
+  const configured = configuredLanes();
+  return LANES.filter(lane => configured.includes(lane) || lanes[lane] &&
+    (ACTIVE.has(lanes[lane].status) || lanes[lane].recoveryRequired || lanes[lane].source === 'demo'));
+}
+
 function textSummary() {
   const rows = ['Test Progress'];
   if (sessionOwner) rows.push(`owner=${sessionOwner}`);
-  for (const lane of LANES) {
+  for (const lane of visibleLanes()) {
     const job = lanes[lane];
     rows.push(shortSummary(lane, job));
     if (job) {
@@ -78,6 +86,8 @@ function textSummary() {
     }
   }
   if (lastError) rows.push(`Erro: ${lastError}`);
+  if (workspace?.error) rows.push(`Configuração: ${workspace.error}`);
+  if (!visibleLanes().length) rows.push('Configure as suítes deste workspace em .claude/test-progress.json.');
   if (registrationError) rows.push(`Registro: ${registrationError}`);
   return rows.join('\n');
 }
@@ -93,6 +103,7 @@ async function synchronizeIdentity($) {
     sessionOwner = owner;
     sessionWorkspace = cwd;
     showDemo = false;
+    workspace = null;
     lanes = EMPTY();
     selectedLogs = '';
     logTail = [];
@@ -134,8 +145,9 @@ async function collect($, action = 'status', lane = 'all') {
     throw new Error('Versão de resposta do coletor incompatível.');
   }
   lanes = { backend: data.lanes.backend ?? null, frontend: data.lanes.frontend ?? null };
+  workspace = data.workspace ?? null;
   if (action === 'logs') {
-    selectedLogs = lane === 'all' ? 'backend' : lane;
+    selectedLogs = lane === 'all' ? (visibleLanes().find(name => lanes[name]) ?? configuredLanes()[0] ?? '') : lane;
     logTail = lanes[selectedLogs]?.logTail ?? [];
   }
   if (!data.ok || response.exitCode !== 0) {
@@ -199,13 +211,13 @@ export function register(on) {
     await perform($, 'status');
     $.clock.every(1000, async () => {
       if (busy) return;
-      const before = JSON.stringify({ lanes, lastError, identity });
+      const before = JSON.stringify({ lanes, lastError, identity, workspace });
       busy = true;
       try {
         await collect($, selectedLogs ? 'logs' : 'status', selectedLogs || 'all');
       } catch (error) { lastError = String(error?.message ?? error); }
       finally { busy = false; }
-      if (before !== JSON.stringify({ lanes, lastError, identity })) $.ui.invalidate('ui.render');
+      if (before !== JSON.stringify({ lanes, lastError, identity, workspace })) $.ui.invalidate('ui.render');
     });
     // Last: a registration collision must not prevent background polling initialization.
     try {
@@ -225,6 +237,7 @@ export function register(on) {
     sessionOwner = '';
     sessionWorkspace = '';
     showDemo = false;
+    workspace = null;
     lanes = EMPTY();
     selectedLogs = '';
     logTail = [];
@@ -287,6 +300,7 @@ export function register(on) {
           Text({ color, bold: true, children: [`${percentage(job)} ${progressBar(job)}`] }),
         ] }),
         ...(job.source === 'demo' ? [Text({ color: 'yellow', bold: true, children: ['DEMONSTRAÇÃO · eventos sintéticos'] })] : []),
+        ...(!configuredLanes().includes(lane) && job.source !== 'demo' ? [Text({ dimColor: true, children: ['Configuração removida ou desativada.'] })] : []),
         Text({ children: [countSummary(job, true)] }),
         Text({ children: [`${job.passed} ✅ · ${job.failed} ❌ · ${job.skipped} ⏩`] }),
         ...(job.status !== 'completed' ? [Text({ color, children: [`${labels[job.status] ?? job.status} · ${job.phase}`] })] : []),
@@ -308,14 +322,14 @@ export function register(on) {
         ...(showDemo ? [button('demo', '▷ Demo', 'demo')] : []), button('refresh', '↻ Atualizar', 'status'),
         Button({ key: 'close', label: '× Fechar', plain: true, onPress: () => $.ui.close({ id: PANE }) }),
       ] }),
-      Box({ flexDirection: 'row', columnGap: 2, children: [
-        button('backend', '▶ Backend', 'start', 'backend'),
-        button('frontend', '▶ Frontend', 'start', 'frontend'),
-        button('all', '▶ Ambos', 'start'),
-      ] }),
-      Text({ children: [' '] }), block('backend'), Text({ children: [' '] }), block('frontend'),
-      ...(lastError || registrationError ? [
-        Text({ children: [' '] }), Text({ color: 'red', children: [lastError || registrationError] }),
+      ...(configuredLanes().length ? [Box({ flexDirection: 'row', columnGap: 2, children: [
+        ...configuredLanes().map(lane => button(lane, lane === 'backend' ? '▶ Backend' : '▶ Frontend', 'start', lane)),
+        ...(configuredLanes().length > 1 ? [button('all', '▶ Ambos', 'start')] : []),
+      ] })] : []),
+      ...visibleLanes().flatMap(lane => [Text({ children: [' '] }), block(lane)]),
+      ...(!visibleLanes().length ? [Text({ dimColor: true, children: ['Configure .claude/test-progress.json neste workspace.'] })] : []),
+      ...(lastError || registrationError || workspace?.error ? [
+        Text({ children: [' '] }), Text({ color: 'red', children: [lastError || registrationError || workspace.error] }),
         Text({ dimColor: true, children: ['Consulte README.md e a configuração .claude/test-progress.json.'] }),
       ] : []),
       ...(selectedLogs ? [
@@ -330,11 +344,12 @@ export function register(on) {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const existing = await next(e);
-    if (e.props?.hasSurvey || !LANES.some((lane) => lanes[lane])) return existing;
+    const visible = visibleLanes().filter(lane => lanes[lane]);
+    if (e.props?.hasSurvey || !visible.length) return existing;
     const { Box, Text } = $.ui.resolve(e);
     return Box({ flexDirection: 'column', children: [
       ...(existing ? [existing] : []),
-      Text({ dimColor: true, children: [LANES.map((lane) => shortSummary(lane, lanes[lane])).join(' | ')] }),
+      Text({ dimColor: true, children: [visible.map((lane) => shortSummary(lane, lanes[lane])).join(' | ')] }),
     ] });
   });
 }
