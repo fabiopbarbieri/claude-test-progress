@@ -1,15 +1,31 @@
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": ["./mvnw", "test"],
-    "cwd": ".",
-    "adapter": "auto",
-    "env": {}
-  },
-  "frontend": {
-    "command": ["npx", "--no-install", "ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
-    "cwd": "frontend",
-    "adapter": "auto",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "backend": {
+      "label": "Testes do projeto",
+      "runtime": "inherit",
+      "command": [
+        "./mvnw",
+        "test"
+      ],
+      "cwd": ".",
+      "adapter": "auto",
+      "env": {}
+    },
+    "frontend": {
+      "label": "Aplicação web",
+      "runtime": "node-project",
+      "command": [
+        "npx",
+        "--no-install",
+        "ng",
+        "test",
+        "--watch=false",
+        "--browsers=ChromeHeadless"
+      ],
+      "cwd": "frontend",
+      "adapter": "auto",
+      "env": {}
+    }
   }
 }

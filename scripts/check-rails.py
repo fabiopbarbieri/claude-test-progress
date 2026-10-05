@@ -157,20 +157,20 @@ def collector(ruby, app, cancel=False):
     owner = "rails-check-" + uuid.uuid4().hex
     config = app / "collector.json"
     test_file = "test/models/slow_test.rb" if cancel else "test/models/outcomes_test.rb"
-    config.write_text(json.dumps({"schemaVersion": 1, "backend": {
+    config.write_text(json.dumps({"schemaVersion": 2, "modules": {"backend": {
         "command": [ruby, str(ADAPTER), "test", test_file], "cwd": ".",
-        "adapter": "events", "env": {}}}), encoding="utf-8")
+        "adapter": "events", "env": {}}}}), encoding="utf-8")
 
     def action(name):
         args = [shutil.which("node"), str(ROOT / "runner/cli.mjs"), name,
-                "--cwd", str(app), "--owner", owner, "--lane", "backend"]
+                "--cwd", str(app), "--owner", owner, "--module", "backend"]
         if name == "start":
             args += ["--config", str(config)]
         result = subprocess.run(args, capture_output=True, text=True, timeout=15)
         assert result.returncode == 0, result.stderr
         reply = json.loads(result.stdout)
         assert reply["ok"], reply
-        return reply["lanes"]["backend"]
+        return reply["jobs"]["backend"]
 
     job = action("start")
     requested = False

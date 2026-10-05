@@ -63,6 +63,30 @@ ocultem as linhas do listener do runner. Capture o stdout dos forks também; cad
 plano recebe um UUID diferente, inclusive entre forks e módulos. Nomes de testes,
 motivos de skip e exceções não são escritos no evento.
 
+## Módulo no coletor v2
+
+Declare um módulo em `.claude/test-progress.json`; o listener continua sendo
+opt-in no app. ID e label não escolhem runtime ou adapter:
+
+```json
+{
+  "schemaVersion": 2,
+  "modules": {
+    "api": {
+      "command": ["./mvnw", "test"],
+      "runtime": "inherit",
+      "adapter": "events"
+    }
+  }
+}
+```
+
+Use `/test-progress start api`, `status api`, `logs api` e `cancel api`.
+Sem listener, `adapter: "maven"` oferece somente fallback de resumos do Maven.
+Vários módulos JVM podem usar IDs distintos; `start all` seleciona todos os
+habilitados. O registry opcional não ativa módulos sozinho. Não há conversão v1.
+Aceite nativo Windows v2 continua dependente de seus gates próprios.
+
 ## Contagem e limites
 
 Somente identificadores `isTest()` sem filhos entram nos contadores. O plano

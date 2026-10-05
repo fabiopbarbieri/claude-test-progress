@@ -4,23 +4,31 @@ import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { windowsPowerShell } from './windows-process.mjs';
 import { mergeEnvironment } from './runtime.mjs';
+import { validModuleId } from './module-id.mjs';
 
 const windows = process.platform === 'win32';
 const driver = fileURLToPath(new URL(windows ? '../runtime/resolve-node.ps1' : '../runtime/resolve-node.sh', import.meta.url));
 const sources = new Set(['path', 'nvm', 'nvmrc-path', 'nvmrc-nvm']);
 
-function resolverError(error) {
-  if (error.code === 'ETIMEDOUT') {
-    return new Error('A descoberta de Node.js para frontend excedeu o limite de 3 segundos e foi interrompida');
-  }
-  // Do not include execFileSync's message: it can echo the command and captured output.
-  const detail = String(error.stderr || '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').trim().slice(0, 1024);
-  const reason = detail || (error.code === 'ENOENT' ? 'bash ou driver indisponível' : 'o resolvedor falhou');
-  return new Error(`Não foi possível escolher Node.js para frontend: ${reason}`);
+function runtimeError(message, moduleId, code = 'NODE_RUNTIME_UNAVAILABLE') {
+  const error = new Error(message);
+  error.code = code;
+  if (validModuleId(moduleId)) error.moduleId = moduleId;
+  return error;
 }
 
-export function frontendRuntime(cwd, environment, command) {
+function resolverError(error, subject, moduleId) {
+  if (error.code === 'ETIMEDOUT') {
+    return runtimeError(`A descoberta de Node.js para ${subject} excedeu o limite de 3 segundos e foi interrompida.`, moduleId);
+  }
+  // Neither the native error message nor stderr is safe to project publicly.
+  return runtimeError(`Não foi possível escolher Node.js para ${subject}; confira o runtime e a versão exigida pelo projeto.`, moduleId);
+}
+
+export function frontendRuntime(cwd, environment, command, { runtime = 'node-project', moduleId } = {}) {
+  if (runtime === 'inherit') return { env: { ...environment } };
+  if (runtime !== 'node-project') throw runtimeError('O runtime do módulo não é suportado.', moduleId, 'INVALID_RUNTIME');
+  const subject = validModuleId(moduleId) ? `o módulo ${moduleId}` : 'frontend';
   const inherited = mergeEnvironment(process.env, environment);
   let output;
   try {
@@ -32,23 +40,23 @@ export function frontendRuntime(cwd, environment, command) {
       maxBuffer: 64 * 1024, timeout: 3000, killSignal: 'SIGKILL',
     });
   } catch (error) {
-    throw resolverError(error);
+    throw resolverError(error, subject, moduleId);
   }
   let descriptor;
   try { descriptor = JSON.parse(output); }
-  catch { throw new Error('O resolvedor de Node.js do frontend retornou JSON inválido'); }
+  catch { throw runtimeError(`O resolvedor de Node.js para ${subject} retornou JSON inválido.`, moduleId); }
   if (!descriptor || typeof descriptor.path !== 'string' || !path.isAbsolute(descriptor.path) ||
       descriptor.path.includes('\0') || typeof descriptor.version !== 'string' ||
       !/^v\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(descriptor.version) ||
       !sources.has(descriptor.source) ||
       !(descriptor.nvmrc === null || (typeof descriptor.nvmrc === 'string' &&
         path.isAbsolute(descriptor.nvmrc) && !descriptor.nvmrc.includes('\0')))) {
-    throw new Error('O resolvedor de Node.js do frontend retornou um descriptor inválido');
+    throw runtimeError(`O resolvedor de Node.js para ${subject} retornou um descriptor inválido.`, moduleId);
   }
   try {
     if (!fs.statSync(descriptor.path).isFile()) throw new Error('not a file');
     fs.accessSync(descriptor.path, fs.constants.X_OK);
-  } catch { throw new Error('O Node.js escolhido para frontend não é um arquivo executável disponível'); }
+  } catch { throw runtimeError(`O Node.js escolhido para ${subject} não é um arquivo executável disponível.`, moduleId); }
   const executable = command[0];
   if ((path.isAbsolute(executable) || /[\\/]/.test(executable)) && /^node(?:\.exe)?$/i.test(path.basename(executable))) {
     let sameExecutable = false;
@@ -59,7 +67,7 @@ export function frontendRuntime(cwd, environment, command) {
       sameExecutable = windows ? explicitReal.toLowerCase() === selectedReal.toLowerCase() : explicitReal === selectedReal;
     } catch { /* An unavailable explicit Node cannot match the selected runtime. */ }
     if (!sameExecutable) {
-      throw new Error('O caminho explícito de Node.js no comando frontend difere do Node descoberto ou não está disponível. Use command: ["node", ...] para seguir a descoberta');
+      throw runtimeError(`O caminho explícito de Node.js para ${subject} difere do Node descoberto ou está indisponível. Use command: ["node", ...] para seguir a descoberta.`, moduleId);
     }
   }
   const nodeRuntime = { path: descriptor.path, version: descriptor.version,

@@ -17,9 +17,9 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def command(argv, cwd=ROOT):
+def command(argv, cwd=ROOT, timeout=30):
     result = subprocess.run([str(arg) for arg in argv], cwd=str(cwd),
-                            capture_output=True, text=True, timeout=30)
+                            capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         raise RuntimeError("{} failed:\n{}{}".format(argv[0], result.stdout, result.stderr))
     return result.stdout
@@ -27,7 +27,8 @@ def command(argv, cwd=ROOT):
 
 def source_files():
     names = command(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"])
-    return [ROOT / name for name in sorted(set(names.split("\0"))) if name]
+    deleted = set(command(["git", "ls-files", "--deleted", "-z"]).split("\0"))
+    return [ROOT / name for name in sorted(set(names.split("\0"))) if name and name not in deleted]
 
 
 def static_checks():
@@ -97,18 +98,18 @@ def smoke_checks(include_pytest=False):
         def run_case(name, runner_args, expected, cancel=False):
             owner = "release-check-" + uuid.uuid4().hex
             config = app / (name + ".json")
-            config.write_text(json.dumps({"schemaVersion": 1, "backend": {
+            config.write_text(json.dumps({"schemaVersion": 2, "modules": {"backend": {
                 "command": [sys.executable, str(ROOT / "adapters/python/run.py")] + runner_args,
-                "cwd": ".", "adapter": "events", "env": {}}}), encoding="utf-8")
+                "cwd": ".", "adapter": "events", "env": {}}}}), encoding="utf-8")
 
             def collect(action):
                 argv = [node, ROOT / "runner/cli.mjs", action, "--cwd", app,
-                        "--owner", owner, "--lane", "backend"]
+                        "--owner", owner, "--module", "backend"]
                 if action == "start":
                     argv += ["--config", config]
                 reply = json.loads(command(argv, cwd=app))
                 assert reply["ok"], reply
-                return reply["lanes"]["backend"]
+                return reply["jobs"]["backend"]
 
             job = collect("start")
             requested = False
@@ -155,6 +156,6 @@ if __name__ == "__main__":
     options = parser.parse_args()
     static_checks()
     for check in sorted((ROOT / "tests/collector").glob("*.mjs")):
-        print(command(["node", check]), end="", flush=True)
+        print(command(["node", check], timeout=90), end="", flush=True)
     if options.smoke or options.pytest:
         smoke_checks(options.pytest)

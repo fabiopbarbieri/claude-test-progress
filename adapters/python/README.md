@@ -23,23 +23,31 @@ pertencem ao seu app:
 
 ```json
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": [
-      ".venv/bin/python",
-      "/caminho/absoluto/claude-test-progress/adapters/python/run.py",
-      "pytest", "-q", "tests"
-    ],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "python": {
+      "label": "Python",
+      "runtime": "inherit",
+      "command": [
+        ".venv/bin/python",
+        "/caminho/absoluto/claude-test-progress/adapters/python/run.py",
+        "pytest",
+        "-q",
+        "tests"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }
 ```
 
-Depois execute `/test-progress backend`. O painel, `status`, `logs backend` e
-`cancel backend` usam o fluxo existente. `all` continua exigindo uma configuração
-frontend também. Python ocupa a lane backend; não existe uma terceira lane.
+O exemplo versionado usa o ID `backend`; o trecho acima usa `python`. Use o ID
+que estiver no seu arquivo. Com este trecho, execute `/test-progress start python`. Consulte `status python`,
+`logs python` e `cancel python`. `start all` seleciona somente módulos
+habilitados do workspace. Você pode cadastrar vários módulos Python com IDs
+distintos, sem depender de Node do app: este exemplo usa `runtime: "inherit"`.
 
 Para unittest, mantenha interpretador/caminho e substitua os argumentos a partir
 de `pytest` por:
@@ -53,7 +61,7 @@ Também aceita nomes de módulos/classes/métodos e os filtros do runner:
 `unittest tests.test_exemplo.Classe.test_caso`. Opções após `pytest`/`unittest`
 são repassadas ao runner, inclusive as de captura e parada na primeira falha.
 `cwd` é relativo ao diretório da sessão; interpretador relativo é resolvido no
-`cwd` da lane. Use caminho absoluto quando o ambiente estiver em outro local.
+`cwd` do módulo. Use caminho absoluto quando o ambiente estiver em outro local.
 
 Se o ambiente virtual já estiver ativo no terminal que abriu o Claude, pode
 usar `python` em vez de `.venv/bin/python`. Para ambientes geridos por ferramentas,

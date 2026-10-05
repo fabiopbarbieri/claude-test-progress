@@ -8,12 +8,23 @@ com Windows PowerShell **5.1** ou PowerShell **7**. Claude Code requer **2.1.287
 e Mods permitido no ambiente. O coletor usa Node **14.0.0+** já instalado.
 Angular 9 e suas dependências permanecem como estão.
 
-**Estado de aceite:** scripts, código nativo e integração foram escritos e
-conferidos conforme [VERIFICATION](docs/VERIFICATION.md). A evidência registrada
-é de Linux; não comprova execução em Windows, PowerShell 5.1/7 ou app Angular 9 real. Compatibilidade por
-código/contrato ainda precisa do aceite operacional nessas plataformas.
+**Estado de aceite v2:** implementação e gate nativo estão presentes; o gate
+**não foi executado nativamente nesta entrega**. A matriz configurada em
+[Windows modules](.github/workflows/windows.yml) não é evidência de CI aprovada.
+Histórico Linux do protótipo em [VERIFICATION](docs/VERIFICATION.md) não comprova
+v2 em Windows, PowerShell 5.1/7 ou app Angular 9 real.
+
+V2 aceita somente cadastro `schemaVersion: 2` com `modules` e IDs seguros,
+sem demo, `--lane`, aliases de início ou conversão de configuração/estado v1.
+Templates pessoais opcionais também usam schemaVersion 2; somente workspace
+ativa módulos. Consulte [cadastro e templates](docs/USAGE.md#configurar-seu-projeto).
 
 ## Abrir a partir de qualquer PowerShell
+
+O v2 validado nesta entrega ainda está no checkout local. Para testá-lo, transfira
+esse checkout completo e use `claude --plugin-dir 'C:\Tools\claude-test-progress'`
+no diretório do app. Marketplace e clone remoto abaixo obtêm o artefato publicado
+e não garantem incluir este refactor ainda não publicado.
 
 Instale pelo marketplace conforme o [README](README.md), ou mantenha um clone
 completo em `C:\Tools\claude-test-progress` para usar os exemplos abaixo. Para
@@ -46,15 +57,17 @@ No Claude:
 ```text
 /test-progress help
 /test-progress paths
-/test-progress demo
-/test-progress status --text
-/test-progress logs frontend --text
+/test-progress list
+/test-progress start web
+/test-progress status all --text
+/test-progress logs web --text
 /test-progress cancel all --text
 /test-progress status --text
 ```
 
-Demo produz somente eventos sintéticos. `frontend`, `backend` e `all` iniciam
-os comandos reais configurados quando pedidos explicitamente.
+`start web` pressupõe um módulo `web` habilitado no workspace. `start all`
+seleciona todos os habilitados; listar e consultar não executa comandos. IDs
+`frontend`/`backend` não escolhem runtime nem adapter.
 
 O Mod detecta o caminho Windows da sessão e chama o bootstrap PowerShell.
 Por padrão usa o Windows PowerShell 5.1 do `SystemRoot`, mesmo quando aberto
@@ -82,10 +95,11 @@ somente versões já instaladas no nvm-windows. A descoberta não chama
   e considera o diretório padrão em `LOCALAPPDATA`. Shims 2.x conhecidos são
   identificados sem executá-los, evitando que o probe dispare instalação
   automática. A seleção usa diretamente binários já instalados.
-- **Frontend:** procura a `.nvmrc` mais próxima, subindo a partir do `cwd` da
-  lane. Versão ausente ou seletor não suportado interrompe o preflight.
+- **Módulo `node-project`:** procura a `.nvmrc` mais próxima, subindo do `cwd`
+  do módulo. Versão ausente ou seletor não suportado interrompe o preflight.
   Sem `.nvmrc`, prefere Node do PATH. O diretório escolhido fica primeiro
-  somente no PATH do processo frontend.
+  somente no PATH do processo selecionado. `inherit` não consulta `.nvmrc`
+  nem executa o resolvedor do aplicativo.
 - **Coletores e app separados:** `.nvmrc` com `12.22.12` pode manter Angular 9
   em Node 12 e o coletor em outro Node 14+. Isso não instala versões ausentes.
 
@@ -111,23 +125,23 @@ como override opcional do coletor; se inválido, gera erro sem fallback.
 Use [config.windows.example.json](config.windows.example.json) como modelo de
 `<diretório da sessão>\.claude\test-progress.json`. O exemplo pressupõe Maven
 na raiz e Angular em `frontend`; ajuste cada `cwd`. Para Angular sozinho,
-configure somente frontend com `cwd: "."`.
-`all` requer as duas áreas; iniciar somente backend ignora frontend. Testes
-Python, RSpec e Rails (inclusive views/system) usam backend, porque frontend
-sempre prepara Node/.nvmrc.
+declare somente o módulo Angular com `cwd: "."` e `runtime: "node-project"`.
+`start all` requer preflight de todos os módulos habilitados, sem exigir outra
+linguagem. Iniciar um ID ignora ferramentas dos não selecionados. Python, RSpec
+e Rails (inclusive views/system) normalmente usam `runtime: "inherit"`.
 
 Cada argumento é uma string no JSON. Escape barras invertidas (`\\`) e use
 caminhos absolutos de `/test-progress paths` para os adaptadores; não escreva
 `$env:CLAUDE_PLUGIN_ROOT`, `${CLAUDE_PLUGIN_ROOT}`, `%CLAUDE_PLUGIN_ROOT%` ou `~`
 no argv esperando expansão. O JSON não é interpretado como PowerShell ou shell.
 
-Frontend usa `node` e o Angular CLI **local** em `node_modules`, sem resolução
+O módulo Angular usa `node` e o Angular CLI **local** em `node_modules`, sem resolução
 por npx. A `.nvmrc` deve indicar o runtime adequado ao app; a matriz histórica
 Angular 9 lista Node 10/12. Não há migração de Angular, TypeScript, Karma,
 Jasmine ou lockfile. Veja [ANGULAR9.md](ANGULAR9.md) para integrar o reporter.
 `adapter: "events"` requer esse reporter; `karma` é o fallback por logs.
 
-Backend aceita `.\mvnw.cmd`; Maven instalado também pode usar `mvn.cmd`.
+O módulo Maven com `runtime: "inherit"` aceita `.\mvnw.cmd`; Maven instalado também pode usar `mvn.cmd`.
 O listener JUnit 5 opcional pode ser compilado pelo Maven no Windows:
 
 ```powershell
@@ -138,6 +152,32 @@ Esse é um comando de build para o ambiente Windows; a execução nativa ainda
 precisa ser validada nessa plataforma. O JAR
 resultante fica em `adapters\junit\target`; integração/compatibilidade do JUnit
 do app continua opt-in conforme [adapter JUnit](adapters/junit/README.md).
+
+## CLI e bootstrap por ID
+
+A CLI usa `--module`; o bootstrap PowerShell usa o parâmetro escalar `-Module`.
+Ações disponíveis: `start`, `list`, `status`, `logs` e `cancel`, selecionando ID
+ou `all`. Exemplo, depois de cadastrar `web`:
+
+```powershell
+& 'C:\Tools\claude-test-progress\scripts\run-collector.ps1' `
+  -Action start -Cwd $PWD.Path -Owner 'owner-conhecido' -Module web
+& 'C:\Tools\claude-test-progress\scripts\run-collector.ps1' `
+  -Action status -Cwd $PWD.Path -Owner 'owner-conhecido' -Module all
+```
+
+`-Config`/`--config` é override somente da CLI/bootstrap, relativo ao workspace.
+Não altera namespace ou owner; o painel usa o arquivo default da sessão.
+Cada fonte tem limite de 1 MiB. command/env substituem campos inteiros do
+template, sem merge profundo. Discovery não publica command/env nem executa
+resolvedores; preflight valida somente selecionados e captura o comando Windows.
+
+O início conjunto reserva todos os módulos e aguarda barreira: preparação 30 s,
+confirmação 10 s e aborto 10 s; a chamada start do Mod tem limite de 60 s.
+A suíte não tem deadline. Falha normal de teste não aborta outros módulos;
+falha de infraestrutura pode compensar o lote. Sem término comprovado, os locks
+são conservados. Status/logs/cancel de jobs v2 autenticados permanecem disponíveis
+com configuração removida/inválida.
 
 ## Comandos e cancelamento
 
@@ -153,7 +193,9 @@ literais. Para scripts PowerShell próprios, configure o executável
 O broker coloca o comando e seus descendentes em um **Windows Job Object**,
 atribuído na criação do processo antes de executá-lo. O encerramento é
 confirmado quando não há processos ativos no Job. A prova fica em sidecar
-atômico privado; fechamento normal libera a lane e conserva exit code.
+atômico privado; fechamento normal libera o módulo e conserva exit code.
+O sidecar de **prova Windows continua com `schema: 1`**: esse formato próprio
+não é schema de cadastro, estado de módulos ou envelope CLI, que usam v2.
 
 Cancelamento no Windows encerra o Job inteiro de forma forçada: não oferece
 um SIGTERM gracioso equivalente ao Linux. Recuperação exige identidade do
@@ -161,7 +203,7 @@ broker por PID, instante de criação e SID, consultada por handle; nenhum PID
 presumido é encerrado. Fechar o último handle do Job encerra seus descendentes.
 O estado da árvore é consultado separadamente no Job nomeado, incluindo a
 sessão Windows; presença ou ausência do broker não substitui essa consulta.
-Se a contenção/identidade não puder ser comprovada, a lane fica bloqueada para
+Se a contenção/identidade não puder ser comprovada, o módulo fica bloqueado para
 recuperação manual. Snapshots e jobs ficam em TEMP com DACL privada do usuário
 e SYSTEM; não se confia apenas nos modos POSIX 0700/0600 no Windows.
 
@@ -172,8 +214,10 @@ misture executáveis Windows com a recuperação Linux por `/proc`.
 
 Na sessão responsável por cada job, consulte `/test-progress status --text`.
 Aguarde o término ou peça `/test-progress cancel all --text` e consulte de novo
-até confirmar o estado terminal, sem recuperação pendente. A demo também ocupa
-as áreas e deve terminar ou ser cancelada antes de trocar a instalação.
+até confirmar o estado terminal, sem recuperação pendente. Para jobs v1 ou
+demos antigas, use o artefato antigo que os iniciou: v2 não os gerencia. Estado
+legado bloqueia globalmente novos starts. Comprove quiescência antes de trocar
+a instalação e preserve evidências; veja [adoção v2](docs/USAGE.md#adotar-v2-com-estado-legado).
 
 No PowerShell, para o escopo `user`:
 
@@ -195,6 +239,26 @@ o painel não equivalem a encerrar a árvore detached. O estado/logs do coletor
 ficam em TEMP, fora do cache do plugin, e não têm limpeza comprovada por uninstall.
 Retire também as referências aos adaptadores no app quando deixar de usá-los.
 Veja o [procedimento completo](docs/USAGE.md#atualizar-com-jobs-encerrados).
+
+## Gate nativo e matriz configurada
+
+O gate [scripts/check-windows.ps1](scripts/check-windows.ps1) executa
+[tests/windows/native.mjs](tests/windows/native.mjs) e recusa sistemas que não
+sejam Windows. Execute separadamente no PowerShell 5.1 e no 7, com caminhos
+para Node do coletor e Node do aplicativo já instalados:
+
+```powershell
+& 'C:\Tools\claude-test-progress\scripts\check-windows.ps1' `
+  -NodePath 'C:\Tools\node14\node.exe' -ProjectNode 'C:\Tools\node12\node.exe'
+```
+
+A [matriz declarada](.github/workflows/windows.yml) combina PowerShell 5.1/7,
+Node 14.0.0/24 do coletor e Node 12.22.12 do app. Ela pretende exercitar wrapper,
+argv literal/caminhos com espaços, seleção/all, DACL privada, Job Object,
+encerramento de pai/filho/neto, perda autenticada do broker, compensação,
+configuração removida e runtimes separados. **Não há resultado nativo ou execução
+CI dessa matriz comprovado nesta entrega.** Parsing ou testes Linux não substituem
+as chamadas reais de DACL/Job Objects/prova de árvore vazia.
 
 ## Fontes e evidências
 

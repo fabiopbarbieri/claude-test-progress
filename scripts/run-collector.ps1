@@ -1,9 +1,9 @@
 ﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('start', 'status', 'cancel', 'logs', 'demo')][string] $Action,
+    [Parameter(Mandatory = $true)][ValidateSet('start', 'list', 'status', 'cancel', 'logs')][string] $Action,
     [Parameter(Mandatory = $true)][string] $Cwd,
     [Parameter(Mandatory = $true)][string] $Owner,
-    [ValidateSet('backend', 'frontend', 'all')][string] $Lane = 'all',
+    [ValidatePattern('^(?:all|[a-z][a-z0-9-]{0,47})$')][string] $Module = 'all',
     [string] $Config
 )
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ try {
     . (Join-Path $prototypeRoot 'runtime/node-discovery.ps1')
     $descriptor = Select-TestProgressCollectorNode $Cwd
     # Scalar parameters work with powershell.exe -File in Windows PowerShell 5.1.
-    $cliArgs = @($Action, '--cwd', $Cwd, '--owner', $Owner, '--lane', $Lane)
+    $cliArgs = @($Action, '--cwd', $Cwd, '--owner', $Owner, '--module', $Module)
     if ($Config) { $cliArgs += @('--config', $Config) }
     $previousSource = [Environment]::GetEnvironmentVariable('TEST_PROGRESS_NODE_SOURCE', 'Process')
     $previousOutputEncoding = [Console]::OutputEncoding

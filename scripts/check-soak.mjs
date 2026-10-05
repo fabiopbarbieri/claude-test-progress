@@ -4,6 +4,7 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import { randomUUID, removePath } from '../runner/runtime.mjs';
@@ -14,6 +15,24 @@ assert.strictEqual(process.platform, 'linux', 'This controlled soak requires Lin
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const sourceSha = spawnSync('git', ['rev-parse', 'HEAD'],
   {cwd:root,encoding:'utf8',timeout:2000}).stdout.trim();
+const sourceDirty = Boolean(spawnSync('git', ['status', '--porcelain', '--untracked-files=normal'],
+  {cwd:root,encoding:'utf8',timeout:2000}).stdout.trim());
+function runtimeDigest() {
+  const names = [];
+  function walk(directory) {
+    for (const entry of fs.readdirSync(path.join(root, directory), { withFileTypes: true })) {
+      const name = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) walk(name);
+      else if (entry.isFile()) names.push(name);
+    }
+  }
+  for (const directory of ['runner', 'runtime', 'hooks']) walk(directory);
+  names.push('scripts/run-collector.sh', 'scripts/run-collector.ps1', '.claude-plugin/plugin.json');
+  const digest = createHash('sha256');
+  for (const name of names.sort()) digest.update(name + '\0').update(fs.readFileSync(path.join(root, name)));
+  return digest.digest('hex');
+}
+const testedRuntime = runtimeDigest();
 const seconds = Number(process.argv[2] || 900);
 assert(Number.isFinite(seconds) && seconds >= 10 && seconds <= 1800);
 const app = fs.mkdtempSync(path.join(os.tmpdir(), 'test-progress-soak-'));
@@ -31,7 +50,7 @@ function query(action) {
   const started = Date.now();
   const result = spawnSync('claude', ['--plugin-dir', root, '--setting-sources', '',
     '--session-id', owner, '--no-session-persistence', '-p', `/test-progress ${action} --text`],
-  { cwd: app, env: environment, encoding: 'utf8', timeout: 10000 });
+  { cwd: app, env: environment, encoding: 'utf8', timeout: action.startsWith('start ') ? 65000 : 10000 });
   timings.push(Date.now() - started);
   assert.strictEqual(result.status, 0, 'Claude query must finish within 10s');
   assert(result.stdout.includes('Test Progress'), 'Mod command must answer without a model');
@@ -40,11 +59,11 @@ function query(action) {
 }
 function status() {
   const result = spawnSync(process.execPath, [path.join(root, 'runner/cli.mjs'), 'status',
-    '--cwd', app, '--owner', owner, '--lane', 'backend'], { encoding: 'utf8', timeout: 5000 });
+    '--cwd', app, '--owner', owner, '--module', 'backend'], { encoding: 'utf8', timeout: 5000 });
   assert.strictEqual(result.status, 0);
   const data = JSON.parse(result.stdout);
   assert(data.ok);
-  job = data.lanes.backend;
+  job = data.jobs.backend;
   return job;
 }
 async function until(predicate) {
@@ -61,16 +80,17 @@ async function main() {
   event(1);
   const timer=setInterval(()=>{if(fs.existsSync('release')){clearInterval(timer);event(2);}},100);
   `);
-    fs.writeFileSync(path.join(app, '.claude/test-progress.json'), JSON.stringify({schemaVersion:1,
-      backend:{command:[process.execPath,path.join(app,'suite.mjs')],cwd:'.',adapter:'events'}}));
-    query('backend');
+    fs.writeFileSync(path.join(app, '.claude/test-progress.json'), JSON.stringify({schemaVersion:2, modules:{
+      backend:{command:[process.execPath,path.join(app,'suite.mjs')],cwd:'.',adapter:'events'}}}));
+    query('start backend');
     const first = await until(value => value?.resolved === 1);
     const workerIdentity = processIdentity(first.workerPid);
     assert(workerIdentity, 'Fixture worker identity must be observed');
     const started = Date.now();
     const startedAt = new Date(started).toISOString();
     let lastHeartbeat = first.heartbeatAt;
-    console.log(JSON.stringify({event:'started',seconds,startedAt,node:process.version}));
+    console.log(JSON.stringify({event:'started',seconds,startedAt,node:process.version,
+      sha:sourceSha,dirty:sourceDirty,runtimeDigest:testedRuntime}));
     while (Date.now() - started < seconds * 1000) {
       // Even the final interval must span a heartbeat; do not fail a healthy
       // worker merely because the remaining duration was less than five seconds.
@@ -101,10 +121,11 @@ async function main() {
     assert(!sameProcess(final.childIdentity), 'Fixture command must be gone');
     const claimPath = path.join(state.directory, 'backend.lock');
     assert(!fs.existsSync(claimPath), 'Fixture lock must be released');
+    assert.strictEqual(runtimeDigest(), testedRuntime, 'Runtime changed during the soak; repeat against the final artifact');
     console.log(JSON.stringify({event:'completed',startedAt,endedAt:new Date().toISOString(),
       durationSeconds:(Date.now()-started)/1000,queries:timings.length,maxQueryMs:Math.max(...timings),
       node:process.version,claude:spawnSync('claude',['--version'],{encoding:'utf8',timeout:5000}).stdout.trim(),
-      sha:sourceSha,
+      sha:sourceSha,dirty:sourceDirty,runtimeDigest:testedRuntime,
       status:final.status,resolved:final.resolved,exitCode:final.exitCode,lockReleased:true,workerGone:true,commandGone:true}));
   } finally {
     try {
