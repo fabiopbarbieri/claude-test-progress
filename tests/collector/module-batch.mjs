@@ -56,7 +56,7 @@ async function main() {
     assert(!fs.existsSync(path.join(cwd, 'ui.marker')));
     const started = collect('start');
     assert.strictEqual(started.schemaVersion, 2);
-    assert.strictEqual(started.ok, true, started.error);
+    assert.strictEqual(started.ok, true, started.error + ' ' + JSON.stringify(started.stateDiagnostics ?? collect('status').stateDiagnostics));
     assert(!('lanes' in started));
     await waitFor(() => fs.existsSync(path.join(cwd, 'api.marker')) && fs.existsSync(path.join(cwd, 'ui.marker')));
     assert.strictEqual(collect('cancel', 'api').ok, true);

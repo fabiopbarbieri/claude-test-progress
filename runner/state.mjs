@@ -279,14 +279,17 @@ export function inspectState(directory, { recover = true } = {}) {
           pendingCancel = readJson(loc.cancel);
           const currentLock = securePath(loc.lock, true, true);
           const currentGate = securePath(path.join(directory, `${moduleId}.mutation`), true, true);
-          if (gate || currentGate) {
+          const changed = Boolean(gate) !== Boolean(currentGate) || Boolean(lock) !== Boolean(currentLock) ||
+            (lock && currentLock && (lock.dev !== currentLock.dev || lock.ino !== currentLock.ino)) ||
+            (lock && !validRecord(claim, moduleId, snapshot?.runId ?? null));
+          // Every heartbeat briefly holds the gate. Wait only when the gated
+          // observation is inconsistent; a consistent one stays visible.
+          if (changed && (gate || currentGate)) {
             if (pauseObservation()) { attempt = -1; continue; }
             busy = true;
             break;
           }
-          if (attempt < 7 && (Boolean(gate) !== Boolean(currentGate) || Boolean(lock) !== Boolean(currentLock) ||
-              (lock && currentLock && (lock.dev !== currentLock.dev || lock.ino !== currentLock.ino)) ||
-              (lock && !validRecord(claim, moduleId, snapshot?.runId ?? null)))) continue;
+          if (attempt < 7 && changed) continue;
           if (!lock && snapshot && (ACTIVE.has(snapshot.status) || snapshot.recoveryRequired) && attempt < 7) {
             const latest = readJson(loc.snapshot);
             if (JSON.stringify(latest) !== JSON.stringify(snapshot)) continue;

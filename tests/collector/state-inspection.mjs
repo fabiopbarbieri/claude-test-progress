@@ -80,6 +80,24 @@ try {
   fs.rmdirSync(held.gate);
   healthy(inspectState(held.directory, { recover: false }), held);
 
+  // Heartbeats hold the gate briefly while lock and claim stay consistent.
+  // A running job must remain visible without waiting for that writer.
+  const heartbeat = fixture('heartbeat-gate');
+  const running = { ...heartbeat.snapshot, status: 'running', phase: 'running', finalSafe: false, endedAt: null, exitCode: null };
+  atomicJson(heartbeat.loc.snapshot, running);
+  fs.mkdirSync(heartbeat.loc.lock, { mode: 0o700 });
+  atomicJson(heartbeat.loc.claim, { schemaVersion: 2, moduleId: 'api', runId: running.runId, createdAt: running.startedAt });
+  fs.mkdirSync(heartbeat.gate, { mode: 0o700 });
+  let heartbeatWaited = false;
+  Atomics.wait = function(...args) { heartbeatWaited = true; return nativeWait(...args); };
+  let heartbeatState;
+  try { heartbeatState = inspectState(heartbeat.directory, { recover: false }); }
+  finally { Atomics.wait = nativeWait; }
+  assert.strictEqual(heartbeatWaited, false, 'A consistent gated observation must not wait for the writer');
+  assert.strictEqual(heartbeatState.jobs.api?.status, 'running', 'A running job must stay visible while its heartbeat holds the gate');
+  assert.strictEqual(heartbeatState.blocked, false);
+  assert(!JSON.stringify(heartbeatState.stateDiagnostics).includes('legado'));
+
   const legacy = fixture('stable-legacy-claim');
   fs.mkdirSync(legacy.loc.lock, { mode: 0o700 });
   atomicJson(legacy.loc.claim, { schema: 1, lane: 'api', runId: 'legacy' });
