@@ -1,8 +1,16 @@
 # Adaptadores de progresso
 
 Integração opt-in: cada app mantém seu runner, ambiente e dependências.
-Consulte `/test-progress paths` para localizar os arquivos desta instalação. Os adaptadores
-escrevem snapshots cumulativos no stdout, em uma linha por evento:
+A [matriz de compatibilidade](../docs/COMPATIBILITY.md) separa requisitos,
+combinações testadas e aceites pendentes. Rails (inclusive views/system), Python
+e RSpec usam backend: frontend ainda prepara Node/.nvmrc. Nenhum desses runners
+é requisito global do mod.
+
+Consulte `/test-progress paths` para localizar os arquivos desta instalação. Use
+caminhos absolutos no argv da configuração (sem interpolação de
+`CLAUDE_PLUGIN_ROOT`). Reconsulte os paths e ajuste a configuração do app após
+atualizar o plugin. Os adaptadores escrevem snapshots cumulativos no stdout,
+em uma linha por evento:
 
 ```text
 @@TEST_PROGRESS@@{"scope":"origem:identificador","total":12,"resolved":4,"passed":3,"failed":1,"skipped":0,"final":false,"totalStable":false,"phase":"executing"}

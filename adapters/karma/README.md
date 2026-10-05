@@ -1,5 +1,9 @@
 # Reporter Karma
 
+[Compatibilidade e versões testadas](../../docs/COMPATIBILITY.md) ·
+[Uso e atualização de caminhos](../../docs/USAGE.md) ·
+[Diagnóstico](../../docs/TROUBLESHOOTING.md)
+
 `reporter.cjs` exporta `reporter:claude-test-progress`. É CommonJS e usa apenas
 Node (`crypto` e stdout), sem instalar dependências. Lê os contadores de
 `browser.lastResult`, atualizados pelo próprio Karma; não interpreta descrições

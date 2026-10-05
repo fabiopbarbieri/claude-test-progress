@@ -1,5 +1,9 @@
 # Python: pytest e unittest
 
+[Compatibilidade e versões testadas](../../docs/COMPATIBILITY.md) ·
+[Uso e atualização de caminhos](../../docs/USAGE.md) ·
+[Diagnóstico](../../docs/TROUBLESHOOTING.md)
+
 `run.py` executa o runner no Python escolhido pelo projeto e acrescenta eventos
 de progresso ao stdout. Mantém a saída normal nos logs e o resultado do runner.
 Não instala pacotes, não ativa outro ambiente e não altera arquivos do projeto.

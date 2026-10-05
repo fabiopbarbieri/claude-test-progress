@@ -1,0 +1,55 @@
+name: Relatar um bug
+description: Informe uma reprodução mínima e o resultado observado.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Este relato será público. Prefira uma reprodução sintética e revise os trechos antes de enviar.
+        Não envie logs completos, .env, credenciais, dumps de ambiente ou configurações reais.
+        Para vulnerabilidades, use o [canal privado](https://github.com/fabiopbarbieri/claude-test-progress/security/advisories/new).
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versões e ambiente
+      description: Informe apenas o runner afetado. Use "não sei" ou "não se aplica" quando necessário.
+      placeholder: |
+        Plugin/mod test-progress (versão ou SHA):
+        Claude Code:
+        Sistema e versão (se Windows, nativo ou WSL):
+        Shell e versão:
+        Node do coletor:
+        Runner e versão (ex. unittest/Python, pytest, RSpec, Rails/Minitest, JUnit ou Karma):
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reprodução mínima
+      description: Descreva os passos e comandos com dados sintéticos; um exemplo público pequeno ajuda. Se for intermitente, informe frequência e passos conhecidos.
+      placeholder: |
+        1. Prepare uma fixture pública com...
+        2. Execute...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Resultado observado
+      description: Inclua contagem, mensagem ou código de saída, se relevante.
+    validations:
+      required: true
+  - type: textarea
+    id: excerpt
+    attributes:
+      label: Trecho sanitizado (opcional)
+      description: Cole somente as linhas necessárias, após remover dados pessoais, segredos, URLs internas e caminhos privados. A saída não é sanitizada automaticamente.
+      render: text
+    validations:
+      required: false

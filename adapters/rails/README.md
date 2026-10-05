@@ -1,5 +1,9 @@
 # Rails: Minitest, views e system tests
 
+[Compatibilidade e versões testadas](../../docs/COMPATIBILITY.md) ·
+[Uso e atualização de caminhos](../../docs/USAGE.md) ·
+[Diagnóstico](../../docs/TROUBLESHOOTING.md)
+
 `run.rb` executa o `bin/rails` do projeto e acrescenta snapshots de progresso aos
 logs. Usa o Ruby e as gems do próprio app, preservando o reporter Rails, filtros,
 seed, falhas, skips e código de saída. Não instala gems nem altera o app.
