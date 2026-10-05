@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate release metadata/provenance without changing files, refs or releases."""
 import argparse
+import datetime
 import json
 from pathlib import Path
 import re
@@ -25,19 +26,30 @@ def git(root, *args):
     return result.stdout.strip()
 
 
-def release_notes(root, version):
+def valid_date(suffix):
+    match = re.fullmatch(r" - ([0-9]{4}-[0-9]{2}-[0-9]{2})", suffix)
+    try:
+        return match is not None and bool(datetime.date.fromisoformat(match.group(1)))
+    except ValueError:
+        return False
+
+
+def release_notes(root, version, dated=False):
     changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
     headings = list(re.finditer(r"^## \[([^\]]+)\][^\n]*$", changelog, re.M))
     matches = [i for i, heading in enumerate(headings) if heading.group(1) == version]
     require(len(matches) == 1, "Changelog must contain exactly one heading for " + version)
     index = matches[0]
+    if dated:
+        require(valid_date(headings[index].group(0)[len("## [" + version + "]"):]),
+                "Changelog heading for " + version + " needs a release date (YYYY-MM-DD)")
     end = headings[index + 1].start() if index + 1 < len(headings) else len(changelog)
     notes = changelog[headings[index].end():end].strip()
     require(bool(notes), "Release notes are empty")
     return notes
 
 
-def check_metadata(root, expected_version=None):
+def check_metadata(root, expected_version=None, dated=False):
     plugin = json.loads((root / ".claude-plugin/plugin.json").read_text())
     package = json.loads((root / "package.json").read_text())
     catalog = json.loads((root / ".claude-plugin/marketplace.json").read_text())
@@ -55,7 +67,7 @@ def check_metadata(root, expected_version=None):
     require(len(entries) == 1 and entries[0].get("name") == plugin["name"], "Unexpected catalog entries")
     require(entries[0].get("source") == "./", "Keep the Git marketplace relative source ./")
     require("version" not in entries[0], "Version belongs only in plugin.json, not the catalog")
-    return version, release_notes(root, version)
+    return version, release_notes(root, version, dated)
 
 
 def check_provenance(root, version, expected_sha=None, main_ref=None, clean=False):
@@ -114,7 +126,7 @@ def main():
     parser.add_argument("--notes", action="store_true", help="Print this version's notes after validation")
     args = parser.parse_args()
     try:
-        version, notes = check_metadata(ROOT, args.expected_version)
+        version, notes = check_metadata(ROOT, args.expected_version, args.expected_sha is not None)
         sha, tag = check_provenance(ROOT, version, args.expected_sha, args.main_ref, args.require_clean)
         urls = check_github_ci(sha, args.github_ci) if args.github_ci else []
         if args.notes:

@@ -3,7 +3,7 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
-## [0.2.0] - Em preparação, não publicada
+## [0.2.0] - 2026-10-05
 
 ### Mudança incompatível
 
@@ -57,9 +57,9 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ### Limites de aceite
 
-- Esta entrada descreve código presente, não uma release já publicada.
-  Publicação depende dos gates e evidências do SHA final descritos no
-  [roteiro](docs/RELEASING.md).
+- Distribuída pelo marketplace Git, tag `test-progress--v0.2.0`. Instalações
+  sem `#ref` recebem a 0.2.0 ao atualizar; conclua a migração acima antes de
+  atualizar.
 - Node 14 continua sendo o mínimo do coletor. Python, Ruby, Java e Karma são
   opcionais conforme o módulo. Só `runtime: "node-project"` prepara
   Node/`.nvmrc`; fixtures Rails de views/system usam `rack_test`. Selenium não

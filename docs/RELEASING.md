@@ -86,7 +86,8 @@ O smoke seleciona unittest e exige Python; não torna Python dependência do
 core. Os testes de release usam apenas a biblioteca padrão. O verificador
 rejeita divergências entre manifests, versão no catálogo, mudança do source,
 versão não estável, changelog ausente, reutilização/regressão de tags e, quando
-solicitado, SHA incorreto, árvore suja e commit fora de `main`.
+solicitado, SHA incorreto, árvore suja, commit fora de `main` e, quando o SHA
+é informado, título do changelog sem data ISO (`## [X.Y.Z] - AAAA-MM-DD`).
 
 Faça commit antes do ensaio. Por exemplo, use o primeiro snapshot público 0.1.0
 como origem e o SHA completo da candidata como destino:

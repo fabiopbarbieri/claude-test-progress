@@ -42,10 +42,10 @@ Linux/WSL usa Bash; descoberta nvm usa GNU `sort -V`. Windows usa PowerShell 5.1
 
 ## Instalar e configurar
 
-**V2 deste checkout ainda não publicada:** para testar o código validado aqui,
-use `claude --plugin-dir /caminho/absoluto/deste-checkout` no diretório do app.
-Os comandos remotos abaixo obtêm o artefato publicado, que pode ser anterior ao
-refactor v2. Confira os contratos da versão instalada antes de configurar módulos.
+**0.2.0 é incompatível com 0.1.0:** os comandos abaixo instalam a versão atual,
+com contrato v2 (`schemaVersion: 2`, módulos, sem lanes ou demo). Quem já usa
+0.1.0 deve encerrar os jobs e seguir a [migração](CHANGELOG.md#migração-a-partir-de-010)
+e a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado) antes de atualizar.
 
 Com acesso SSH ao GitHub configurado, no Claude Code:
 

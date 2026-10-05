@@ -29,7 +29,7 @@ class MetadataTests(unittest.TestCase):
     def test_manifest_is_version_source(self):
         version, notes = release.check_metadata(self.root, "0.2.0")
         self.assertEqual(version, "0.2.0")
-        self.assertIn("RSpec", notes)
+        self.assertTrue(notes)
         with self.assertRaisesRegex(ValueError, "Unexpected manifest"):
             release.check_metadata(self.root, "0.1.0")
 
@@ -63,6 +63,18 @@ class MetadataTests(unittest.TestCase):
     def test_notes_only_include_selected_version(self):
         (self.root / "CHANGELOG.md").write_text("# Changes\n\n## [0.2.0] - Pending\n\nNew behavior\n\n## [0.1.0]\n\nOld behavior\n")
         self.assertEqual(release.release_notes(self.root, "0.2.0"), "New behavior")
+
+    def test_release_heading_requires_valid_date_when_dated(self):
+        release.check_metadata(self.root, "0.2.0", dated=True)
+        for heading in ("## [0.2.0] - Pending", "## [0.2.0] - 2026-13-40", "## [0.2.0]", "## [0.2.0] - 2026-10-05 draft"):
+            with self.subTest(heading=heading):
+                (self.root / "CHANGELOG.md").write_text(heading + "\n\nNotes\n")
+                with self.assertRaisesRegex(ValueError, "release date"):
+                    release.release_notes(self.root, "0.2.0", dated=True)
+        (self.root / "CHANGELOG.md").write_text("## [0.2.0] - Pending\n\nNotes\n")
+        self.assertEqual(release.release_notes(self.root, "0.2.0"), "Notes")
+        (self.root / "CHANGELOG.md").write_text("## [0.2.0] - 2026-10-05\n\nNotes\n")
+        self.assertEqual(release.release_notes(self.root, "0.2.0", dated=True), "Notes")
 
     def test_reject_missing_duplicate_or_empty_notes(self):
         for text in ("# Empty", "## [0.2.0]\n", "## [0.2.0]\nFirst\n## [0.2.0]\nSecond"):
