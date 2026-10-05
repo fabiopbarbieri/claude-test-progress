@@ -187,7 +187,9 @@ function envelope(state, ok, error) {
     order: Object.keys(modules).length, enabled: false, directoryPresent: false, origin: 'state', diagnostics: [] };
   return { schemaVersion: 2, ok, modules, jobs: state.jobs,
     workspace: { ...(discovery?.workspace || {}), moduleConfig: { ...(discovery?.workspace?.moduleConfig || { status: 'absent', schemaVersion: null, enabledIds: [] }), diagnostics: discovery?.diagnostics || [] }, stateBlocked: state.blocked },
-    stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}) };
+    stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}),
+    // The Mod reuses this Node for later queries instead of bootstrapping a shell each time.
+    collector: { path: collectorRuntime.path, source: collectorRuntime.source } };
 }
 async function main() {
   try {

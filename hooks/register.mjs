@@ -5,6 +5,9 @@ const PANE = 'claude-test-progress';
 let modules = {}, jobs = {}, stateDiagnostics = {}, workspace = null;
 let identity = '', generation = 0, sessionOwner = '', sessionWorkspace = '';
 let busy = false, lastError = '', registrationError = '', timer = null;
+// Collector calls run one at a time; commands and buttons wait instead of being dropped.
+let queue = Promise.resolve(), queued = 0, idleTicks = 0, collectorNode = null;
+const IDLE_POLL_TICKS = 10;
 let selectedLogs = null, logTail = [], chooseLogs = false, showHelp = false;
 const visible = () => visibleModuleIds(modules, jobs, stateDiagnostics);
 const enabled = () => visible().filter(id => modules[id]?.enabled);
@@ -14,6 +17,20 @@ const actionProjection = () => JSON.stringify({ catalogue: catalogue(), jobs: Ob
 const projection = () => JSON.stringify({ modules, jobs, stateDiagnostics, workspace, identity, generation,
   busy, lastError, registrationError, selectedLogs, logTail, chooseLogs, showHelp });
 const diagnostics = id => [...(modules[id]?.diagnostics ?? []), ...(stateDiagnostics[id] ?? [])];
+function serialized(task) {
+  queued += 1;
+  const run = queue.then(task).finally(() => { queued -= 1; });
+  queue = run.catch(() => {});
+  return run;
+}
+// Poll every second only while something can change without us: an unseen identity or a live job.
+function pollDue() {
+  const live = !workspace || Object.values(jobs).some(job => ACTIVE.has(job.status) || job.recoveryRequired);
+  if (live || ++idleTicks >= IDLE_POLL_TICKS) { idleTicks = 0; return true; }
+  return false;
+}
+const validCollector = value => typeof value?.path === 'string' && !value.path.includes('\0') &&
+  (value.path.startsWith('/') || /^[a-z]:\\/i.test(value.path)) && /^[\w-]{1,32}$/.test(value?.source ?? '');
 const duration = job => typeof job.elapsedMs === 'number' ? `${Math.floor(job.elapsedMs / 1000)}s` : 'desconhecida';
 function startAllowed(id) {
   return !busy && workspace?.moduleConfig?.status === 'valid' && !workspace?.stateBlocked &&
@@ -71,27 +88,40 @@ async function synchronizeIdentity($) {
 async function collect($, action = 'status', moduleId = 'all') {
   const context = await synchronizeIdentity($);
   const windows = /^[a-z]:[\\/]|^\\\\/i.test(context.cwd);
+  // After one bootstrap, call the Node it selected directly: no shell, no PATH/nvm probing.
+  const direct = collectorNode?.identity === identity ? collectorNode : null;
   let argv;
-  if (windows) {
+  if (direct) argv = [direct.path, `${$.plugin.root}/runner/cli.mjs`, action,
+    '--cwd', context.cwd, '--owner', context.owner, '--module', moduleId];
+  else if (windows) {
     const override = await $.env.get('TEST_PROGRESS_POWERSHELL'), systemRoot = await $.env.get('SystemRoot');
     argv = [override || (systemRoot ? `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : 'powershell.exe'),
       '-NoLogo', '-NoProfile', '-NonInteractive', '-File', `${$.plugin.root}/scripts/run-collector.ps1`,
       '-Action', action, '-Cwd', context.cwd, '-Owner', context.owner, '-Module', moduleId];
   } else argv = ['bash', `${$.plugin.root}/scripts/run-collector.sh`, action,
     '--cwd', context.cwd, '--owner', context.owner, '--module', moduleId];
+  const init = { timeoutMs: action === 'start' ? 60000 : windows ? 15000 : 5000,
+    ...(direct ? { env: { TEST_PROGRESS_NODE_SOURCE: direct.source } } : {}) };
+  // A stale cached Node falls back to the bootstrap once; a start is never repeated.
+  const fallback = () => { collectorNode = null; return direct && action !== 'start'; };
   let response;
-  try { response = await $.process.run(argv, { timeoutMs: action === 'start' ? 60000 : windows ? 15000 : 5000 }); }
+  try { response = await $.process.run(argv, init); }
   catch (error) {
     await synchronizeIdentity($);
     if (context.generation !== generation) throw new Error('A sessão mudou durante a consulta. Atualize para ver os jobs desta sessão.');
+    if (direct && fallback()) return collect($, action, moduleId);
     throw error;
   }
   await synchronizeIdentity($);
   if (context.generation !== generation) throw new Error('A sessão mudou durante a consulta. Atualize para ver os jobs desta sessão.');
   let data;
   try { data = JSON.parse(response.stdout.trim()); }
-  catch { throw new Error(sanitizeText(response.stderr).trim().slice(0, 1024) || `Coletor retornou resposta inválida (exit ${response.exitCode}); requer Node 14+ local.`); }
+  catch {
+    if (direct && fallback()) return collect($, action, moduleId);
+    throw new Error(sanitizeText(response.stderr).trim().slice(0, 1024) || `Coletor retornou resposta inválida (exit ${response.exitCode}); requer Node 14+ local.`);
+  }
   validateEnvelope(data);
+  if (!direct && validCollector(data.collector)) collectorNode = { identity, path: data.collector.path, source: data.collector.source };
   // Error envelopes still carry the valid catalogue and persistent jobs.
   modules = data.modules; jobs = data.jobs; workspace = data.workspace; stateDiagnostics = data.stateDiagnostics;
   if (selectedLogs && jobs[selectedLogs.id]?.runId === selectedLogs.runId && Array.isArray(jobs[selectedLogs.id].logTail)) logTail = sanitizeTail(jobs[selectedLogs.id].logTail);
@@ -103,8 +133,10 @@ async function collect($, action = 'status', moduleId = 'all') {
   lastError = '';
   return data;
 }
-async function perform($, action, moduleId = 'all', expected = null) {
-  if (busy) return false;
+function perform($, action, moduleId = 'all', expected = null) {
+  return serialized(() => performNow($, action, moduleId, expected));
+}
+async function performNow($, action, moduleId, expected) {
   busy = true; $.ui.invalidate('ui.render');
   try {
     await synchronizeIdentity($);
@@ -130,7 +162,6 @@ async function perform($, action, moduleId = 'all', expected = null) {
     }
   } catch (error) { lastError = String(error?.message ?? error); }
   finally { busy = false; $.ui.invalidate('ui.render'); }
-  return true;
 }
 const HELP = [
   '/test-progress — consulta e abre o painel; não inicia testes.',
@@ -153,15 +184,21 @@ function textLogs(moduleId) {
 export function register(on) {
   on('session.start', async ($, e, next) => {
     timer?.cancel();
-    timer = $.clock.every(1000, async () => {
-      if (busy) return;
-      const before = projection(); busy = true;
-      try {
-        // Always query all state/catalogue even while a removed module's log is selected.
-        await collect($, selectedLogs ? 'logs' : 'status', 'all');
-      } catch (error) { lastError = String(error?.message ?? error); }
-      finally { busy = false; }
-      if (before !== projection()) $.ui.invalidate('ui.render');
+    timer = $.clock.every(1000, () => {
+      // A waiting command already refreshes state; never stack ticks behind it.
+      if (queued) return;
+      return serialized(async () => {
+        const before = projection();
+        try {
+          await synchronizeIdentity($);
+          if (pollDue()) {
+            // Every query returns the whole catalogue and all jobs; only a live selected run re-reads its log.
+            const live = selectedLogs && ACTIVE.has(jobs[selectedLogs.id]?.status);
+            await collect($, live ? 'logs' : 'status', live ? selectedLogs.id : 'all');
+          }
+        } catch (error) { lastError = String(error?.message ?? error); }
+        if (before !== projection()) $.ui.invalidate('ui.render');
+      });
     });
     await perform($, 'status');
     try {
@@ -207,7 +244,7 @@ export function register(on) {
       `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
       `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
-    if (!await perform($, command.action, command.moduleId)) return { text: 'O coletor está ocupado. Aguarde um instante e tente novamente.' };
+    await perform($, command.action, command.moduleId);
     if (command.text || command.action === 'list') return { text: textSummary() + (command.action === 'logs' ? `\n${textLogs(command.moduleId)}` : '') };
     try {
       const placement = await $.ui.open({ id: PANE, title: 'Test Progress', focus: true, closeOnEscape: true });
@@ -229,7 +266,7 @@ export function register(on) {
     // Button has no disabled prop in the native API. Dim and guard instead of inventing HTML attributes.
     const button = (key, label, action, id = 'all', allowed = true) => Button({ key,
       label: busy ? `${label}…` : label, plain: true, dimColor: busy || !allowed,
-      onPress: guarded(async () => { if (!busy && allowed) await perform($, action, id, expected); }) });
+      onPress: guarded(async () => { if (allowed) await perform($, action, id, expected); }) });
     const text = (value, props = {}) => Text({ ...props, children: [value] });
     const block = id => {
       const module = modules[id], job = jobs[id];
