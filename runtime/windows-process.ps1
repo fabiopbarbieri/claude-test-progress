@@ -26,7 +26,9 @@ function Write-AtomicJson([string] $Path, $Value) {
     try {
         $json = ($Value | ConvertTo-Json -Compress -Depth 8) + "`n"
         [IO.File]::WriteAllText($temporary, $json, (New-Object System.Text.UTF8Encoding($false)))
-        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, $null) }
+        # PowerShell coerces $null to an empty string for this .NET parameter.
+        # NullString passes an actual null backup filename on both engines.
+        if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, [NullString]::Value) }
         else { [IO.File]::Move($temporary, $Path) }
     } finally {
         if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }

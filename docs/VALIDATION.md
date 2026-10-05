@@ -13,7 +13,17 @@ Angular e segredos da CI. A CI também expôs duas lacunas de ambiente:
   PowerShell também podia exceder o limite de dois segundos. A criação Win32
   agora atribui atomicamente o SID do usuário e DACL privada; diretórios
   existentes inseguros e junctions são recusados sem alteração. O controle
-  PowerShell admite até cinco segundos para inicializar.
+  PowerShell admite até 7,5 segundos para inicializar: a CI observou 5,2–5,4
+  segundos na primeira chamada de PowerShell 7.
+
+A matriz nativa seguinte comprovou a criação privada, reabertura e recusa de
+junctions nas quatro combinações. Ela também revelou que PowerShell converte
+`$null` em string vazia no argumento de backup de `File.Replace`, impedindo
+atualizar a prova do broker. A função real foi reproduzida por AST no PowerShell
+7.4.7 Linux; usar `[NullString]::Value` corrigiu o erro. A regressão persistida
+em `tests/windows/atomic-write.ps1` cobre três gravações da mesma prova sem
+backup nem temporários e roda também no gate nativo PS5.1/7. O gate mede o
+bootstrap real do namespace sem executar previamente o helper Windows.
 
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
