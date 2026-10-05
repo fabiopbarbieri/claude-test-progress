@@ -1,16 +1,20 @@
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": [
-      "bundle",
-      "exec",
-      "ruby",
-      "/caminho/absoluto/claude-test-progress/adapters/ruby/run.rb",
-      "rspec",
-      "spec"
-    ],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "backend": {
+      "label": "Testes do projeto",
+      "runtime": "inherit",
+      "command": [
+        "bundle",
+        "exec",
+        "ruby",
+        "/caminho/absoluto/claude-test-progress/adapters/ruby/run.rb",
+        "rspec",
+        "spec"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }

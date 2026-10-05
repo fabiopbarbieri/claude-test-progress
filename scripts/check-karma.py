@@ -71,7 +71,7 @@ def main():
         job = collector(args.node, app, ['node'] + command[1:],
                         {'status': 'failed', 'total': 4, 'resolved': 4, 'passed': 2,
                          'failed': 1, 'skipped': 1, 'exitCode': 1},
-                        lane='frontend', env=overrides, timeout=300)
+                        module_id='web', runtime='node-project', env=overrides, timeout=300)
         assert Path(job['nodeRuntime']['path']).resolve() == frontend, job
         assert job['nodeRuntime']['source'] == 'nvmrc-path', job
         print('Collector aggregates browser results using the app .nvmrc: OK', flush=True)
@@ -80,7 +80,7 @@ def main():
         # real Jasmine spec pending. Never accept cancellation after all tests.
         collector(args.node, app, ['node'] + command[1:],
                   {'status': 'cancelled', 'total': 51, 'resolved': 50, 'passed': 50,
-                   'failed': 0, 'skipped': 0, 'totalStable': False}, lane='frontend',
+                   'failed': 0, 'skipped': 0, 'totalStable': False}, module_id='web', runtime='node-project',
                   env=dict(overrides, FIXTURE_MODE='slow'), cancel=True, timeout=300)
         print('Browser cancellation preserves partial results: OK', flush=True)
 

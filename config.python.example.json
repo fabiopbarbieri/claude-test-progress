@@ -1,15 +1,19 @@
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": [
-      ".venv/bin/python",
-      "/caminho/absoluto/claude-test-progress/adapters/python/run.py",
-      "pytest",
-      "-q",
-      "tests"
-    ],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "backend": {
+      "label": "Testes do projeto",
+      "runtime": "inherit",
+      "command": [
+        ".venv/bin/python",
+        "/caminho/absoluto/claude-test-progress/adapters/python/run.py",
+        "pytest",
+        "-q",
+        "tests"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }

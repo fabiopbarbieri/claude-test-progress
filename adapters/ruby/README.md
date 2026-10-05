@@ -15,11 +15,16 @@ bundle exec ruby /caminho/claude-test-progress/adapters/ruby/run.rb rspec spec
 ```
 
 Copie e ajuste [config.ruby.example.json](../../config.ruby.example.json) para
-`.claude/test-progress.json` no aplicativo. Use `adapter: "events"` e a área
-`backend`; a área `frontend` da versão atual ainda prepara Node/.nvmrc.
+`.claude/test-progress.json` no aplicativo. Declare um módulo schemaVersion 2
+com `adapter: "events"` e `runtime: "inherit"`. O ID não escolhe runtime;
+Node/.nvmrc só é preparado quando runtime é explicitamente `node-project`.
 O Ruby/Bundler do app precisa estar no PATH do coletor, ou use executáveis
 absolutos. A configuração é local e não deve ser versionada neste repositório.
 Sem Bundler, use o Ruby que já tem RSpec instalado: `ruby .../run.rb rspec spec`.
+
+Inicie com `/test-progress start backend` se conservar o ID do exemplo;
+consulte `status backend`, `logs backend` e `cancel backend`. IDs distintos
+permitem várias suites Ruby; `start all` seleciona os habilitados do workspace.
 
 Argumentos após `rspec` são encaminhados ao runner. Sem caminhos, a seleção
 padrão `spec/` continua funcionando. `.rspec`, `.rspec-local`, `SPEC_OPTS`, filtros,

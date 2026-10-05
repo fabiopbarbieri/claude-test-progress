@@ -3,50 +3,41 @@
 [Início](../README.md) · [Compatibilidade](COMPATIBILITY.md) ·
 [Diagnóstico](TROUBLESHOOTING.md) · [Windows](../WINDOWS.md)
 
-O plugin executa comandos somente quando você solicita. Instale primeiro, confira
-a demo e depois configure uma suíte finita do seu projeto. Nenhum runner ou
-framework de teste é dependência global do mod.
+O plugin executa comandos somente quando você solicita. Cada workspace declara
+zero ou vários módulos de testes com ID estável. Nenhum runner é dependência
+global do Mod; dependências, ambientes e comandos reais pertencem ao seu app.
+O produto aceita somente v2, sem converter configurações ou jobs antigos.
 
 ## Instalar pelo marketplace próprio
 
-No Claude Code, adicione o repositório e abra a instalação:
+O refactor v2 desta entrega ainda não foi publicado. Use o checkout que contém
+essas alterações com `--plugin-dir`; clone e marketplace remotos podem conter
+o artefato anterior. Os comandos seguintes descrevem a instalação publicada.
+
+No Claude Code, com acesso SSH GitHub configurado:
 
 ```text
 /plugin marketplace add git@github.com:fabiopbarbieri/claude-test-progress.git
 /plugin install test-progress@test-progress-marketplace
+/reload-plugins
+/test-progress help
+/test-progress paths
+/test-progress list
+/test-progress status
 ```
 
-Selecione **Install** nos detalhes do plugin. O nome do marketplace é
-`test-progress-marketplace`: este é um catálogo mantido por este projeto,
-independente do catálogo oficial da Anthropic. A URL SSH exige acesso GitHub
-configurado no seu computador.
-
-Pelo terminal, os comandos equivalentes são:
+O marketplace `test-progress-marketplace` é mantido por este projeto,
+independente do catálogo oficial da Anthropic. Pelo terminal:
 
 ```bash
 claude plugin marketplace add git@github.com:fabiopbarbieri/claude-test-progress.git
 claude plugin install test-progress@test-progress-marketplace
 ```
 
-Ao fechar o painel de plugins, o Claude aplica as mudanças pendentes. Você também
-pode usar `/reload-plugins`; se `/test-progress` ainda não estiver disponível,
-reinicie o Claude Code no diretório do app. O fluxo segue a
-[referência oficial de comandos de plugins](https://code.claude.com/docs/en/plugins/cli-reference).
-
-Em uma sessão sem jobs ativos, comece sem tocar na suíte do app:
-
-```text
-/test-progress help
-/test-progress paths
-/test-progress demo
-/test-progress status
-```
-
-A demo gera eventos sintéticos identificados como **DEMO** e ocupa as mesmas
-áreas da sessão. Ao terminar, backend mostra 8/8 com uma falha deliberada (exit 1);
-frontend mostra 12/12 com um ignorado (exit 0). Aguarde o estado terminal antes
-de iniciar testes reais nessas áreas. Abrir o painel ou consultar o estado não
-inicia testes reais.
+Selecione Install nos detalhes do plugin. Ao fechar o painel, o Claude aplica
+mudanças pendentes; recarregue ou reabra a sessão se o comando não aparecer.
+Listar ou consultar estado não executa a suíte nem resolvedores do aplicativo.
+Um workspace sem módulos é um estado normal.
 
 ### Carregar um checkout local
 
@@ -56,192 +47,268 @@ cd claude-test-progress
 claude plugin validate .
 ```
 
-Depois, no diretório do seu app, abra uma sessão com o caminho absoluto do clone:
+Depois, no diretório do app:
 
 ```bash
 bash /caminho/absoluto/claude-test-progress/launch.sh
 ```
 
-O launcher confere a versão do Claude e carrega o plugin com `--plugin-dir`.
-Também pode usar `claude --plugin-dir /caminho/absoluto/claude-test-progress`.
-Para PowerShell, consulte [WINDOWS.md](../WINDOWS.md).
+O launcher confere o Claude e carrega o plugin com `--plugin-dir`. Também pode
+usar `claude --plugin-dir /caminho/absoluto/claude-test-progress`.
+PowerShell 5.1/7: [WINDOWS.md](../WINDOWS.md); aceite nativo v2 requer os gates
+Windows, separado da validação Linux e dos checks estáticos.
 
 ## Configurar seu projeto
 
-Crie **`.claude/test-progress.json` no diretório em que abriu a sessão**.
-A integração é opt-in: revise o comando e adapte os diretórios ao seu app.
-Por exemplo, Maven na raiz e Angular em `frontend`:
+Crie **`.claude/test-progress.json` no diretório em que abriu a sessão**. Não há
+busca automática na raiz Git ou ativação por linguagem, `package.json` ou Gemfile.
+Somente declarações deste arquivo ativam módulos; `modules: {}` declara zero.
+Exemplo de dois módulos independentes:
 
 ```json
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": ["./mvnw", "test"],
-    "cwd": ".",
-    "adapter": "auto",
-    "env": {}
-  },
-  "frontend": {
-    "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
-    "cwd": "frontend",
-    "adapter": "karma",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "api": {
+      "label": "API principal",
+      "language": "JVM",
+      "command": ["./mvnw", "test"],
+      "cwd": ".",
+      "adapter": "maven",
+      "runtime": "inherit",
+      "order": 10,
+      "env": {}
+    },
+    "web": {
+      "label": "Aplicação web",
+      "language": "TypeScript",
+      "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
+      "cwd": "frontend",
+      "adapter": "karma",
+      "runtime": "node-project",
+      "order": 20,
+      "env": {}
+    }
   }
 }
 ```
 
-`command` é uma lista de argumentos (**argv**), sem avaliação por shell no Linux.
-Escreva cada argumento em seu próprio elemento; caminhos com espaços não
-precisam de aspas extras. Pipes, `&&`, `~` e expansão de variáveis não são
-interpretados. Em particular,
-`CLAUDE_PLUGIN_ROOT` e `${CLAUDE_PLUGIN_ROOT}` **não são interpolados no JSON argv**.
-Use os caminhos absolutos retornados por `/test-progress paths`; valores de `env`
-também são strings literais, não expressões de shell.
-No Windows, wrappers `.cmd`/`.bat` usam um contrato restrito de argumentos,
-explicado no [guia Windows](../WINDOWS.md).
+Os nomes `backend` e `frontend` continuam IDs possíveis, sem semântica especial.
+Um módulo chamado `frontend` pode executar Ruby com `runtime: "inherit"`.
+Labels iguais e vários módulos da mesma linguagem são permitidos; o ID distingue
+configuração, estado, locks e ações. Linguagem é apenas uma dica visual.
 
-`cwd` é relativo ao diretório da sessão. Um executável com caminho relativo
-(como `./mvnw` ou `.venv/bin/python`) é resolvido no `cwd` da área; um nome simples
-(como `python` ou `bundle`) é procurado no PATH herdado pelo coletor. `env`
-acrescenta variáveis ao processo do comando.
-Evite segredos em arquivos versionados. Você pode configurar somente backend
-ou frontend; `/test-progress all` exige as duas configurações. Iniciar somente
-`backend` não lê nem valida a configuração frontend, mesmo se ela estiver inválida.
-A área frontend sempre prepara Node e a `.nvmrc` do app; não é uma área agnóstica
-de linguagem. Testes Rails de views e system, Python e RSpec usam backend.
-
-| `adapter` | Comportamento |
+| Campo | Regra e default |
 | --- | --- |
-| `auto` | Reconhece eventos dos adaptadores e, na ausência deles, logs Maven/Karma |
-| `events` | Usa eventos `@@TEST_PROGRESS@@`; exige um dos [adaptadores](../adapters/README.md) |
-| `maven` (só backend) | Fallback backend por resumos de classe do Maven; total permanece desconhecido durante a execução |
-| `karma` (só frontend) | Fallback frontend por linhas `Executed … of …`; precisão depende do formato do log |
+| ID em `modules` | 1..48 caracteres; começa com letra minúscula, seguido de letras minúsculas, números ou `-` |
+| `enabled` | Booleano; default `true`; somente `false` desativa |
+| `label` | 1..64 caracteres sem controles; default ID |
+| `language` | Opcional, 1..40 caracteres sem controles |
+| `cwd` | Default `.`; relativo ao workspace, inclusive quando herdado de template |
+| `command` | Array não vazio de strings; um elemento por argumento, primeiro executável obrigatório |
+| `adapter` | `auto`, `events`, `maven` ou `karma`; default `auto` |
+| `runtime` | `inherit` ou `node-project`; default `inherit` |
+| `env` | Map de strings literais; default `{}` |
+| `order` | Inteiro; default 0; empate pelo ID ASCII |
+| `extends` | Opcional; ID de um único template pessoal |
 
-Use **`/test-progress paths`** para consultar os caminhos absolutos dos adaptadores
-na instalação ativa; confira-os novamente após atualizar o plugin. Para Python,
-use `backend` e `adapter: "events"`. O comando deve chamar o Python
-do seu app, o **caminho absoluto** de `adapters/python/run.py` nesta instalação
-e então `pytest` ou `unittest`. Para Karma com eventos, acrescente o caminho
-absoluto de `adapters/karma/reporter.cjs` aos plugins do app. Siga os guias dos
-adaptadores; caminhos de exemplo precisam ser substituídos pelos seus caminhos.
+IDs reservados: `all`, `constructor`, `prototype`, `con`, `prn`, `aux`, `nul`,
+`com1`..`com9` e `lpt1`..`lpt9`. Não há normalização de caixa ou pontuação.
+`null` não apaga campos: é inválido. Campos desconhecidos geram diagnóstico.
+Cada fonte JSON tem limite de **1 MiB**. Schema v1, estruturas mistas, JSON/root
+inválido ou ID inseguro no workspace bloqueiam todo novo início. Erros de um
+módulo não impedem iniciar outro válido; `all` também seleciona declarações
+malformadas habilitadas e falha antes de executar qualquer comando.
 
-Modelos: [Java + frontend](../config.example.json), [Angular 9](../config.angular9.example.json),
-[Python](../config.python.example.json), [Windows](../config.windows.example.json) e
-[Python no Windows](../config.python.windows.example.json),
-[Ruby / RSpec](../config.ruby.example.json) e [Rails](../config.rails.example.json).
+### Argumentos, diretórios e ambientes
+
+`command` é **argv**, sem avaliação por shell no Linux. Caminhos com espaços
+não precisam de aspas extras. Pipes, `&&`, `~`, `CLAUDE_PLUGIN_ROOT` e
+`${CLAUDE_PLUGIN_ROOT}` não são interpolados no JSON. Use caminhos absolutos
+retornados por `/test-progress paths` para os adapters. `env` também contém
+strings literais, não instruções de expansão; evite segredos versionados.
+
+`cwd` é relativo ao workspace, inclusive em `--config` alternativo. Um comando
+com caminho relativo é resolvido no `cwd` do módulo. Nomes simples são procurados
+no **PATH efetivo do filho**, incluindo overrides de `env`; no Linux o executável
+é capturado como caminho absoluto no preflight. Diretórios fora da árvore do
+workspace podem ser explicitamente configurados. No Windows, `.cmd`/`.bat`
+seguem o contrato restrito de [WINDOWS](../WINDOWS.md).
+
+`inherit` não descobre Node nem consulta `.nvmrc`. `node-project` executa o
+resolvedor somente no início dos módulos selecionados, respeita a `.nvmrc` do
+app e acrescenta o diretório do Node escolhido ao PATH do filho. Não instala
+Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do app.
+
+| Adapter | Progresso |
+| --- | --- |
+| `auto` | Eventos e, na ausência deles, fallback de logs Maven/Karma |
+| `events` | Eventos `@@TEST_PROGRESS@@` dos [adapters](../adapters/README.md) |
+| `maven` | Resumos de classe Maven; total desconhecido durante a execução |
+| `karma` | Linhas `Executed … of …`; precisão depende do formato do log |
+
+Todos os adapters podem ser usados por qualquer ID. Configurar um runner sem
+integração não cria contadores. Python, Ruby e Rails normalmente usam `inherit`
+e `events`; Angular/Karma normalmente usa `node-project` com reporter ou fallback.
+
+Modelos: [Módulos](../config.modules.example.json), [Templates](../config.registry.example.json),
+[Java + web](../config.example.json), [Angular 9](../config.angular9.example.json),
+[Python](../config.python.example.json), [Windows](../config.windows.example.json),
+[Python no Windows](../config.python.windows.example.json), [Ruby](../config.ruby.example.json)
+e [Rails](../config.rails.example.json). Ajuste comandos e caminhos ao seu app.
+
+### Templates pessoais opcionais
+
+O registry fica em `test-progress.registry.json` dentro de **CLAUDE_CONFIG_DIR**,
+quando definido, ou em `~/.claude/test-progress.registry.json`. O diretório
+configurado precisa ser absoluto; não há expansão de shell nem criação automática.
+Ausência equivale a templates vazios. Não são lidos settings, tokens ou outros
+arquivos pessoais do Claude.
+
+```json
+{
+  "schemaVersion": 2,
+  "templates": {
+    "jvm-tests": {
+      "command": ["mvn", "test"],
+      "adapter": "maven",
+      "runtime": "inherit",
+      "env": {"TEST_MODE": "serial"}
+    }
+  }
+}
+```
+
+No workspace, um módulo pode declarar `"extends": "jvm-tests"`. Um template
+oferece label, language, cwd, command, adapter, runtime e env; não oferece
+`enabled`, `order` nem herança de outro template. A precedência é defaults,
+template, campos explícitos do workspace. **command e env substituem o campo
+inteiro**: `env: {}` elimina todos os overrides do template, mas o filho continua
+herdando o ambiente do coletor. Uma referência inexistente é inválida mesmo com
+overrides suficientes. Registry inválido prejudica quem o referencia; módulos
+standalone continuam disponíveis. Templates sozinhos nunca ativam módulos.
+
+A descoberta expõe somente ID, label, linguagem, ordem, habilitação, origem,
+presença de diretório e diagnósticos seguros. Não publica command, env, caminho
+pessoal do registry ou digest; não executa comandos nem resolvedores. Execução,
+ambiente, cwd e primeiro executável são validados somente para os selecionados.
+As fontes privadas são revalidadas antes da reserva e da liberação da barreira.
 
 ## Comandos
 
 | Comando | Ação |
 | --- | --- |
-| `/test-progress` ou `/test-progress status` | Consulta o estado e abre/atualiza o painel |
-| `/test-progress help` | Mostra ajuda |
-| `/test-progress paths` | Mostra os caminhos instalados dos adaptadores e exemplos |
-| `/test-progress demo [backend\|frontend\|all]` | Inicia eventos sintéticos, sem executar a suíte |
-| `/test-progress backend` | Inicia o comando backend configurado |
-| `/test-progress frontend` | Inicia o comando frontend configurado |
-| `/test-progress all` | Inicia os dois comandos configurados |
-| `/test-progress logs [backend\|frontend\|all]` | Mostra registros recentes; para consultar ambos, peça cada área |
-| `/test-progress cancel [backend\|frontend\|all]` | Solicita cancelamento dos jobs da sessão |
-| `--text` | Acrescente a um comando para obter resposta textual |
+| `/test-progress` / `status [id\|all]` | Consulta estado e abre/atualiza painel |
+| `/test-progress help` / `paths` | Ajuda / arquivos instalados |
+| `/test-progress list` | Lista catálogo e diagnósticos |
+| `/test-progress start id` / `start all` | Inicia selecionados habilitados |
+| `/test-progress logs id` / `logs all` | Consulta logs dos selecionados |
+| `/test-progress cancel id` / `cancel all` | Solicita cancelamento da sessão |
+| `--text` | Alternativa textual no Mod |
 
-Exemplo: `/test-progress status --text`. Sem área explícita, demo e cancel
-usam `all`; `logs all` apresenta backend. A cauda do log fica no caminho
-indicado pelo status. Jobs continuam em segundo plano quando o painel fecha;
-encerrar ou recarregar o Claude não implica cancelamento automático.
+Não há atalho `/test-progress id`, `demo` ou `--lane`. Status/logs/cancel consultam
+jobs autenticados mesmo se o módulo tiver sido removido ou a configuração estiver
+inválida. Um job removido do cadastro continua visível como órfão do cadastro;
+isso não significa perda do worker. Listar e consultar não inicia testes.
+
+A CLI aceita `start/list/status/logs/cancel`, usando `--module id|all`.
+`help`, `paths` e `--text` pertencem ao Mod. O override **--config é somente CLI**:
+substitui o arquivo workspace naquela chamada, sem alterar owner/namespace.
+Caminho relativo é resolvido no workspace; o painel usa o arquivo default.
+
+```bash
+node /caminho/absoluto/claude-test-progress/runner/cli.mjs start \
+  --cwd /caminho/absoluto/do/app --owner OWNER_CONHECIDO --module api \
+  --config config-local.json
+```
 
 ## Testes demorados e consultas pelo Claude
 
-Inicie com `/test-progress backend --text` e consulte depois com
-`/test-progress status --text`. O início devolve o controle assim que o worker
-é lançado; o comando de teste continua em processo separado. Não há limite de
-duração da suíte no coletor. O timeout de 5 segundos no Linux, ou 15 no Windows,
-vale para cada chamada curta do Mod ao coletor, não para o teste em segundo plano.
-Se uma consulta falhar, consulte novamente antes de tentar iniciar outra suíte.
+Inicie com `/test-progress start api --text` e consulte com
+`/test-progress status api --text`. O início passa por preflight de todos os
+selecionados e reserva todos os locks antes de executar comandos. Workers
+preparados aguardam uma barreira comum: preparação **30 s**, confirmação de
+lançamento **10 s**, aborto/encerramento **10 s**. A chamada start do Mod tem
+limite de **60 s**, separado da duração da suíte. Não há deadline da suíte.
 
-O worker salva um **sinal de atividade a cada 5 segundos**, mesmo sem novos logs.
-O resumo textual mostra duração, último sinal do executor, última saída e último
-evento de progresso reconhecido. Esses sinais são distintos: executor ativo não
-comprova que o teste está avançando; ele pode estar esperando I/O ou travado.
-Silêncio não fabrica resultados, não significa sucesso e não cancela a suíte.
-Os timestamps ficam disponíveis também no JSON do coletor como `heartbeatAt`,
-`lastOutputAt`, `lastProgressAt`, `elapsedMs` e `heartbeatAgeMs`.
+Se preparação/reserva falhar, nenhum comando é liberado. Falha de infraestrutura
+após a liberação solicita compensação dos demais participantes; encerramento
+não comprovado conserva locks e requer recuperação. Uma **falha normal de teste**
+(exit não zero com execução observada) não cancela os outros módulos do lote.
+Uma consulta ou chamada start que excedeu o limite não comprova encerramento:
+consulte o estado antes de tentar outro start.
 
-Para o Claude acompanhar, peça que consulte o status e continue outras tarefas
-enquanto o estado for `preparing` ou `running`. O painel atualiza sozinho na
-sessão aberta; isso não envia notificações autônomas ao modelo. O resultado só
-está confirmado quando o estado é terminal e o código de saída foi observado.
-`completed` indica conclusão com progresso reconhecido e sem falhas; `failed`
-indica falha; `cancelled` indica cancelamento. `error` exige ler o diagnóstico:
-se houver `recoveryRequired: true`, a árvore do comando ainda não foi confirmada
-como encerrada. Nem `error` isolado nem 100% permitem presumir término seguro.
+O worker grava heartbeat a cada 5 segundos, mesmo sem logs. Último heartbeat,
+última saída e último progresso são sinais distintos: atividade do executor
+não comprova avanço do teste. Silêncio não fabrica resultados nem sucesso.
+O painel atualiza na sessão aberta; isso não envia notificações autônomas ao
+modelo. Peça ao Claude para consultar enquanto a execução estiver ativa.
 
-O estado fica em arquivos locais com gravação atômica, separado por diretório
-do projeto e `owner` da sessão. Anote o `owner` mostrado na resposta textual.
-Após fechar o Claude, outra consulta com o mesmo diretório e owner encontra a
-execução; uma sessão com outro ID não a adota automaticamente. Para consultar
-um owner conhecido pelo terminal ou pela ferramenta de shell do Claude:
+`completed` indica término com progresso reconhecido sem falhas; `failed`
+indica falha; `cancelled` indica cancelamento. `error` exige diagnóstico.
+Se `recoveryRequired` for true, a árvore não teve encerramento comprovado;
+100%, erro isolado e pedido de cancelamento não provam limpeza.
+
+O estado é separado pelo cwd canônico e owner. Uma sessão nova não adota jobs
+de outra. Preserve o owner mostrado no modo textual para consultar pelo terminal:
 
 ```bash
 node /caminho/absoluto/claude-test-progress/runner/cli.mjs status \
-  --cwd /caminho/absoluto/do/app --owner ID_INFORMADO_PELO_MOD --lane backend
+  --cwd /caminho/absoluto/do/app --owner OWNER_CONHECIDO --module all
 ```
 
-O diretório temporário do sistema guarda o estado e os logs; não há promessa de
-retomada após reboot, limpeza desses arquivos ou morte do executor. Os contadores
-persistem separados do log, cuja cauda é limitada a aproximadamente 1 MiB por
-execução. Para saída completa, configure também os relatórios do runner do app.
-Se o worker desaparecer, o status preserva resultados parciais, acusa a perda e
-bloqueia outra execução quando ainda houver processos sem recuperação confirmada.
-Use `cancel` para a recuperação oferecida pelo coletor e consulte o status novamente.
+Estado e logs ficam no temporário do sistema, fora do cache do plugin. Não há
+promessa de retomada após reboot/limpeza. Contadores persistem separados da cauda
+do log, limitada a aproximadamente 1 MiB por execução; relatórios completos
+pertencem ao runner. Perda de worker preserva resultados parciais e pode exigir
+cancelamento/recuperação no owner original. Não apague locks para liberar jobs.
+
+## Adotar v2 com estado legado
+
+Antes da troca, mantenha disponível o **artefato antigo que iniciou os jobs**.
+Com ele e o cwd/owner originais, consulte, conclua ou cancele cada execução e
+confirme estado terminal sem recuperação pendente. V2 não consulta/cancela jobs
+v1 nem demos antigas, não converte seu estado e não interpreta config v1.
+
+Arquivos legados detectados no namespace bloqueiam **todos os novos starts**,
+mesmo quando o ID solicitado é outro. Encerrar processos não remove por si só
+toda evidência legada. Preserve os arquivos para diagnóstico; depois de provar
+quiescência com o artefato antigo, faça a limpeza específica documentada para essa
+instalação, sem apagar locks ativos ou misturar namespaces. Se a quiescência não
+puder ser comprovada, mantenha a instalação antiga e resolva a recuperação antes
+de adotar v2. Não há fallback automático ou gerenciador v1 embutido no v2.
+
+Crie um cadastro v2 revisado, reconsulte paths e só então carregue o novo artefato.
+Esta adoção é uma troca deliberada, não um reload durante uma execução antiga.
 
 ## Atualizar com jobs encerrados
 
-Antes de atualizar, recarregar ou remover, volte a **cada sessão responsável** por
-jobs deste plugin. Consulte `/test-progress status --text`; espere o término ou
-solicite `/test-progress cancel all --text` e consulte novamente até confirmar o
-encerramento. Cancelamento é um pedido assíncrono. Se houver recuperação pendente,
-siga o [diagnóstico](TROUBLESHOOTING.md) antes de mudar a instalação.
-Uma sessão nova tem outro owner e não cancela automaticamente jobs antigos.
-
-No terminal, para uma instalação no escopo padrão `user`:
+Em **cada sessão responsável**, consulte status, espere o término ou peça
+`/test-progress cancel all --text` e consulte até confirmar ausência de recuperação
+pendente. Depois, no terminal, ajustando o escopo instalado:
 
 ```bash
 claude plugin marketplace update test-progress-marketplace
 claude plugin update test-progress@test-progress-marketplace --scope user
 ```
 
-Depois, na sessão Claude, aplique `/reload-plugins`; reinicie a sessão se a mudança
-não aparecer. Reconsulte `/test-progress paths` e ajuste **todos os caminhos de
-adaptadores** na configuração do app, inclusive o `require` do reporter Karma.
-O cache pode mudar de caminho após o upgrade. Confira `help`, `paths`, demo e
-status antes de executar novamente a suíte real. Se usa escopo `project` ou
-`local`, substitua `--scope user` pelo escopo instalado.
-
-Para um clone carregado com `--plugin-dir`, após encerrar seus jobs, atualize o
-clone que você mantém (por exemplo, `git pull --ff-only` em um clone limpo na
-branch desejada), valide com `claude plugin validate . --strict` e recarregue ou
-reabra a sessão. Marketplace e clone local são instalações diferentes: confirme
-o caminho realmente carregado antes de editar a configuração.
+Recarregue/reabra o Claude, confira help/list/status e reconsulte paths. Ajuste
+os caminhos de todos os adapters, inclusive o `require` no Karma; o cache pode
+mudar. Para checkout com `--plugin-dir`, após encerrar os jobs, atualize seu clone
+limpo na branch desejada, valide `claude plugin validate . --strict` e reabra.
+Marketplace e checkout são instalações diferentes: confira qual está carregada.
 
 ## Remover
 
-Conclua o procedimento de encerramento acima. No terminal:
+Após a confirmação de encerramento, no terminal:
 
 ```bash
 claude plugin uninstall test-progress@test-progress-marketplace --scope user
 ```
 
-Ajuste o escopo se necessário e recarregue/reabra o Claude. Para deixar de carregar
-um checkout local, abra a próxima sessão sem `--plugin-dir` e sem o launcher.
-Restaure os comandos originais no app e retire referências aos adaptadores,
-como a entrada do reporter Karma, se não pretende mais usá-los.
-
-**Uninstall, reload e fechar o painel não encerram processos detached.** Também
-não comprovam limpeza do estado/logs do coletor: eles ficam no temporário do
-sistema, fora do cache do plugin. Relatórios gerados pelo runner do app têm seu
-próprio destino. Só avalie remover arquivos específicos depois de confirmar que
-os respectivos jobs terminaram; não apague locks para forçar nova execução.
-
-Os comandos de instalação, atualização e remoção seguem a
-[referência oficial do Claude Code](https://code.claude.com/docs/en/plugins/cli-reference).
+Ajuste o escopo e reabra o Claude. Para checkout, abra sem launcher/`--plugin-dir`.
+Restaure comandos originais e retire referências aos adapters no app, se desejado.
+**Uninstall, reload e fechar painel não encerram processos detached** nem apagam
+necessariamente o estado/logs. Só avalie limpeza específica após comprovar o fim
+das execuções. Instalação segue a
+[referência oficial de plugins](https://code.claude.com/docs/en/plugins/cli-reference).

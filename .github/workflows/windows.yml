@@ -1,0 +1,45 @@
+name: Windows modules
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Windows (${{ matrix.shell }}, collector Node ${{ matrix.node }})
+    runs-on: windows-2022
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+        node: ['14.0.0', '24']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '12.22.12'
+      - name: Record independent app Node
+        shell: pwsh
+        run: |
+          "PROJECT_NODE=$((Get-Command node).Source)" >> $env:GITHUB_ENV
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Native Windows PowerShell 5.1 wrapper, broker and containment
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        run: '& ./scripts/check-windows.ps1 -NodePath (Get-Command node).Source -ProjectNode $env:PROJECT_NODE'
+      - name: Native PowerShell 7 wrapper, broker and containment
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: '& ./scripts/check-windows.ps1 -NodePath (Get-Command node).Source -ProjectNode $env:PROJECT_NODE'

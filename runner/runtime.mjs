@@ -3,7 +3,7 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 
 export function mergeEnvironment(...environments) {
-  const result = {};
+  const result = Object.create(null);
   for (const environment of environments) for (const [key, value] of Object.entries(environment)) {
     result[process.platform === 'win32' ? key.toUpperCase() : key] = value;
   }

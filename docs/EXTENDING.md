@@ -8,7 +8,7 @@ executou os runners candidatos.
 
 [Rails/Minitest](../adapters/rails/README.md) tem integração própria para
 `test`, `test:system` e `test:all`, com contadores ao vivo e total desconhecido
-até a conclusão. Inclui testes Ruby de backend, views e system; os limites
+até a conclusão. Inclui testes Ruby, views e system; os limites
 observados estão em [VALIDATION](../adapters/rails/VALIDATION.md).
 
 Há integrações para [JUnit 5/Maven](../adapters/junit/README.md),
@@ -29,13 +29,13 @@ satisfazer `resolved = passed + failed + skipped`; `total: null` significa
 desconhecido, enquanto zero significa zero conhecido.
 
 Um reporter ou wrapper novo pode emitir esse protocolo e usar
-`adapter: "events"`, já aceito pela [configuração](../runner/cli.mjs), sem
+`adapter: "events"`, já aceito pela [configuração](../runner/module-config.mjs), sem
 alterar o parser ou acrescentar nomes à lista de adapters. A implementação
 ficaria em `adapters/<runner>/`, acompanhada de guia e configuração de exemplo.
 O aplicativo continua responsável pelo runner, ambiente e dependências.
 
 [Ruby / RSpec Core 3.13.x](../adapters/ruby/README.md) já possui adaptador opt-in
-serial com listener aditivo, exemplo backend e verificação em fixtures temporárias.
+serial com listener aditivo, exemplo de módulo Ruby e verificação em fixtures temporárias.
 Não é mais candidato; seus limites e a matriz Ruby ficam no guia do adaptador.
 
 ## Candidatos
@@ -52,11 +52,16 @@ Dificuldades são estimativas para execução finita, não compatibilidade valid
 
 ## Limites e riscos
 
-Backend executa argv genérico. Frontend sempre faz
-[descoberta de Node/.nvmrc](../runner/frontend-runtime.mjs) e altera PATH,
-mesmo para comandos sem Node. Para Go, Ruby ou .NET, backend é o caminho inicial
-mais simples. Existem somente duas áreas simultâneas, fixadas no
-[estado](../runner/state.mjs) e no [painel/comandos](../hooks/register.mjs).
+Cada módulo declara argv, adapter e runtime no schemaVersion 2. Há zero ou
+vários módulos independentes por workspace; IDs e linguagem não escolhem runtime.
+`inherit` preserva o ambiente sem procurar Node/.nvmrc; `node-project` prepara
+Node somente no preflight selecionado. Adapters podem ser usados por qualquer
+ID. Consulte [cadastro e templates](USAGE.md#configurar-seu-projeto).
+
+Discovery não executa runners/resolvedores nem expõe argv/env. Para um runner
+novo, configure um módulo `inherit` ou `node-project` conforme seu contrato,
+sem acrescentar semântica ao ID. O registry opcional fornece templates, mas
+somente o workspace ativa módulos. Não há fallback/conversão de schema v1.
 
 O [worker](../runner/worker.mjs) lê stdout e stderr. Eventos precisam chegar
 imediatamente, com flush e linhas completas, apesar de captura e paralelismo.
@@ -66,9 +71,11 @@ sequência para rejeição; retries precisam reconciliar resultados sem duplica�
 scopes tenham esse marcador: a correção do adapter é essencial.
 
 Watch acumula scopes de rodadas; oferecer a rodada atual exige identidade de
-ciclo. Refatorar runtime/área visual faz sentido quando houver runners sem Node
-em frontend; suítes configuráveis, quando forem necessárias três ou mais áreas.
-Essas mudanças atravessam configuração, estado, CLI, bootstrap e painel.
+ciclo e fica fora do contrato finito. O início conjunto usa preflight completo,
+reserva e barreira: preparação 30 s, confirmação 10 s, aborto 10 s, chamada do
+Mod 60 s. A suíte não tem deadline. Falha normal de teste não aborta os demais;
+falha de infraestrutura após liberação pode pedir compensação. Um adapter não
+deve transformar erro de infraestrutura em testes inventados.
 
 ## Aceite de uma integração
 
@@ -76,4 +83,4 @@ Confrontar contadores com o relatório nativo em sucesso, falha, skip, zero test
 erro de descoberta, fail-fast, captura, paralelismo/retry e cancelamento com
 processo filho. Confirmar atualização antes do encerramento, total
 desconhecido/parcial honesto, código de saída preservado e ausência de processos
-órfãos. A demo não substitui esse aceite. Windows requer validação nativa própria.
+órfãos. Um evento sintético não substitui esse aceite. Windows requer validação nativa própria.

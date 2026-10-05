@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 
 const script = fileURLToPath(new URL('../runtime/windows-process.ps1', import.meta.url));
+let selfIdentity = null;
 function variable(environment, name) {
   const key = Object.keys(environment).find((entry) => entry.toUpperCase() === name);
   return key === undefined ? undefined : environment[key];
@@ -27,7 +28,7 @@ function argumentsFor(action, parameters) {
 }
 function control(action, parameters) {
   const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
-    encoding: 'utf8', timeout: 2000, maxBuffer: 64 * 1024, windowsHide: true,
+    encoding: 'utf8', timeout: 7500, maxBuffer: 64 * 1024, windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   return JSON.parse(output.replace(/^\uFEFF/, '').trim());
@@ -36,6 +37,23 @@ function valid(identity) {
   return Boolean(identity && identity.platform === 'win32' && Number.isInteger(identity.pid) &&
     identity.pid > 0 && typeof identity.startTime === 'string' && /^\d+$/.test(identity.startTime) &&
     typeof identity.owner === 'string' && /^S-\d+(?:-\d+)+$/.test(identity.owner));
+}
+function validPid(pid) { return Number.isInteger(pid) && pid > 0 && pid <= 2147483647; }
+function queryIdentity(identity) {
+  return valid(identity) && validPid(identity.pid) && identity.startTime.length <= 20 && identity.owner.length <= 184;
+}
+function checkedList(values) {
+  if (!Array.isArray(values) || values.length > 64) throw new Error('Consulta Windows precisa de uma lista de até 64 itens');
+}
+function rememberSelf(value) {
+  if (!selfIdentity && queryIdentity(value) && value.pid === process.pid && Number.isInteger(value.sessionId) && value.sessionId >= 0) {
+    selfIdentity = Object.freeze({ platform: value.platform, pid: value.pid, startTime: value.startTime,
+      owner: value.owner, sessionId: value.sessionId });
+  }
+}
+function matchesSelf(identity) {
+  return Boolean(selfIdentity && queryIdentity(identity) && identity.pid === selfIdentity.pid &&
+    identity.startTime === selfIdentity.startTime && identity.owner === selfIdentity.owner && identity.sessionId === selfIdentity.sessionId);
 }
 function identityArguments(identity) {
   return ['-ProcessId', String(identity.pid), '-StartTime', identity.startTime, '-Owner', identity.owner];
@@ -46,16 +64,74 @@ function managed(identity) {
     Number.isInteger(identity.sessionId) && identity.sessionId >= 0;
 }
 export function windowsIdentity(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return null;
+  if (!validPid(pid)) return null;
+  if (pid === process.pid && selfIdentity) return { ...selfIdentity };
   try {
     const value = control('Identity', ['-ProcessId', String(pid)]);
-    return valid(value) ? value : null;
+    if (!queryIdentity(value) || value.pid !== pid) return null;
+    if (pid === process.pid) {
+      rememberSelf(value);
+      return selfIdentity ? { ...selfIdentity } : null;
+    }
+    return { ...value };
   } catch { return null; }
 }
+export function windowsIdentities(pids) {
+  checkedList(pids);
+  const result = pids.map(() => null);
+  const pending = [];
+  pids.forEach((pid, index) => {
+    if (!validPid(pid)) return;
+    if (pid === process.pid && selfIdentity) result[index] = { ...selfIdentity };
+    else pending.push({ pid, index });
+  });
+  if (!pending.length) return result;
+  try {
+    const reply = control('IdentityMany', ['-Queries', JSON.stringify(pending.map(item => item.pid))]);
+    if (!Array.isArray(reply.identities) || reply.identities.length !== pending.length) return result;
+    pending.forEach((item, index) => {
+      const identity = reply.identities[index];
+      if (!queryIdentity(identity) || identity.pid !== item.pid) return;
+      if (item.pid === process.pid) {
+        rememberSelf(identity);
+        if (selfIdentity) result[item.index] = { ...selfIdentity };
+      } else result[item.index] = { ...identity };
+    });
+  } catch { /* Unknown identities stay null; no external identity is cached. */ }
+  return result;
+}
 export function windowsSameProcess(identity) {
-  if (!valid(identity)) return false;
+  if (!queryIdentity(identity)) return false;
+  if (identity.pid === process.pid) {
+    if (!selfIdentity) windowsIdentity(process.pid);
+    return matchesSelf(identity);
+  }
   try { return control('State', identityArguments(identity)).state === 'present'; }
   catch { return false; }
+}
+export function windowsSameProcesses(identities) {
+  checkedList(identities);
+  const result = identities.map(() => false);
+  const pending = [];
+  identities.forEach((identity, index) => {
+    if (!queryIdentity(identity)) return;
+    if (identity.pid === process.pid && selfIdentity) result[index] = matchesSelf(identity);
+    else pending.push({ identity, index });
+  });
+  if (!pending.length) return result;
+  const captureSelf = !selfIdentity && pending.some(item => item.identity.pid === process.pid);
+  try {
+    const parameters = ['-Queries', JSON.stringify(pending.map(item => ({ pid: item.identity.pid,
+      startTime: item.identity.startTime, owner: item.identity.owner })))];
+    if (captureSelf) parameters.push('-SelfProcessId', String(process.pid));
+    const reply = control('StateMany', parameters);
+    if (!Array.isArray(reply.matches) || reply.matches.length !== pending.length) return result;
+    if (captureSelf) rememberSelf(reply.selfIdentity);
+    pending.forEach((item, index) => {
+      result[item.index] = item.identity.pid === process.pid ? matchesSelf(item.identity) : reply.matches[index] === true;
+    });
+  } catch { /* Unknown states stay false; external liveness is always queried. */ }
+  return result;
 }
 export function windowsGroupState(identity) {
   if (!managed(identity)) return 'unknown';
@@ -75,6 +151,12 @@ export function windowsSecureDirectory(directory) {
   if (!path.win32.isAbsolute(directory)) throw new Error('Diretório Windows precisa ser absoluto');
   const value = control('SecureDirectory', ['-Directory', directory]);
   if (value.secured !== true) throw new Error('DACL do diretório Windows não confirmada');
+}
+export function windowsLaunchCoordinator(collector, request) {
+  if (!path.win32.isAbsolute(collector) || !path.win32.isAbsolute(request)) throw new Error('Coordenador Windows precisa de caminhos absolutos');
+  const identity = control('LaunchCoordinator', ['-Collector', collector, '-JobFile', request]);
+  if (!valid(identity)) throw new Error('Identidade do coordenador Windows não confirmada');
+  return identity;
 }
 export function windowsSpawnSpec(jobPath, environment = process.env) {
   if (!path.win32.isAbsolute(jobPath)) throw new Error('Arquivo de execução Windows precisa ser absoluto');

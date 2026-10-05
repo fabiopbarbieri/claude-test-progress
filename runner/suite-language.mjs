@@ -14,6 +14,6 @@ export function suiteLanguage(job) {
     return 'JavaScript';
   }
   // Package managers and shell scripts can launch any language. Keep their
-  // lane label unless configuration names the suite's language explicitly.
+  // module label unless configuration names the suite's language explicitly.
   return null;
 }
