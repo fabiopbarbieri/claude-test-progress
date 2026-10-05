@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing';
+import { expect, mock, test } from 'claude-code/testing';
 
 const running = {
   runId: 'fixture-long-job', source: 'configured', status: 'running', phase: 'executing-tests',
@@ -43,4 +43,25 @@ test('a failed query can be retried without restarting or cancelling the suite',
   expect(retried.text).toContain('Em execução');
   expect(retried.text).not.toContain('fixture query timed out');
   expect(actions).toEqual(['status', 'status']);
+});
+
+
+test('session startup registers the command and polls with short queries, never starting a suite', async ($, on) => {
+  const clock = mock.clock(on);
+  const actions: string[] = [];
+  const registered: string[] = [];
+  on('session.cwd', () => ({ value: '/work' }));
+  on('session.id', () => ({ value: 'fixture-owner' }));
+  on('session.start', () => ({ cwd: '/work' }));
+  on('command.register', ($, e) => { registered.push(e.name); return { value: undefined }; });
+  on('process.run', ($, e) => {
+    actions.push(e.argv[2]);
+    expect(e.init.timeoutMs).toBe(5000);
+    return response();
+  });
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  expect(registered).toEqual(['test-progress']);
+  expect(actions).toEqual(['status']);
+  await clock.advance(2000);
+  expect(actions).toEqual(['status', 'status', 'status']);
 });

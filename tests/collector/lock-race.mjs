@@ -51,3 +51,50 @@ try {
   fs[method] = original;
   removePath(directory, { recursive: true, force: true });
 }
+
+// Release has the same read/remove race as recovery. A competing release +
+// reserve must not replace a lock while the first release still owns the gate.
+const releaseDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'test-progress-release-'));
+const releaseLocations = files(releaseDirectory, 'backend');
+let releaseInterleaved = false;
+try {
+  acquireLock(releaseDirectory, 'backend', 'old-run');
+  fs[method] = function(target, options) {
+    if (target === releaseLocations.lock && !releaseInterleaved) {
+      releaseInterleaved = true;
+      const code = `import { acquireLock, releaseLock } from ${JSON.stringify(state)};
+        try {
+          releaseLock(${JSON.stringify(releaseDirectory)}, 'backend', 'old-run');
+          acquireLock(${JSON.stringify(releaseDirectory)}, 'backend', 'new-run');
+          console.log('reserved');
+        } catch { console.log('blocked'); }`;
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', code],
+        { encoding: 'utf8', timeout: 4000 });
+      assert.strictEqual(result.status, 0, result.stderr);
+      assert.strictEqual(result.stdout.trim(), 'blocked');
+    }
+    return original(target, options);
+  };
+  releaseLock(releaseDirectory, 'backend', 'old-run');
+  assert(releaseInterleaved);
+  fs[method] = original;
+  acquireLock(releaseDirectory, 'backend', 'new-run');
+  releaseLock(releaseDirectory, 'backend', 'old-run');
+  assert.strictEqual(readJson(releaseLocations.claim).runId, 'new-run');
+  releaseLock(releaseDirectory, 'backend', 'new-run');
+
+  // A killed gate holder is deliberately not reclaimed using another racy
+  // stale check; an old gate leaves all lane data intact and returns promptly.
+  const gate = path.join(releaseDirectory, 'backend.mutation');
+  fs.mkdirSync(gate);
+  fs.utimesSync(gate, new Date(0), new Date(0));
+  const started = Date.now();
+  assert.throws(() => acquireLock(releaseDirectory, 'backend', 'unsafe-recovery'), /recuperação manual/);
+  assert(Date.now() - started < 2500);
+  assert(fs.existsSync(gate));
+  assert(!fs.existsSync(releaseLocations.lock));
+  console.log('release serialization and abandoned mutation gate fail closed: OK');
+} finally {
+  fs[method] = original;
+  removePath(releaseDirectory, { recursive: true, force: true });
+}
