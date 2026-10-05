@@ -121,7 +121,7 @@ GEM
     matrix (0.4.3)
     mini_mime (1.1.5)
     mini_portile2 (2.8.9)
-    minitest (5.20.0)
+    minitest (5.27.0)
     mutex_m (0.3.0)
     net-imap (0.6.7)
       date
@@ -245,7 +245,7 @@ PLATFORMS
 
 DEPENDENCIES
   capybara (= 3.40.0)
-  minitest (= 5.20.0)
+  minitest (= 5.27.0)
   mutex_m (= 0.3.0)
   rails (= 7.2.4)
   selenium-webdriver (= 4.50.0)
