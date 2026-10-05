@@ -56,13 +56,39 @@ export function alive(pid) {
   try { process.kill(pid, 0); return true; }
   catch (error) { return error.code === 'EPERM'; }
 }
+// Every lock-directory creator/remover participates in this separate gate. Never
+// reclaim this gate by age/PID: doing so would recreate the same unlink TOCTOU.
+// A process killed inside this short critical section deliberately fails closed.
+function mutateLock(directory, lane, operation) {
+  const gate = path.join(directory, `${lane}.mutation`);
+  const deadline = Date.now() + 1000;
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try { fs.mkdirSync(gate, { mode: 0o700 }); break; }
+    catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      if (Date.now() >= deadline) {
+        throw new Error(`A lane ${lane} está ocupada por uma alteração de lock. Tente novamente; se persistir, consulte docs/VALIDATION.md para recuperação manual segura.`);
+      }
+      Atomics.wait(wait, 0, 0, 10);
+    }
+  }
+  try { return operation(); }
+  finally { fs.rmdirSync(gate); }
+}
 export function releaseLock(directory, lane, runId) {
+  return mutateLock(directory, lane, () => releaseReservedLock(directory, lane, runId));
+}
+export function acquireLock(directory, lane, runId) {
+  return mutateLock(directory, lane, () => acquireReservedLock(directory, lane, runId));
+}
+function releaseReservedLock(directory, lane, runId) {
   const locations = files(directory, lane);
   if (readJson(locations.claim)?.runId === runId) {
     removePath(locations.lock, { recursive: true, force: true });
   }
 }
-export function acquireLock(directory, lane, runId) {
+function acquireReservedLock(directory, lane, runId) {
   const locations = files(directory, lane);
   if (readJson(locations.snapshot)?.recoveryRequired) {
     throw new Error(`A lane ${lane} exige recuperação do comando órfão antes de uma nova execução.`);
