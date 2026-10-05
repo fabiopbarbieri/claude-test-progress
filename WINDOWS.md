@@ -79,6 +79,23 @@ $env:TEST_PROGRESS_POWERSHELL = (Get-Command pwsh.exe -CommandType Application).
 ```
 
 Essa variável fica no processo atual e seus filhos; não é gravada globalmente.
+
+Cada operação do coletor no Windows abre processos PowerShell curtos de
+controle (diretório privado, identidade e estado de processos), limitados por
+padrão a **7500 ms** cada. O engine 7 inicia mais devagar que o 5.1; se houver
+`ETIMEDOUT` nessas chamadas, ajuste o limite para o engine em uso:
+
+```powershell
+$env:TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = '12000'
+```
+
+Aceita inteiros de 1000 a 30000; valor inválido gera erro, sem voltar ao
+padrão em silêncio. O limite vale por chamada, e uma operação faz várias. Por
+isso valores altos podem esbarrar no prazo de preparação do lote (30 s), que
+aborta o start sem executar comandos, e no tempo que o Mod espera pelo coletor
+(15 s em status/cancel/logs, 60 s em start). Se o Mod esgotar o tempo, consulte
+`status` antes de repetir a ação.
+
 Os scripts usam `-NoProfile`, parâmetros escalares no bootstrap e UTF-8 BOM
 para leitura correta em 5.1. A política de execução existente é respeitada;
 o plugin não muda `ExecutionPolicy`, assinatura ou políticas da organização.
