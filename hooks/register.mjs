@@ -297,21 +297,21 @@ export function register(on) {
       ];
       if (job.error) lines.push(Text({ color: 'red', children: [job.error] }));
       lines.push(Box({ flexDirection: 'row', columnGap: 2, children: [
-        button(`logs-${lane}`, 'Ver logs', 'logs', lane),
+        button(`logs-${lane}`, '≡ Ver logs', 'logs', lane),
         ...(ACTIVE.has(job.status) || (job.recoveryRequired && job.cancellable) ?
-          [button(`cancel-${lane}`, job.recoveryRequired ? 'Cancelar órfão' : 'Cancelar', 'cancel', lane)] : []),
+          [button(`cancel-${lane}`, job.recoveryRequired ? '■ Cancelar órfão' : '■ Cancelar', 'cancel', lane)] : []),
       ] }));
       return Box({ key: lane, flexDirection: 'column', children: lines });
     };
     return Box({ flexDirection: 'column', children: [
       Box({ flexDirection: 'row', columnGap: 2, children: [
-        ...(showDemo ? [button('demo', 'Demo', 'demo')] : []), button('refresh', 'Atualizar', 'status'),
-        Button({ key: 'close', label: 'Fechar', plain: true, onPress: () => $.ui.close({ id: PANE }) }),
+        ...(showDemo ? [button('demo', '▷ Demo', 'demo')] : []), button('refresh', '↻ Atualizar', 'status'),
+        Button({ key: 'close', label: '× Fechar', plain: true, onPress: () => $.ui.close({ id: PANE }) }),
       ] }),
       Box({ flexDirection: 'row', columnGap: 2, children: [
-        button('backend', 'Backend', 'start', 'backend'),
-        button('frontend', 'Frontend', 'start', 'frontend'),
-        button('all', 'Ambos', 'start'),
+        button('backend', '▶ Backend', 'start', 'backend'),
+        button('frontend', '▶ Frontend', 'start', 'frontend'),
+        button('all', '▶ Ambos', 'start'),
       ] }),
       Text({ children: [' '] }), block('backend'), Text({ children: [' '] }), block('frontend'),
       ...(lastError || registrationError ? [
@@ -321,7 +321,7 @@ export function register(on) {
       ...(selectedLogs ? [
         Text({ children: [' '] }), Text({ bold: true, children: [`LOGS · ${selectedLogs} · últimas 12 linhas`] }),
         ...logTail.slice(-12).map((line) => Text({ wrap: 'truncate', children: [line] })),
-        Button({ key: 'hide-logs', label: 'Ocultar logs', plain: true, onPress: () => {
+        Button({ key: 'hide-logs', label: '× Ocultar logs', plain: true, onPress: () => {
           selectedLogs = ''; logTail = []; $.ui.invalidate('ui.render');
         } }),
       ] : []),

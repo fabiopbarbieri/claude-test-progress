@@ -167,6 +167,6 @@ test('worker loss retains counts, unknown exit and only offers proven orphan can
   expect(await ui.find({ key: 'cancel-backend' })).toBeUndefined();
   cancellable = true;
   await ui.press({ key: 'refresh' });
-  expect(await ui.find({ key: 'cancel-backend' })).toMatchObject({ props: { label: 'Cancelar órfão' } });
+  expect(await ui.find({ key: 'cancel-backend' })).toMatchObject({ props: { label: '■ Cancelar órfão' } });
   await ui.unmount();
 });
