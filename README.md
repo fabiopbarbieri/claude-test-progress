@@ -172,9 +172,50 @@ Modelos: [Java + frontend](config.example.json), [Angular 9](config.angular9.exa
 | `--text` | Acrescente a um comando para obter resposta textual |
 
 Exemplo: `/test-progress status --text`. Sem área explícita, demo e cancel
-usam `all`; `logs all` apresenta backend. Logs completos ficam no caminho
+usam `all`; `logs all` apresenta backend. A cauda do log fica no caminho
 indicado pelo status. Jobs continuam em segundo plano quando o painel fecha;
 encerrar ou recarregar o Claude não implica cancelamento automático.
+
+## Testes demorados e consultas pelo Claude
+
+Inicie com `/test-progress backend --text` e consulte depois com
+`/test-progress status --text`. O início devolve o controle assim que o worker
+é lançado; o comando de teste continua em processo separado. Não há limite de
+duração da suíte no coletor. O timeout de 5 segundos no Linux, ou 15 no Windows,
+vale para cada chamada curta do Mod ao coletor, não para o teste em segundo plano.
+Se uma consulta falhar, consulte novamente antes de tentar iniciar outra suíte.
+
+O worker salva um **sinal de atividade a cada 5 segundos**, mesmo sem novos logs.
+O resumo textual mostra duração, último sinal do executor, última saída e último
+evento de progresso reconhecido. Esses sinais são distintos: executor ativo não
+comprova que o teste está avançando; ele pode estar esperando I/O ou travado.
+Silêncio não fabrica resultados, não significa sucesso e não cancela a suíte.
+Os timestamps ficam disponíveis também no JSON do coletor como `heartbeatAt`,
+`lastOutputAt`, `lastProgressAt`, `elapsedMs` e `heartbeatAgeMs`.
+
+Para o Claude acompanhar, peça que consulte o status e continue outras tarefas
+enquanto o estado for `preparing` ou `running`. O painel atualiza sozinho na
+sessão aberta; isso não envia notificações autônomas ao modelo. O resultado só
+está confirmado quando o estado é terminal e o código de saída foi observado.
+
+O estado fica em arquivos locais com gravação atômica, separado por diretório
+do projeto e `owner` da sessão. Anote o `owner` mostrado na resposta textual.
+Após fechar o Claude, outra consulta com o mesmo diretório e owner encontra a
+execução; uma sessão com outro ID não a adota automaticamente. Para consultar
+um owner conhecido pelo terminal ou pela ferramenta de shell do Claude:
+
+```bash
+node /caminho/claude-test-progress/runner/cli.mjs status \
+  --cwd /caminho/do/app --owner ID_INFORMADO_PELO_MOD --lane backend
+```
+
+O diretório temporário do sistema guarda o estado e os logs; não há promessa de
+retomada após reboot, limpeza desses arquivos ou morte do executor. Os contadores
+persistem separados do log, cuja cauda é limitada a aproximadamente 1 MiB por
+execução. Para saída completa, configure também os relatórios do runner do app.
+Se o worker desaparecer, o status preserva resultados parciais, acusa a perda e
+bloqueia outra execução quando ainda houver processos sem recuperação confirmada.
+Use `cancel` para a recuperação oferecida pelo coletor e consulte o status novamente.
 
 ## Segurança, limites e contribuição
 

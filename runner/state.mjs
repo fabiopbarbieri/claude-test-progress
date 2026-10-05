@@ -90,6 +90,14 @@ export function acquireLock(directory, lane, runId) {
   }
   throw new Error(`Não foi possível reservar ${lane}`);
 }
+function activity(snapshot) {
+  if (!snapshot) return snapshot;
+  // Finished durations stay fixed. Legacy snapshots have no heartbeat evidence.
+  const reference = snapshot.endedAt ? Date.parse(snapshot.endedAt) : Date.now();
+  const age = (value) => value && Number.isFinite(Date.parse(value)) ?
+    Math.max(0, reference - Date.parse(value)) : null;
+  return { ...snapshot, elapsedMs: age(snapshot.startedAt), heartbeatAgeMs: age(snapshot.heartbeatAt) };
+}
 export function snapshots(directory) {
   return Object.fromEntries(LANES.map((lane) => {
     const locations = files(directory, lane);
@@ -108,7 +116,7 @@ export function snapshots(directory) {
       if (!workerAlive && !launchAlive && age > 5000) {
         // Re-read after the liveness checks: a worker may have just published its final result.
         snapshot = readJson(locations.snapshot);
-        if (!snapshot || (!ACTIVE.has(snapshot.status) && !snapshot.recoveryRequired)) return [lane, snapshot];
+        if (!snapshot || (!ACTIVE.has(snapshot.status) && !snapshot.recoveryRequired)) return [lane, activity(snapshot)];
         const proof = process.platform === 'win32' ? windowsProof(
           path.join(directory, `${lane}.${snapshot.runId}.job.json`), snapshot.runId, snapshot.pid ?? null) : null;
         const identity = proof?.brokerIdentity ?? snapshot.childIdentity ?? claim?.childIdentity;
@@ -132,7 +140,7 @@ export function snapshots(directory) {
           cancellationRequestedAt: cancellation.requestedAt };
       }
     }
-    return [lane, snapshot];
+    return [lane, activity(snapshot)];
   }));
 }
 export function revision(cwd) {

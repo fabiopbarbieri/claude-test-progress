@@ -26,6 +26,8 @@ let cancelling = false;
 let fatalError = null;
 let killTimer;
 let poll;
+let lastPersistedAt = 0;
+const heartbeatIntervalMs = 5000;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
 const buffers = { stdout: '', stderr: '' };
@@ -34,9 +36,11 @@ snapshot = { ...snapshot, workerPid: process.pid, updatedAt: now };
 fs.writeFileSync(snapshot.logPath, '', { mode: 0o600, flag: 'wx' });
 
 function persist(overrides = {}) {
-  snapshot = { ...snapshot, ...progress.values(), ...overrides, updatedAt: timestamp() };
+  const now = timestamp();
+  snapshot = { ...snapshot, ...progress.values(), ...overrides, updatedAt: now, heartbeatAt: now };
   if (cancelling && !ended) snapshot.phase = 'cancellation-requested';
   atomicJson(locations.snapshot, snapshot);
+  lastPersistedAt = Date.now();
 }
 function log(text) {
   fs.appendFileSync(snapshot.logPath, text, { mode: 0o600 });
@@ -51,6 +55,7 @@ function log(text) {
 function consume(stream, chunk) {
   const text = chunk.toString('utf8');
   log(text);
+  snapshot.lastOutputAt = timestamp();
   buffers[stream] += text;
   // Treat carriage-return progress redraws as records, too.
   const lines = buffers[stream].split(/\r?\n|\r/);
@@ -58,7 +63,10 @@ function consume(stream, chunk) {
   if (buffers[stream].length > 131072) buffers[stream] = '';
   let changed = false;
   for (const line of lines) changed = progress.line(line) || changed;
-  if (changed) persist();
+  if (changed) {
+    snapshot.lastProgressAt = timestamp();
+    persist();
+  }
 }
 function terminate(signal) {
   if (!child?.pid) return;
@@ -115,7 +123,7 @@ async function finish(code, signal) {
   clearTimeout(killTimer);
   try {
     for (const stream of Object.keys(buffers)) {
-      if (buffers[stream]) progress.line(buffers[stream]);
+      if (buffers[stream] && progress.line(buffers[stream])) snapshot.lastProgressAt = timestamp();
     }
     const proof = refreshWindowsProof();
     if (proof?.error) fatalError = fatalError ?? `Broker Windows: ${proof.error}`;
@@ -200,7 +208,11 @@ if (cancelling) {
       atomicJson(locations.claim, { ...readJson(locations.claim), childIdentity });
       persist({ status: 'running', pid: child.pid, childIdentity });
     }
-    poll = setInterval(checkCancellation, 150);
+    poll = setInterval(() => {
+      checkCancellation();
+      // Silence is not failure: record worker activity without inventing test progress.
+      if (!ended && Date.now() - lastPersistedAt >= heartbeatIntervalMs) persist();
+    }, 150);
     persist();
   } catch (error) {
     fatalError = error.message;

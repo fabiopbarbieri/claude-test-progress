@@ -68,6 +68,7 @@ async function start(context, lane, config, source, codeRevision, runId) {
       total: null, resolved: 0, passed: 0, failed: 0, skipped: 0,
       totalStable: false, percent: null, progressObserved: false,
       startedAt: timestamp(), updatedAt: timestamp(), endedAt: null, exitCode: null,
+      heartbeatAt: null, lastOutputAt: null, lastProgressAt: null,
       pid: null, workerPid: null, command: config.command, cwd: config.cwd,
       logPath: path.join(context.directory, `${lane}.${runId}.log`), revision: codeRevision,
       collectorRuntime,

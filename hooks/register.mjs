@@ -53,6 +53,8 @@ function textSummary() {
     if (job) {
       rows.push(`  ${countSummary(job)}; passed=${job.passed}, failed=${job.failed}, skipped=${job.skipped}`);
       rows.push(`  origem=${job.source}; fase=${job.phase}; exitCode=${job.exitCode ?? 'ainda desconhecido'}`);
+      rows.push(`  duração=${typeof job.elapsedMs === 'number' ? Math.floor(job.elapsedMs / 1000) + 's' : 'desconhecida'}; último sinal do executor=${job.heartbeatAt ?? 'ainda não observado'}`);
+      rows.push(`  última saída=${job.lastOutputAt ?? 'não observada'}; último progresso reconhecido=${job.lastProgressAt ?? 'não observado'}`);
       rows.push(`  runId=${job.runId}; log=${job.logPath}`);
       if (job.collectorRuntime) rows.push(`  Node coletor=${job.collectorRuntime.version} (${job.collectorRuntime.source})`);
       if (job.nodeRuntime) rows.push(`  Node no PATH frontend=${job.nodeRuntime.version} (${job.nodeRuntime.source}); .nvmrc=${job.nodeRuntime.nvmrc ?? 'ausente'}`);
