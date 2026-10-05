@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "backend": {
+    "command": [
+      "bundle",
+      "exec",
+      "ruby",
+      "/caminho/absoluto/claude-test-progress/adapters/ruby/run.rb",
+      "rspec",
+      "spec"
+    ],
+    "cwd": ".",
+    "adapter": "events",
+    "env": {}
+  }
+}

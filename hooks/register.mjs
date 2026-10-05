@@ -219,6 +219,7 @@ export function register(on) {
       `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`,
       `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
+      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
       `Exemplos: ${$.plugin.root}/config.example.json`,
       'Use caminhos absolutos nos comandos do seu projeto. Confira novamente após atualizar o plugin.',
     ].join('\n') };

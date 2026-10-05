@@ -18,6 +18,7 @@ O status final do comando continua sendo responsabilidade do runner.
 - [JUnit 5 / Maven](junit/README.md)
 - [Karma / Angular com Karma](karma/README.md)
 - [Python / pytest e unittest](python/README.md)
+- [Ruby / RSpec](ruby/README.md)
 
 Uma execução serial de módulos Maven pode concluir um módulo antes de conhecer o
 plano do seguinte. O número agregado nesse intervalo é **parcial**, mesmo se todos

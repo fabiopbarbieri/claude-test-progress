@@ -39,6 +39,7 @@ de tempo restante e integração com uma plataforma de CI não são calculadas.
 | Angular / Karma | [Reporter Karma](adapters/karma/README.md) ou fallback por logs; CLI e browser já instalados no app |
 | Angular 9 | [Node do app independente](ANGULAR9.md); a matriz histórica lista Node 10/12, enquanto o coletor requer 14+ |
 | Python | [pytest 7+ ou unittest](adapters/python/README.md), Python 3.8+ do app, execução serial na área backend |
+| Ruby / RSpec | [RSpec Core 3.13.x](adapters/ruby/README.md), Ruby 3.1+ e bundle do app, execução serial na área backend |
 
 O plugin usa as dependências do seu projeto; não instala runners, browsers,
 versões Node ou pacotes Python. A validação local usa Linux e Claude Code
