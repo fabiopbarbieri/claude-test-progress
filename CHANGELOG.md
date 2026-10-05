@@ -12,6 +12,8 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - Adaptador Rails/Minitest opt-in, integrado ao runner nativo, com contagem de
   testes e preservação de seleção, resultado e código de saída. Mantida a
   descoberta de plugins do Minitest 5.20.
+- Fixtures e CI de JUnit/Surefire e Angular 9/18 com Karma/browser, com
+  dependências de verificação isoladas e versionadas.
 - Verificação de versão, changelog, SHA escolhido, tags existentes e CI do
   mesmo commit; workflow manual de preparação com permissões de leitura.
 - Ensaio reproduzível de instalação 0.1.0 e atualização 0.2.0 pelo marketplace

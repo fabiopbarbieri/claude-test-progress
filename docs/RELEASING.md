@@ -50,10 +50,11 @@ usuários e faz o merge pelo fluxo protegido. Não dispense checks ou proteçõe
 
 A preparação 0.2.0 depende explicitamente destas entregas independentes:
 
-1. **Documentação (frente 02):** integrar README e guias coerentes com instalação,
+1. **Documentação (frente 02, integrada pelo PR #7):** conferir README e guias no
+   SHA final, mantendo coerência com instalação,
    suites opcionais, Node 14 do coletor, frontend Node/`.nvmrc`, Rails views/system
    em backend e limites de Windows/Selenium. Os arquivos pertencem à outra
-   frente; este PR não os modifica.
+   frente; esta preparação os recebe por merge da `main`.
 2. **Validação e correções (frente 03):** integrar fixes e evidências de runners,
    contratos e Mod que essa frente entregar. Conferir `scripts/check.py`, testes,
    workflows e relatórios finais; adaptar a lista de gates deste roteiro se novos
@@ -126,10 +127,11 @@ completo e versão. O workflow precisa existir na branch padrão para despacho.
 
 O workflow exige que o SHA pertença ao histórico da `main` no instante do
 despacho, confere versão/tag e o run mais recente de cada workflow
-`quality.yml`, `ruby.yml`, `rails.yml` no mesmo SHA, evento `push`, branch `main`.
+`quality.yml`, `ruby.yml`, `rails.yml` e `adapters.yml` no mesmo SHA, evento
+`push`, branch `main`.
 Falha, ausência, cancelamento ou execução pendente bloqueiam a preparação.
-Quality inclui scanner de árvore/histórico; Ruby e Rails cobrem as suites já
-existentes. A matriz adicional repete release/core em Node 14.0.0 e Node 24.
+Quality inclui scanner de árvore/histórico; Ruby e Rails cobrem suas suites;
+Adapters executa JUnit/Surefire e Angular 9/18 com Karma/browser. A matriz adicional repete release/core em Node 14.0.0 e Node 24.
 Gates adicionados pela frente 03 precisam ser incorporados antes da publicação.
 
 Os jobs têm somente `contents: read` e, no job que consulta CI, `actions: read`.
