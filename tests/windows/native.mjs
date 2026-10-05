@@ -53,7 +53,8 @@ function collect(action, target = 'all', env = process.env) {
     '-Cwd', app, '-Owner', owner, '-Module', target, '-Config', config], env);
   const value = JSON.parse(result.stdout.replace(/^\uFEFF/, '').trim());
   // Some scenarios expect ok:false; log the reason so unexpected failures are diagnosable.
-  if (!value.ok) console.error(`collect ${action} ${target} returned ok:false: ${value.error ?? JSON.stringify(value.actionResults ?? null)}`);
+  if (!value.ok) console.error(`collect ${action} ${target} returned ok:false: ${value.error ?? JSON.stringify(value.actionResults ?? null)}` +
+    ` stateDiagnostics=${JSON.stringify(value.stateDiagnostics ?? null).split(app).join('<fixture>')}`);
   assert.strictEqual(value.schemaVersion, 2);
   assert(!('lanes' in value) && !('schema' in value));
   assert.strictEqual(result.status, value.ok ? 0 : 1);
