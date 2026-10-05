@@ -25,11 +25,11 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 2. Reescreva a configuração em schema v2: cada lane antiga vira um módulo em
    `modules` (por exemplo `backend`), com `runtime: "inherit"` ou
    `"node-project"` (este último substitui a preparação Node/`.nvmrc` que a
-   lane `frontend` fazia). Veja [config.example.json](config.example.json),
-   [config.modules.example.json](config.modules.example.json) e
-   [config.registry.example.json](config.registry.example.json).
+   lane `frontend` fazia). Veja [config.example.json](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.2.0/config.example.json),
+   [config.modules.example.json](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.2.0/config.modules.example.json) e
+   [config.registry.example.json](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.2.0/config.registry.example.json).
 3. Atualize o plugin e reinicie a sessão. Se um start for bloqueado por estado
-   legado, siga a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado);
+   legado, siga a [adoção quiescente](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.2.0/docs/USAGE.md#adotar-v2-com-estado-legado);
    não apague locks ativos.
 
 ### Adicionado
@@ -64,7 +64,7 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   opcionais conforme o módulo. Só `runtime: "node-project"` prepara
   Node/`.nvmrc`; fixtures Rails de views/system usam `rack_test`. Selenium não
   tem aceite funcional; Windows nativo tem CI própria, mas os limites de aceite
-  descritos em [compatibilidade](docs/COMPATIBILITY.md) continuam valendo.
+  descritos em [compatibilidade](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.2.0/docs/COMPATIBILITY.md) continuam valendo.
 
 ## [0.1.0] - Baseline público
 

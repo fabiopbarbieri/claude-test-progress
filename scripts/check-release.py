@@ -46,6 +46,9 @@ def release_notes(root, version, dated=False):
     end = headings[index + 1].start() if index + 1 < len(headings) else len(changelog)
     notes = changelog[headings[index].end():end].strip()
     require(bool(notes), "Release notes are empty")
+    # Notes become the GitHub Release body, where repository-relative links break.
+    relative = [target for target in re.findall(r"\]\(([^)\s]+)\)", notes) if not target.startswith("https://")]
+    require(not relative, "Release notes need absolute https links: " + ", ".join(relative))
     return notes
 
 

@@ -76,6 +76,15 @@ class MetadataTests(unittest.TestCase):
         (self.root / "CHANGELOG.md").write_text("## [0.2.0] - 2026-10-05\n\nNotes\n")
         self.assertEqual(release.release_notes(self.root, "0.2.0", dated=True), "Notes")
 
+    def test_reject_relative_links_in_notes(self):
+        for link in ("docs/USAGE.md", "#migração", "../README.md", "http://example.invalid/x"):
+            with self.subTest(link=link):
+                (self.root / "CHANGELOG.md").write_text("## [0.2.0]\n\nSee [guide](" + link + ").\n")
+                with self.assertRaisesRegex(ValueError, "absolute https"):
+                    release.release_notes(self.root, "0.2.0")
+        (self.root / "CHANGELOG.md").write_text("## [0.2.0]\n\nSee [guide](https://example.invalid/x#a).\n")
+        self.assertIn("https://example.invalid/x#a", release.release_notes(self.root, "0.2.0"))
+
     def test_reject_missing_duplicate_or_empty_notes(self):
         for text in ("# Empty", "## [0.2.0]\n", "## [0.2.0]\nFirst\n## [0.2.0]\nSecond"):
             (self.root / "CHANGELOG.md").write_text(text)

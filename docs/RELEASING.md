@@ -14,7 +14,10 @@ não cria tags, releases, assets nem instala o plugin de usuários.
   minor acrescenta funcionalidades. Durante `0.x`, uma quebra exige novo minor,
   aviso explícito e instruções de migração; depois de `1.0`, exige major.
 - Atualize o [changelog](../CHANGELOG.md) no mesmo PR com código que existe e
-  limites de aceite. Nunca reutilize uma versão já distribuída.
+  limites de aceite. Nunca reutilize uma versão já distribuída. As notas viram
+  o corpo da GitHub Release: use links absolutos para a tag
+  (`https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--vX.Y.Z/...`);
+  o verificador recusa links relativos.
 - O catálogo mantém `test-progress-marketplace`, plugin `test-progress` e
   `source: "./"`, sem campo `version`. O repositório chama-se
   `claude-test-progress`; nenhuma dessas identidades é intercambiável.
