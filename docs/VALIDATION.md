@@ -166,8 +166,11 @@ A captura deve mostrar apenas dados públicos; não publique nome de conta, hist
 caminhos pessoais, credenciais ou aplicativos autenticados. Não gere imagens como
 substituto de screenshot.
 
-Destino reservado para capturas verificadas: `docs/assets/panel-*.png`. Enquanto
-não houver captura real inspecionada, nenhum desses assets deve ser referenciado
-como evidência. A integração de links/imagens no README pertence à frente de
-documentação. O bloqueio local de captura e os demais limites estão registrados
-em [VERIFICATION.md](../VERIFICATION.md).
+As capturas reais inspecionadas de perda do worker e cancelamento ficam em
+[panel-worker-loss.png](assets/panel-worker-loss.png) e
+[panel-cancelled.png](assets/panel-cancelled.png). Elas foram obtidas pelo
+compositor Wayland e contêm somente o painel da fixture sintética. Versão,
+proveniência, ciclos interativos observados e limites estão em
+[VERIFICATION.md](../VERIFICATION.md). Teclado/foco/scroll completos do dock
+continuam pendentes; capturas e harness não substituem esse aceite. A integração
+de links/imagens no README pertence à frente de documentação.
