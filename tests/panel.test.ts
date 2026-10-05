@@ -23,7 +23,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     }) } }));
     await $.command.run({ command: 'test-progress', args: 'status --text' });
     const ui = await $.ui.mount(pane(surface));
-    for (const text of ['JavaScript', '4 🏁 / 4 🧪 · total parcial',
+    for (const text of ['JavaScript', '4 🏁 / 4 🧪',
       '2 ✅ · 1 ❌ · 1 ⏩', 'Em execução · executing-tests',
       '0 🏁 / 🧪 sem testes', 'revisão: abcdef12']) {
       expect(await ui.find({ type: 'Text', text })).toBeDefined();
@@ -168,5 +168,51 @@ test('worker loss retains counts, unknown exit and only offers proven orphan can
   cancellable = true;
   await ui.press({ key: 'refresh' });
   expect(await ui.find({ key: 'cancel-backend' })).toMatchObject({ props: { label: '■ Cancelar órfão' } });
+  await ui.unmount();
+});
+
+test('frontend-only workspace hides absent controls and routes default logs to frontend', async ($, on) => {
+  const actions: string[] = [];
+  on('session.cwd', () => ({ value: '/work/public-fixture' }));
+  on('session.id', () => ({ value: 'public-owner' }));
+  on('process.run', ($, e) => {
+    actions.push(e.argv[2]);
+    return { value: { exitCode: 0, stderr: '', stdout: JSON.stringify({ schema: 1, ok: true,
+      workspace: { configStatus: 'ready', configuredLanes: ['frontend'] },
+      lanes: { backend: job({ status: 'completed' }), frontend: job({ logTail: ['frontend public log'] }) },
+    }) } };
+  });
+  const summary = await $.command.run({ command: 'test-progress', args: 'logs --text' });
+  expect(summary.text).not.toContain('backend:');
+  const ui = await $.ui.mount(pane('terminal'));
+  expect(await ui.find({ key: 'backend' })).toBeUndefined();
+  expect(await ui.find({ key: 'all' })).toBeUndefined();
+  expect(await ui.find({ key: 'frontend' })).toBeDefined();
+  expect(await ui.find({ key: 'logs-backend' })).toBeUndefined();
+  expect(await ui.find({ type: 'Text', text: 'frontend public log' })).toBeDefined();
+  expect(actions).toEqual(['logs']);
+  await ui.unmount();
+});
+
+test('removed config retains active/orphan controls and hides retired jobs', async ($, on) => {
+  let current = job();
+  on('session.cwd', () => ({ value: '/work/public-fixture' }));
+  on('session.id', () => ({ value: 'public-owner' }));
+  on('process.run', () => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify({
+    schema: 1, ok: true, workspace: { configStatus: 'missing', configuredLanes: [] },
+    lanes: { backend: current, frontend: null },
+  }) } }));
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  expect(await ui.find({ type: 'Button', key: 'backend' })).toBeUndefined();
+  expect(await ui.find({ key: 'cancel-backend' })).toBeDefined();
+  expect(await ui.find({ key: 'logs-backend' })).toBeDefined();
+  current = job({ status: 'error', recoveryRequired: true, cancellable: true });
+  await ui.press({ key: 'refresh' });
+  expect(await ui.find({ key: 'cancel-backend' })).toBeDefined();
+  current = job({ status: 'completed' });
+  await ui.press({ key: 'refresh' });
+  expect(await ui.find({ key: 'logs-backend' })).toBeUndefined();
+  expect(await ui.find({ type: 'Text', text: 'Configure .claude/test-progress.json neste workspace.' })).toBeDefined();
   await ui.unmount();
 });

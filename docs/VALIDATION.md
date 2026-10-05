@@ -14,8 +14,9 @@ agnóstico de runtime.
 node tests/collector/lock-race.mjs
 node tests/collector/maven.mjs
 node tests/collector/isolation.mjs
+node tests/collector/workspace.mjs
 
-# Verificação de fontes + os três checks acima; este script de desenvolvimento usa Python:
+# Verificação de fontes + os checks acima; este script de desenvolvimento usa Python:
 python3 scripts/check.py
 
 # Apenas quando quiser verificar o adaptador Python:
@@ -37,6 +38,21 @@ duas lanes da demo e seleciona um comando `python3` inexistente. O resultado dev
 identificar o comando e `ENOENT`, sem inventar testes ou validar a configuração
 inválida da lane não selecionada. É uma prova Linux do núcleo via CLI Node;
 não elimina Bash do bootstrap Unix nem PowerShell do Windows.
+
+`workspace.mjs` inicia e cancela comandos Node reais em projetos com somente
+backend ou somente frontend. `start --lane all` inicia apenas as suítes habilitadas
+em `.claude/test-progress.json`; uma suíte omitida, `null`, `false` ou com
+`enabled: false` não aparece entre os botões de início. Não há descoberta automática
+por nomes de pastas. Uma suíte habilitada inválida continua falhando ao ser selecionada.
+O painel conserva logs/cancelamento de uma execução ativa ou órfã mesmo se sua
+configuração for removida. Consultar estado, logs e cancelar não exige configuração
+válida nem resolve ferramentas de suítes. O teste confirma a saída dos processos
+da fixture e a liberação dos locks.
+
+O painel oculta o sufixo “total parcial”; os diagnósticos de texto mantêm essa
+distinção. Suítes ausentes também ficam fora do resumo acima do prompt. O cadastro
+geral de módulos por usuário/workspace é uma evolução separada; esta mudança mantém
+os contratos e as identidades backend/frontend existentes.
 
 O workflow [Mod integration](../.github/workflows/mod-integration.yml) instala
 `@anthropic-ai/claude-code@2.1.289` em um prefixo temporário. Node 24 atende ao
