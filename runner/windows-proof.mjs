@@ -1,6 +1,27 @@
 import fs from 'fs';
 import path from 'path';
+import { performance } from 'perf_hooks';
 
+// The broker replaces the proof with File.Replace. Opening it during that window can
+// briefly fail with a sharing error; retry only those codes, within the same budget
+// atomicJson uses. Other failures report their code, never the file content.
+function readProof(target) {
+  const retryUntil = performance.now() + 750;
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  let pause = 5;
+  for (;;) {
+    try { return fs.readFileSync(target, 'utf8'); }
+    catch (error) {
+      if (error.code === 'ENOENT') throw error;
+      const remaining = retryUntil - performance.now();
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || remaining <= 0) {
+        throw new Error(`Leitura da prova Windows falhou (${error.code || 'sem código'}); conteúdo omitido.`);
+      }
+      Atomics.wait(wait, 0, 0, Math.min(pause, remaining));
+      pause = Math.min(pause * 2, 20);
+    }
+  }
+}
 // The run-bound sidecar is private and written atomically by the native broker.
 export function windowsProof(jobPath, runId, expectedPid = null) {
   let proof;
@@ -18,7 +39,8 @@ export function windowsProof(jobPath, runId, expectedPid = null) {
     }
     const info = fs.lstatSync(target);
     if (!info.isFile() || info.size > 65536 || (process.getuid && info.uid !== process.getuid())) throw new Error('Prova Windows insegura');
-    try { proof = JSON.parse(fs.readFileSync(target, 'utf8')); }
+    const text = readProof(target);
+    try { proof = JSON.parse(text); }
     catch { throw new Error('JSON de prova Windows inválido; conteúdo omitido.'); }
   }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }

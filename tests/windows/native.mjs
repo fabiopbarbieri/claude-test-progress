@@ -52,6 +52,9 @@ function collect(action, target = 'all', env = process.env) {
   const result = shell(['-File', path.join(root, 'scripts/run-collector.ps1'), '-Action', action,
     '-Cwd', app, '-Owner', owner, '-Module', target, '-Config', config], env);
   const value = JSON.parse(result.stdout.replace(/^\uFEFF/, '').trim());
+  // Some scenarios expect ok:false; log the reason so unexpected failures are diagnosable.
+  if (!value.ok) console.error(`collect ${action} ${target} returned ok:false: ${value.error ?? JSON.stringify(value.actionResults ?? null)}` +
+    ` stateDiagnostics=${JSON.stringify(value.stateDiagnostics ?? null).split(app).join('<fixture>')}`);
   assert.strictEqual(value.schemaVersion, 2);
   assert(!('lanes' in value) && !('schema' in value));
   assert.strictEqual(result.status, value.ok ? 0 : 1);
@@ -85,7 +88,14 @@ async function waitFor(predicate, timeout = 45000, expectedErrors = []) {
 function captureTree(id, job) {
   const proof = windowsProof(jobFile(context.directory, id, job.runId), job.runId, job.pid);
   assert(proof && proof.contained === true && proof.resumed === true, 'Command acknowledged only after contained and resumed proof');
-  assert.strictEqual(windowsGroupState(proof.brokerIdentity), 'present');
+  const group = windowsGroupState(proof.brokerIdentity);
+  if (group !== 'present') {
+    // The fixture tree never exits on its own; record what ended or hid it.
+    const current = collect('status').jobs[id] || {};
+    assert.fail(`Job Object for ${id} is ${group}, expected present: ${JSON.stringify({ status: current.status, phase: current.phase,
+      error: current.error, infrastructureFailure: current.infrastructureFailure, cancellationRequestedAt: current.cancellationRequestedAt,
+      exitCode: current.exitCode, treeEmpty: proof.treeEmpty, exitCodeProof: proof.exitCode ?? null })}`);
+  }
   capturedTrees.push(proof.brokerIdentity);
   const pids = ['parent', 'child', 'grandchild'].map(role => Number(fs.readFileSync(path.join(app, `${id}.${role}.pid`), 'utf8')));
   const result = shell(['-Command', 'Add-Type -Path $env:TEST_PROGRESS_GATE_HOST; ' +

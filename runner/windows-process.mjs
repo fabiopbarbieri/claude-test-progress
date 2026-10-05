@@ -23,15 +23,39 @@ export function windowsPowerShell(environment = process.env) {
   if (fs.existsSync(legacy)) return legacy;
   throw new Error('Windows PowerShell 5.1 ausente; configure TEST_PROGRESS_POWERSHELL com o caminho absoluto de pwsh.exe');
 }
+// Per-call limit for PowerShell control processes. PowerShell 7 starts slower than
+// 5.1 (each call compiles WindowsProcessHost.cs), so its default is higher. The
+// variable overrides either engine; the ceiling is the batch preparation deadline
+// and an invalid value is an error, never a silent fallback.
+export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, min: 1000, max: 30000 });
+export function windowsControlTimeout(environment = process.env, engine = null) {
+  const value = variable(environment, 'TEST_PROGRESS_POWERSHELL_TIMEOUT_MS');
+  if (value === undefined || value === '') {
+    return engine && path.win32.basename(engine).toLowerCase() === 'pwsh.exe' ? CONTROL_TIMEOUT_MS.pwsh : CONTROL_TIMEOUT_MS.default;
+  }
+  const timeout = /^[0-9]{1,6}$/.test(value) ? Number(value) : NaN;
+  if (!(timeout >= CONTROL_TIMEOUT_MS.min && timeout <= CONTROL_TIMEOUT_MS.max)) {
+    throw new Error(`TEST_PROGRESS_POWERSHELL_TIMEOUT_MS deve ser um inteiro entre ${CONTROL_TIMEOUT_MS.min} e ${CONTROL_TIMEOUT_MS.max} (ms)`);
+  }
+  return timeout;
+}
 function argumentsFor(action, parameters) {
   return ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-Action', action, ...parameters];
 }
-function control(action, parameters) {
-  const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
-    encoding: 'utf8', timeout: 7500, maxBuffer: 64 * 1024, windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  return JSON.parse(output.replace(/^\uFEFF/, '').trim());
+function control(action, parameters, attempts = 1) {
+  const engine = windowsPowerShell();
+  const timeout = windowsControlTimeout(process.env, engine);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const output = execFileSync(engine, argumentsFor(action, parameters), {
+        encoding: 'utf8', timeout, maxBuffer: 64 * 1024, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return JSON.parse(output.replace(/^\uFEFF/, '').trim());
+    } catch (error) {
+      if (error.code !== 'ETIMEDOUT' || attempt >= attempts) throw error;
+    }
+  }
 }
 function valid(identity) {
   return Boolean(identity && identity.platform === 'win32' && Number.isInteger(identity.pid) &&
@@ -149,7 +173,11 @@ export function windowsKillOwnedBroker(identity) {
 }
 export function windowsSecureDirectory(directory) {
   if (!path.win32.isAbsolute(directory)) throw new Error('Diretório Windows precisa ser absoluto');
-  const value = control('SecureDirectory', ['-Directory', directory]);
+  // The first control process of a CLI call compiles WindowsProcessHost.cs; a cold
+  // PowerShell 7 start can exceed the timeout. Retrying is safe: creation is atomic
+  // with a protected DACL and an existing directory is only verified, never repaired.
+  // Deadline-bound queries are not retried; they already fail closed as unknown.
+  const value = control('SecureDirectory', ['-Directory', directory], 2);
   if (value.secured !== true) throw new Error('DACL do diretório Windows não confirmada');
 }
 export function windowsLaunchCoordinator(collector, request) {
