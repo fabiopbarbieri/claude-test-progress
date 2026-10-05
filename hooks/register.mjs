@@ -1,5 +1,6 @@
 // Claude Code Mods 2.1.287+. No host Node APIs run inside the Mod sandbox.
 // The documented process.run API invokes a short CLI; its external worker owns the job.
+import { suiteLanguage } from '../runner/suite-language.mjs';
 const PANE = 'claude-test-progress';
 const LANES = ['backend', 'frontend'];
 const ACTIVE = new Set(['preparing', 'running']);
@@ -8,6 +9,9 @@ let lanes = EMPTY();
 let identity = '';
 let identityGeneration = 0;
 let sessionOwner = '';
+let sessionWorkspace = '';
+let showDemo = false;
+let workspace = null;
 let busy = false;
 let lastError = '';
 let selectedLogs = '';
@@ -25,15 +29,28 @@ function percentage(job) {
 }
 
 function progressBar(job) {
-  if (typeof job.percent !== 'number') return '[ total desconhecido ]';
+  if (job.total === 0) return '[ sem testes ]';
+  if (typeof job.percent !== 'number') return '[ sem testes ]';
   const filled = Math.max(0, Math.min(16, Math.round(job.percent / 100 * 16)));
   return `[${'■'.repeat(filled)}${'·'.repeat(16 - filled)}]`;
 }
 
-function countSummary(job) {
+function countSummary(job, icons = false) {
+  if (icons) return `${job.resolved} 🏁 / ${job.total === null ? '🧪 sem testes' : `${job.total} 🧪`}`;
   const denominator = job.total === null ? 'total desconhecido' :
-    `${job.total} ${job.totalStable ? 'no total' : 'descobertos · total parcial'}`;
+    `${job.total} no total${job.totalStable ? '' : ' · total parcial'}`;
   return `${job.resolved} resolvidos / ${denominator}`;
+}
+
+function withinWorkspace(directory) {
+  if (!directory || !sessionWorkspace) return false;
+  // Collector paths are absolute and canonical. Compare directory boundaries,
+  // preserving POSIX case and treating Windows separators/case equivalently.
+  const windows = /^[a-z]:[\\/]|^\\\\/i.test(sessionWorkspace);
+  const normalize = (value) => (windows ? value.replace(/\\/g, '/').toLowerCase() : value).replace(/\/+$/, '');
+  const root = normalize(sessionWorkspace);
+  const candidate = normalize(directory);
+  return candidate === root || candidate.startsWith(`${root}/`);
 }
 
 function shortSummary(lane, job) {
@@ -44,10 +61,17 @@ function shortSummary(lane, job) {
   return `${lane}${simulation}: ${ratio}${partial} · ${labels[job.status] ?? job.status} · ${job.failed} falha(s)`;
 }
 
+const configuredLanes = () => workspace?.configuredLanes ?? LANES;
+function visibleLanes() {
+  const configured = configuredLanes();
+  return LANES.filter(lane => configured.includes(lane) || lanes[lane] &&
+    (ACTIVE.has(lanes[lane].status) || lanes[lane].recoveryRequired || lanes[lane].source === 'demo'));
+}
+
 function textSummary() {
   const rows = ['Test Progress'];
   if (sessionOwner) rows.push(`owner=${sessionOwner}`);
-  for (const lane of LANES) {
+  for (const lane of visibleLanes()) {
     const job = lanes[lane];
     rows.push(shortSummary(lane, job));
     if (job) {
@@ -62,6 +86,8 @@ function textSummary() {
     }
   }
   if (lastError) rows.push(`Erro: ${lastError}`);
+  if (workspace?.error) rows.push(`Configuração: ${workspace.error}`);
+  if (!visibleLanes().length) rows.push('Configure as suítes deste workspace em .claude/test-progress.json.');
   if (registrationError) rows.push(`Registro: ${registrationError}`);
   return rows.join('\n');
 }
@@ -75,6 +101,9 @@ async function synchronizeIdentity($) {
     identityGeneration += 1;
     identity = key;
     sessionOwner = owner;
+    sessionWorkspace = cwd;
+    showDemo = false;
+    workspace = null;
     lanes = EMPTY();
     selectedLogs = '';
     logTail = [];
@@ -116,8 +145,9 @@ async function collect($, action = 'status', lane = 'all') {
     throw new Error('Versão de resposta do coletor incompatível.');
   }
   lanes = { backend: data.lanes.backend ?? null, frontend: data.lanes.frontend ?? null };
+  workspace = data.workspace ?? null;
   if (action === 'logs') {
-    selectedLogs = lane === 'all' ? 'backend' : lane;
+    selectedLogs = lane === 'all' ? (visibleLanes().find(name => lanes[name]) ?? configuredLanes()[0] ?? '') : lane;
     logTail = lanes[selectedLogs]?.logTail ?? [];
   }
   if (!data.ok || response.exitCode !== 0) {
@@ -143,11 +173,12 @@ async function perform($, action, lane = 'all') {
 function parseCommand(raw) {
   const tokens = String(raw ?? '').trim().split(/\s+/).filter(Boolean);
   const text = tokens.includes('--text');
-  const args = tokens.filter((token) => token !== '--text');
+  const demo = tokens.includes('--demo');
+  const args = tokens.filter((token) => token !== '--text' && token !== '--demo');
   const name = args[0] ?? 'status';
   if (LANES.includes(name) || name === 'all') {
     if (args.length !== 1) throw new Error('Use backend, frontend ou all sem argumentos adicionais.');
-    return { action: 'start', lane: name, text };
+    return { action: 'start', lane: name, text, demo };
   }
   if (!['status', 'demo', 'cancel', 'logs', 'help', 'paths'].includes(name) || args.length > 2 ||
       (name === 'paths' && args.length !== 1)) {
@@ -155,11 +186,12 @@ function parseCommand(raw) {
   }
   const lane = args[1] ?? 'all';
   if (!['all', ...LANES].includes(lane)) throw new Error('Lane: backend, frontend ou all.');
-  return { action: name, lane, text };
+  return { action: name, lane, text, demo };
 }
 
 const HELP = [
   '/test-progress — abre o painel e consulta o estado; não inicia testes.',
+  '/test-progress --demo — abre o painel com o botão Demo visível; não inicia testes.',
   '/test-progress demo [backend|frontend|all] — eventos sintéticos; não executa uma suíte.',
   '/test-progress backend | frontend | all — inicia os comandos configurados, explicitamente.',
   '/test-progress cancel [backend|frontend|all] — pede cancelamento apenas dos jobs desta sessão.',
@@ -179,19 +211,19 @@ export function register(on) {
     await perform($, 'status');
     $.clock.every(1000, async () => {
       if (busy) return;
-      const before = JSON.stringify({ lanes, lastError, identity });
+      const before = JSON.stringify({ lanes, lastError, identity, workspace });
       busy = true;
       try {
         await collect($, selectedLogs ? 'logs' : 'status', selectedLogs || 'all');
       } catch (error) { lastError = String(error?.message ?? error); }
       finally { busy = false; }
-      if (before !== JSON.stringify({ lanes, lastError, identity })) $.ui.invalidate('ui.render');
+      if (before !== JSON.stringify({ lanes, lastError, identity, workspace })) $.ui.invalidate('ui.render');
     });
     // Last: a registration collision must not prevent background polling initialization.
     try {
       await $.command.register({
         name: 'test-progress', description: 'Painel de execução de testes em segundo plano',
-        argumentHint: '[demo|backend|frontend|all|cancel|logs|status|paths|help] [lane] [--text]',
+        argumentHint: '[demo|backend|frontend|all|cancel|logs|status|paths|help] [lane] [--text] [--demo]',
         immediate: true,
       });
     } catch (error) { registrationError = String(error?.message ?? error); }
@@ -203,6 +235,9 @@ export function register(on) {
     identity = '';
     identityGeneration += 1;
     sessionOwner = '';
+    sessionWorkspace = '';
+    showDemo = false;
+    workspace = null;
     lanes = EMPTY();
     selectedLogs = '';
     logTail = [];
@@ -227,6 +262,8 @@ export function register(on) {
     ].join('\n') };
     const accepted = await perform($, command.action, command.lane);
     if (!accepted) return { text: 'O coletor está ocupado. Aguarde um instante e tente novamente.' };
+    showDemo = command.demo;
+    $.ui.invalidate('ui.render');
     if (command.text) return { text: textSummary() + (selectedLogs ? `\n${logTail.join('\n')}` : '') };
     try {
       const placement = await $.ui.open({ id: PANE, title: 'Test Progress', focus: true, closeOnEscape: true });
@@ -246,72 +283,73 @@ export function register(on) {
     });
     const block = (lane) => {
       const job = lanes[lane];
-      const title = lane === 'backend' ? 'BACKEND' : 'FRONTEND';
+      const title = job && suiteLanguage(job) || (lane === 'backend' ? 'Backend' : 'Frontend');
       if (!job) return Box({ key: lane, flexDirection: 'column', children: [
         Text({ bold: true, children: [title] }),
-        Text({ dimColor: true, children: ['Ainda não iniciado. Use Demo ou configure seu runner.'] }),
+        Text({ dimColor: true, children: ['Ainda não iniciado.'] }),
       ] });
       const color = job.status === 'failed' || job.status === 'error' ? 'red' :
         job.status === 'completed' ? 'green' : 'yellow';
+      const details = [
+        ...(job.exitCode !== null && job.exitCode !== undefined && job.exitCode !== 0 ? [`Exit: ${job.exitCode}`] : []),
+        ...(job.revision?.head ? [`revisão: ${job.revision.head.slice(0, 8)}${job.revision.dirty === true ? ' (com alterações)' : ''}`] : []),
+      ];
       const lines = [
-        Text({ bold: true, children: [title] }),
+        Box({ flexDirection: 'row', columnGap: 2, children: [
+          Text({ bold: true, children: [title] }),
+          Text({ color, bold: true, children: [`${percentage(job)} ${progressBar(job)}`] }),
+        ] }),
         ...(job.source === 'demo' ? [Text({ color: 'yellow', bold: true, children: ['DEMONSTRAÇÃO · eventos sintéticos'] })] : []),
-        Text({ color, bold: true, children: [`${percentage(job)} ${progressBar(job)}`] }),
-        Text({ children: [countSummary(job)] }),
-        Text({ children: [`${job.passed} passaram · ${job.failed} falharam · ${job.skipped} ignorados`] }),
-        Text({ color, children: [`${labels[job.status] ?? job.status} · ${job.phase}`] }),
-        Text({ dimColor: true, wrap: 'truncate', children: [`Diretório: ${job.cwd}`] }),
+        ...(!configuredLanes().includes(lane) && job.source !== 'demo' ? [Text({ dimColor: true, children: ['Configuração removida ou desativada.'] })] : []),
+        Text({ children: [countSummary(job, true)] }),
+        Text({ children: [`${job.passed} ✅ · ${job.failed} ❌ · ${job.skipped} ⏩`] }),
+        ...(job.status !== 'completed' ? [Text({ color, children: [`${labels[job.status] ?? job.status} · ${job.phase}`] })] : []),
+        ...(!withinWorkspace(job.cwd) ? [Text({ dimColor: true, wrap: 'truncate', children: [`Diretório: ${job.cwd}`] })] : []),
         Text({ dimColor: true, wrap: 'truncate', children: [`Comando: ${job.command.join(' ')}`] }),
-        Text({ dimColor: true, children: [`Exit: ${job.exitCode ?? 'desconhecido'} · revisão: ${job.revision?.head?.slice(0, 8) ?? 'indisponível'}${job.revision?.dirty === true ? ' (com alterações)' : ''}`] }),
-        ...(job.nodeRuntime ? [Text({ dimColor: true, children: [`Node no PATH frontend: ${job.nodeRuntime.version} · ${job.nodeRuntime.source}`] })] : []),
-        ...(job.collectorRuntime ? [Text({ dimColor: true, children: [`Node coletor: ${job.collectorRuntime.version} · ${job.collectorRuntime.source}`] })] : []),
+        ...(details.length ? [Text({ dimColor: true, children: [details.join(' · ')] })] : []),
+        ...(job.nodeRuntime ? [Text({ dimColor: true, children: [`Node ${job.nodeRuntime.version}`] })] : []),
       ];
       if (job.error) lines.push(Text({ color: 'red', children: [job.error] }));
       lines.push(Box({ flexDirection: 'row', columnGap: 2, children: [
-        button(`logs-${lane}`, 'Ver logs', 'logs', lane),
+        button(`logs-${lane}`, '≡ Ver logs', 'logs', lane),
         ...(ACTIVE.has(job.status) || (job.recoveryRequired && job.cancellable) ?
-          [button(`cancel-${lane}`, job.recoveryRequired ? 'Cancelar órfão' : 'Cancelar', 'cancel', lane)] : []),
+          [button(`cancel-${lane}`, job.recoveryRequired ? '■ Cancelar órfão' : '■ Cancelar', 'cancel', lane)] : []),
       ] }));
       return Box({ key: lane, flexDirection: 'column', children: lines });
     };
     return Box({ flexDirection: 'column', children: [
-      Text({ bold: true, children: ['EXECUÇÃO DE TESTES'] }),
-      Text({ dimColor: true, children: ['Progresso observado · atualização a cada segundo'] }),
-      Text({ dimColor: true, wrap: 'truncate', children: [`Sessão: ${sessionOwner || 'aguardando consulta'}`] }),
       Box({ flexDirection: 'row', columnGap: 2, children: [
-        button('demo', 'Demo', 'demo'), button('refresh', 'Atualizar', 'status'),
+        ...(showDemo ? [button('demo', '▷ Demo', 'demo')] : []), button('refresh', '↻ Atualizar', 'status'),
+        Button({ key: 'close', label: '× Fechar', plain: true, onPress: () => $.ui.close({ id: PANE }) }),
       ] }),
-      Text({ dimColor: true, children: ['Iniciar comandos configurados:'] }),
-      Box({ flexDirection: 'row', columnGap: 2, children: [
-        button('backend', 'Backend', 'start', 'backend'),
-        button('frontend', 'Frontend', 'start', 'frontend'),
-        button('all', 'Ambos', 'start'),
-      ] }),
-      Text({ children: [' '] }), block('backend'), Text({ children: [' '] }), block('frontend'),
-      ...(lastError || registrationError ? [
-        Text({ children: [' '] }), Text({ color: 'red', children: [lastError || registrationError] }),
+      ...(configuredLanes().length ? [Box({ flexDirection: 'row', columnGap: 2, children: [
+        ...configuredLanes().map(lane => button(lane, lane === 'backend' ? '▶ Backend' : '▶ Frontend', 'start', lane)),
+        ...(configuredLanes().length > 1 ? [button('all', '▶ Ambos', 'start')] : []),
+      ] })] : []),
+      ...visibleLanes().flatMap(lane => [Text({ children: [' '] }), block(lane)]),
+      ...(!visibleLanes().length ? [Text({ dimColor: true, children: ['Configure .claude/test-progress.json neste workspace.'] })] : []),
+      ...(lastError || registrationError || workspace?.error ? [
+        Text({ children: [' '] }), Text({ color: 'red', children: [lastError || registrationError || workspace.error] }),
         Text({ dimColor: true, children: ['Consulte README.md e a configuração .claude/test-progress.json.'] }),
       ] : []),
       ...(selectedLogs ? [
         Text({ children: [' '] }), Text({ bold: true, children: [`LOGS · ${selectedLogs} · últimas 12 linhas`] }),
         ...logTail.slice(-12).map((line) => Text({ wrap: 'truncate', children: [line] })),
-        Button({ key: 'hide-logs', label: 'Ocultar logs', plain: true, onPress: () => {
+        Button({ key: 'hide-logs', label: '× Ocultar logs', plain: true, onPress: () => {
           selectedLogs = ''; logTail = []; $.ui.invalidate('ui.render');
         } }),
       ] : []),
-      Text({ children: [' '] }),
-      Text({ dimColor: true, children: ['% = resolvidos / conhecidos; total parcial pode crescer.'] }),
-      Text({ dimColor: true, children: ['100% não confirma encerramento. Confira status, falhas e exit.'] }),
     ] });
   });
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const existing = await next(e);
-    if (e.props?.hasSurvey || !LANES.some((lane) => lanes[lane])) return existing;
+    const visible = visibleLanes().filter(lane => lanes[lane]);
+    if (e.props?.hasSurvey || !visible.length) return existing;
     const { Box, Text } = $.ui.resolve(e);
     return Box({ flexDirection: 'column', children: [
       ...(existing ? [existing] : []),
-      Text({ dimColor: true, children: [LANES.map((lane) => shortSummary(lane, lanes[lane])).join(' | ')] }),
+      Text({ dimColor: true, children: [visible.map((lane) => shortSummary(lane, lanes[lane])).join(' | ')] }),
     ] });
   });
 }

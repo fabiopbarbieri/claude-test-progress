@@ -6,6 +6,7 @@ export class Progress {
     this.scopes = new Map();
     this.reporterSeen = false;
     this.currentClass = null;
+    this.mavenInvocation = 0;
     this.kind = null;
     this.phase = 'no-progress-observed';
   }
@@ -39,6 +40,14 @@ export class Progress {
     }
     if (this.reporterSeen || this.adapter === 'events') return false;
     if (this.adapter === 'auto' || this.adapter === 'maven') {
+      // A goal banner identifies a new module/execution, even when its FQCNs
+      // appeared earlier. The final reactor aggregate has no class identity.
+      if (/---\s+[^\s]+:[^\s]+.*\s@\s+[^\s]+\s+---/.test(clean)) {
+        this.mavenInvocation += 1;
+        this.currentClass = null;
+        return false;
+      }
+      if (/^\s*(?:\[INFO\]\s*)?Results:/.test(clean)) this.currentClass = null;
       const running = clean.match(/(?:\[INFO\]\s*)?Running\s+([\w.$]+)/);
       if (running) {
         this.currentClass = running[1];
@@ -54,7 +63,7 @@ export class Progress {
         const [total, failures, errors, skipped] = summary.slice(1).map(Number);
         const failed = failures + errors;
         if (failed + skipped > total) return false;
-        this.scopes.set(className, { total, resolved: total, passed: total - failed - skipped,
+        this.scopes.set(`${this.mavenInvocation}:${className}`, { total, resolved: total, passed: total - failed - skipped,
           failed, skipped, final: true, totalStable: false });
         this.currentClass = null;
         this.kind = 'maven';

@@ -9,11 +9,13 @@ import { groupState, killOwnedOrphan } from './process-identity.mjs';
 import { randomUUID, removePath, mergeEnvironment } from './runtime.mjs';
 import { frontendRuntime } from './frontend-runtime.mjs';
 import { windowsCommand } from './windows-shell.mjs';
+import { inspectWorkspace } from './workspace.mjs';
 
 const runnerDirectory = path.dirname(fileURLToPath(import.meta.url));
 const collectorRuntime = { path: process.execPath, version: process.version,
   source: process.env.TEST_PROGRESS_NODE_SOURCE || 'direct' };
 let context;
+let workspace;
 function argumentsOf(argv) {
   const action = argv[0];
   if (!['start', 'status', 'cancel', 'logs', 'demo'].includes(action)) {
@@ -33,13 +35,14 @@ function argumentsOf(argv) {
   if (!['all', ...LANES].includes(lane)) throw new Error('--lane precisa ser backend, frontend ou all');
   return { action, options, lanes: lane === 'all' ? LANES : [lane] };
 }
-function configuration(cwd, requestedPath, lanes) {
-  const configPath = path.resolve(cwd, requestedPath ?? '.claude/test-progress.json');
-  const config = readJson(configPath);
-  if (!config) throw new Error(`Configuração ausente: ${configPath}`);
-  if ((config.schemaVersion ?? config.schema) !== 1) throw new Error('A configuração precisa declarar schemaVersion: 1');
+function configuration(cwd, inspection, lanes) {
+  const { config, metadata } = inspection;
+  if (!config) throw new Error(metadata.error ?? 'Configuração ausente: crie .claude/test-progress.json neste workspace.');
+  if (!lanes.length) throw new Error('Nenhuma suíte habilitada na configuração deste workspace.');
   return Object.fromEntries(lanes.map((lane) => {
     const item = config[lane];
+    if (item === false || item?.enabled === false) throw new Error(`A suíte ${lane} está desativada neste workspace.`);
+    if (item?.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`enabled precisa ser booleano em ${lane}`);
     if (!item || !Array.isArray(item.command) || !item.command.length ||
         item.command.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || !item.command[0]) {
       throw new Error(`command precisa ser uma lista de argumentos em ${lane}`);
@@ -52,11 +55,16 @@ function configuration(cwd, requestedPath, lanes) {
     const workingDirectory = fs.realpathSync(path.resolve(cwd, item.cwd ?? '.'));
     if (!fs.statSync(workingDirectory).isDirectory()) throw new Error(`cwd não é diretório em ${lane}`);
     const environment = item.env ?? {};
+    if (item.language !== undefined && (typeof item.language !== 'string' ||
+        !item.language.trim() || item.language.length > 40 || /[\x00-\x1f\x7f-\x9f]/.test(item.language))) {
+      throw new Error(`language precisa ser um nome de até 40 caracteres em ${lane}`);
+    }
     if (!environment || Array.isArray(environment) || typeof environment !== 'object' ||
         Object.entries(environment).some(([key, value]) => !key || key.includes('=') || key.includes('\0') ||
           typeof value !== 'string' || value.includes('\0'))) throw new Error(`env inválido em ${lane}`);
     const runtime = lane === 'frontend' ? frontendRuntime(workingDirectory, environment, item.command) : { env: environment };
-    return [lane, { command: item.command, cwd: workingDirectory, adapter, ...runtime }];
+    return [lane, { command: item.command, cwd: workingDirectory, adapter,
+      ...(item.language ? { language: item.language.trim() } : {}), ...runtime }];
   }));
 }
 async function start(context, lane, config, source, codeRevision, runId) {
@@ -69,9 +77,10 @@ async function start(context, lane, config, source, codeRevision, runId) {
       totalStable: false, percent: null, progressObserved: false,
       startedAt: timestamp(), updatedAt: timestamp(), endedAt: null, exitCode: null,
       heartbeatAt: null, lastOutputAt: null, lastProgressAt: null,
-      pid: null, workerPid: null, command: config.command, cwd: config.cwd,
+      pid: null, workerPid: null, command: config.command, cwd: config.cwd, adapter: config.adapter,
       logPath: path.join(context.directory, `${lane}.${runId}.log`), revision: codeRevision,
       collectorRuntime,
+      ...(config.language ? { language: config.language } : {}),
       ...(config.nodeRuntime ? { nodeRuntime: config.nodeRuntime } : {}),
     };
     atomicJson(locations.snapshot, snapshot);
@@ -150,14 +159,17 @@ function logs(context, lanes) {
 async function main() {
   try {
     if (Number(process.versions.node.split('.')[0]) < 14) throw new Error('Node.js 14.0.0 ou superior é necessário');
-    const { action, options, lanes } = argumentsOf(process.argv.slice(2));
+    const { action, options, lanes: requestedLanes } = argumentsOf(process.argv.slice(2));
     context = namespace(options['--cwd'], options['--owner']);
+    const inspection = inspectWorkspace(context.cwd, options['--config']);
+    workspace = inspection.metadata;
+    const lanes = action === 'start' && (options['--lane'] ?? 'all') === 'all' ? workspace.configuredLanes : requestedLanes;
     let state;
     if (action === 'start' || action === 'demo') {
       const config = action === 'demo' ? Object.fromEntries(lanes.map((lane) => [lane, {
         command: [process.execPath, path.join(runnerDirectory, 'demo.mjs'), lane],
         cwd: context.cwd, adapter: 'events', env: {},
-      }])) : configuration(context.cwd, options['--config'], lanes);
+      }])) : configuration(context.cwd, inspection, lanes);
       const revisionByCwd = new Map();
       for (const lane of lanes) {
         if (process.platform === 'win32') {
@@ -194,12 +206,12 @@ async function main() {
     } else if (action === 'cancel') state = await cancel(context, lanes);
     else if (action === 'logs') state = logs(context, lanes);
     else state = snapshots(context.directory);
-    process.stdout.write(`${JSON.stringify({ schema: 1, ok: true, lanes: state })}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: 1, ok: true, workspace, lanes: state })}\n`);
   } catch (error) {
     let lanes = { backend: null, frontend: null };
     try { if (context) lanes = snapshots(context.directory); } catch { /* Keep the original error. */ }
     process.stderr.write(`test-progress: ${error.message}\n`);
-    process.stdout.write(`${JSON.stringify({ schema: 1, ok: false, lanes, error: error.message })}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: 1, ok: false, workspace, lanes, error: error.message })}\n`);
     process.exitCode = 1;
   }
 }
