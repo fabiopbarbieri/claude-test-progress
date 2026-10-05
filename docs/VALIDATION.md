@@ -39,6 +39,17 @@ identificar o comando e `ENOENT`, sem inventar testes ou validar a configuraçã
 inválida da lane não selecionada. É uma prova Linux do núcleo via CLI Node;
 não elimina Bash do bootstrap Unix nem PowerShell do Windows.
 
+O gate `scripts/check-karma.py` requer somente as ferramentas da suíte Angular
+selecionada: Node do coletor, Node do aplicativo e Chrome. Ele instala a fixture
+com lockfile em diretório temporário, sem alterar manifests do plugin. No cenário
+de cancelamento, o transporte polling é explícito: o
+[cliente oficial do Karma](https://github.com/karma-runner/karma/blob/v6.4.4/client/karma.js)
+pode acumular 50 resultados antes do upgrade para WebSocket. A fixture executa
+50 testes reais de TestBed e deixa o 51º pendente; o gate exige `cancelled`,
+50/51, nenhuma falha e `totalStable: false`. Assim, um término completo antes
+do cancelamento falha no check. Os cenários normais preservam os transportes
+padrão e seus resultados originais.
+
 `workspace.mjs` inicia e cancela comandos Node reais em projetos com somente
 backend ou somente frontend. `start --lane all` inicia apenas as suítes habilitadas
 em `.claude/test-progress.json`; uma suíte omitida, `null`, `false` ou com

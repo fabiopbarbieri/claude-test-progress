@@ -2,6 +2,8 @@
 module.exports = function (config) {
   const enabled = process.env.FIXTURE_REPORTER !== 'off'
   config.set({
+    // Exercise the buffered transport deterministically in the cancellation gate.
+    ...(process.env.FIXTURE_MODE === 'slow' ? { transports: ['polling'] } : {}),
     frameworks: ['jasmine', '@angular-devkit/build-angular'],
     plugins: [require('karma-jasmine'), require('karma-chrome-launcher'),
       require('@angular-devkit/build-angular/plugins/karma'), require('./reporter.cjs')],

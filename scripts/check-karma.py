@@ -76,9 +76,11 @@ def main():
         assert job['nodeRuntime']['source'] == 'nvmrc-path', job
         print('Collector aggregates browser results using the app .nvmrc: OK', flush=True)
 
+        # The fixture flushes Karma's 50-result polling buffer, then leaves one
+        # real Jasmine spec pending. Never accept cancellation after all tests.
         collector(args.node, app, ['node'] + command[1:],
-                  {'status': 'cancelled', 'resolved': 1, 'passed': 1,
-                   'failed': 0, 'totalStable': False}, lane='frontend',
+                  {'status': 'cancelled', 'total': 51, 'resolved': 50, 'passed': 50,
+                   'failed': 0, 'skipped': 0, 'totalStable': False}, lane='frontend',
                   env=dict(overrides, FIXTURE_MODE='slow'), cancel=True, timeout=300)
         print('Browser cancellation preserves partial results: OK', flush=True)
 
