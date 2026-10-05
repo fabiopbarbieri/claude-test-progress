@@ -36,6 +36,14 @@ paralelo com substituições atômicas Node e exige JSON completo e ausência de
 erros de compartilhamento. A compilação C# 5 e os checks Linux passaram após
 essa alteração; a matriz nativa seguinte determina seu resultado Windows.
 
+O stress nativo de `0c7edd8` reproduziu `EPERM` nas substituições mesmo com
+compartilhamento de exclusão. `atomicJson` agora repete somente erros transitórios
+de compartilhamento Windows por até 300 ms, autentica pai/leaf a cada tentativa
+e mantém o registro anterior inteiro se o bloqueio persistir. A regressão no
+Node 14 cobre sucesso posterior, falha limitada, limpeza do temporário e recusa
+de destino substituído por link durante a repetição; os cenários simulados não
+substituem o stress Windows real.
+
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
 Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório

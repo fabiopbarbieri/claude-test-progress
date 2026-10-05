@@ -12,6 +12,38 @@ try {
   const originalValue = { schemaVersion: 2, moduleId: 'replacement', runId: randomUUID(), status: 'running', heartbeatAt: '2026-01-01T00:00:00.000Z' };
   const replacementValue = { ...originalValue, heartbeatAt: '2026-01-01T00:00:05.000Z' };
   atomicJson(replacementFile, originalValue);
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const originalRename = fs.renameSync;
+  Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+  try {
+    let attempts = 0;
+    fs.renameSync = function(from, to) {
+      if (to === replacementFile && ++attempts <= 3) throw Object.assign(new Error('Transient sharing violation'), { code: 'EPERM' });
+      return originalRename(from, to);
+    };
+    atomicJson(replacementFile, replacementValue);
+    assert.strictEqual(attempts, 4);
+    assert.deepStrictEqual(readJson(replacementFile), replacementValue, 'Sharing retries publish the complete new record');
+    attempts = 0;
+    fs.renameSync = function() { attempts++; throw Object.assign(new Error('Persistent sharing violation'), { code: 'EPERM' }); };
+    const started = Date.now();
+    assert.throws(() => atomicJson(replacementFile, originalValue), /Persistent sharing/);
+    assert(attempts > 1 && Date.now() - started < 1500, 'Persistent sharing failure must remain bounded');
+    assert.deepStrictEqual(readJson(replacementFile), replacementValue, 'Failure preserves the previous complete record');
+    assert(!fs.readdirSync(context.directory).some(name => name.endsWith('.tmp')), 'Failed writes must remove only their own temporary file');
+    const substituted = path.join(cwd, 'outside-retry.json');
+    fs.writeFileSync(substituted, JSON.stringify({ outside: true }));
+    fs.renameSync = function(from, to) {
+      fs.unlinkSync(to);
+      fs.symlinkSync(substituted, to);
+      throw Object.assign(new Error('Sharing violation during substitution'), { code: 'EPERM' });
+    };
+    assert.throws(() => atomicJson(replacementFile, originalValue), /inseguro|Link/,
+      'Each sharing retry must authenticate the destination again');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(substituted, 'utf8')), { outside: true });
+    fs.unlinkSync(replacementFile);
+  } finally { fs.renameSync = originalRename; Object.defineProperty(process, 'platform', originalPlatform); }
+  atomicJson(replacementFile, originalValue);
   const originalOpen = fs.openSync;
   let atomicReplacement = false;
   fs.openSync = function(target, ...args) {

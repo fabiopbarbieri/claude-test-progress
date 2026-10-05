@@ -68,7 +68,21 @@ export function atomicJson(file, value) {
   securePath(file, false, true);
   const temporary = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' });
-  try { securePath(file, false, true); fs.renameSync(temporary, file); }
+  try {
+    const retryUntil = Date.now() + 300;
+    const wait = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
+    for (;;) {
+      securePath(path.dirname(file), true);
+      securePath(file, false, true);
+      try { fs.renameSync(temporary, file); break; }
+      catch (error) {
+        // Windows metadata readers and scanners can briefly prevent replacement
+        // even with delete sharing. Preserve the old complete record while retrying.
+        if (!wait || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || Date.now() >= retryUntil) throw error;
+        Atomics.wait(wait, 0, 0, 5);
+      }
+    }
+  }
   finally { removePath(temporary, { force: true }); }
 }
 function privateDirectory(directory) {
