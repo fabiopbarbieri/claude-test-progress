@@ -173,7 +173,8 @@ function logs(target, state) {
     try {
       const expected = path.join(context.directory, `${moduleId}.${snapshot.runId}.log`);
       if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
-      const contents = readPrivate(expected, 2 * 1024 * 1024) || '';
+      // The tail keeps 40 lines of at most 4096 characters; 256 KiB of bytes covers them.
+      const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
       const clean = contents.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
         .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
       state.jobs[moduleId] = { ...snapshot, logTail: clean ? clean.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096)) : [] };

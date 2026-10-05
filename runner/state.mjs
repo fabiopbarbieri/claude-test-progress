@@ -34,7 +34,8 @@ export function securePath(file, directory = false, absent = false) {
     return info;
   }
 }
-export function readPrivate(file, limit = 1024 * 1024) {
+// tail > 0 reads at most the file's last `tail` bytes, starting at a line boundary.
+export function readPrivate(file, limit = 1024 * 1024, { tail = 0 } = {}) {
   const noFollow = fs.constants.O_NOFOLLOW || 0;
   for (let attempt = 0; attempt < 8; attempt++) {
     const info = securePath(file, false, true);
@@ -55,15 +56,18 @@ export function readPrivate(file, limit = 1024 * 1024) {
       // current leaf on every platform, covering transient parent substitutions.
       // A concurrent regular replacement is retried, never compared to old lstat.
       if (opened.dev !== current.dev || opened.ino !== current.ino) continue;
-      const buffer = Buffer.alloc(limit + 1);
+      const start = tail > 0 ? Math.max(0, opened.size - tail) : 0;
+      const buffer = Buffer.alloc(tail > 0 ? Math.min(tail, limit) + 1 : limit + 1);
       let length = 0;
       while (length < buffer.length) {
-        const count = fs.readSync(fd, buffer, length, buffer.length - length, null);
+        const count = fs.readSync(fd, buffer, length, buffer.length - length, start + length);
         if (!count) break;
         length += count;
       }
-      if (length > limit) throw new Error('Arquivo de estado excede o limite durante leitura');
-      return buffer.subarray(0, length).toString('utf8');
+      if (start + length > limit) throw new Error('Arquivo de estado excede o limite durante leitura');
+      // Cut on the byte level so a partial first line never leaves a broken UTF-8 sequence.
+      const first = start > 0 ? buffer.indexOf(10) + 1 : 0;
+      return buffer.subarray(first > 0 && first <= length ? first : 0, length).toString('utf8');
     } finally { fs.closeSync(fd); }
   }
   throw Object.assign(new Error('Não foi possível autenticar o arquivo de estado após novas tentativas'), { code: 'ESTATECHANGED' });

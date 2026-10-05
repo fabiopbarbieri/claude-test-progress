@@ -42,7 +42,10 @@ function compensate(reason) {
 let killTimer;
 let poll;
 let lastPersistedAt = 0;
+let progressPending = false;
 const heartbeatIntervalMs = 5000;
+// Fast suites report many results per second; coalesce them into a few snapshot writes.
+const progressIntervalMs = 250;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
 const buffers = { stdout: '', stderr: '' };
@@ -58,6 +61,7 @@ function persist(overrides = {}) {
   if (cancelling && !ended) snapshot.phase = 'cancellation-requested';
   updateSnapshot(job.directory, job.moduleId, job.runId, () => snapshot);
   lastPersistedAt = Date.now();
+  progressPending = false;
 }
 function log(text) {
   fs.appendFileSync(snapshot.logPath, text, { mode: 0o600 });
@@ -82,7 +86,8 @@ function consume(stream, chunk) {
   for (const line of lines) changed = progress.line(line) || changed;
   if (changed) {
     snapshot.lastProgressAt = timestamp();
-    persist();
+    if (Date.now() - lastPersistedAt >= progressIntervalMs) persist();
+    else progressPending = true;
   }
 }
 function terminate(signal) {
@@ -292,7 +297,7 @@ if (cancelling) {
     poll = setInterval(() => {
       checkCancellation();
       // Silence is not failure: record worker activity without inventing test progress.
-      if (!ended && Date.now() - lastPersistedAt >= heartbeatIntervalMs) persist();
+      if (!ended && (progressPending || Date.now() - lastPersistedAt >= heartbeatIntervalMs)) persist();
     }, 150);
     persist();
   } catch (error) {
