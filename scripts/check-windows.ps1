@@ -26,6 +26,11 @@ try {
     $env:TEST_PROGRESS_POWERSHELL = $engine
     $env:TEST_PROGRESS_PROJECT_NODE = (Resolve-Path -LiteralPath $ProjectNode).ProviderPath
     Write-Output ('Native Windows gate; PowerShell ' + $PSVersionTable.PSVersion.ToString())
+    # Measure the same fresh-process Add-Type/PInvoke path used by the collector.
+    $probe = [Diagnostics.Stopwatch]::StartNew()
+    $identity = & $engine -NoLogo -NoProfile -NonInteractive -File (Join-Path $root 'runtime/windows-process.ps1') -Action Identity -ProcessId $PID
+    if ($LASTEXITCODE -ne 0 -or -not (($identity | ConvertFrom-Json).owner)) { throw 'Native process identity probe failed.' }
+    Write-Output ('Fresh PowerShell control startup: ' + $probe.ElapsedMilliseconds + ' ms')
     & $env:TEST_PROGRESS_NODE (Join-Path $root 'tests/windows/native.mjs')
     if ($LASTEXITCODE -ne 0) { throw 'Native Windows modules gate failed.' }
 } finally {

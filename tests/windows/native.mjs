@@ -60,9 +60,17 @@ async function waitFor(predicate, timeout = 45000) {
   while (Date.now() < deadline) {
     last = collect('status');
     if (predicate(last)) return last;
+    if (Object.values(last.jobs).some(job => job.status === 'error')) break;
     await sleep(100);
   }
-  throw new Error(`Native Windows timeout; statuses: ${JSON.stringify(Object.keys(last.jobs).map(id => [id, last.jobs[id].status]))}`);
+  const diagnostics = Object.keys(last.jobs).map(id => {
+    const job = last.jobs[id];
+    const logs = collect('logs', id);
+    return { id, status: job.status, phase: job.phase, error: job.error,
+      exitCode: job.exitCode, log: logs.jobs[id]?.logTail };
+  });
+  const detail = JSON.stringify(diagnostics).split(app).join('<fixture>').split(context.directory).join('<private-state>');
+  throw new Error(`Native Windows did not reach the expected state: ${detail}`);
 }
 function captureTree(id, job) {
   const proof = windowsProof(jobFile(context.directory, id, job.runId), job.runId, job.pid);
