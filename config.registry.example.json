@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "templates": {
+    "jvm-tests": {
+      "language": "JVM",
+      "command": [
+        "mvn",
+        "test"
+      ],
+      "adapter": "maven",
+      "runtime": "inherit"
+    },
+    "karma-tests": {
+      "language": "TypeScript",
+      "command": [
+        "node",
+        "./node_modules/@angular/cli/bin/ng",
+        "test",
+        "--watch=false"
+      ],
+      "adapter": "karma",
+      "runtime": "node-project"
+    }
+  }
+}

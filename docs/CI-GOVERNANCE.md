@@ -1,11 +1,11 @@
 # CI e governança
 
-Estado registrado em 04/10/2026 para o repositório público pessoal
+Estado histórico registrado em 04/10/2026 para o repositório público pessoal
 `fabiopbarbieri/claude-test-progress`, branch `main`. A proteção descrita abaixo
 foi ativada pela API do GitHub. As sugestões de evolução do CI continuam sendo
 propostas. Evidências complementares estão em [VERIFICATION.md](VERIFICATION.md).
 
-## Baseline observado
+## Baseline histórico observado
 
 O [primeiro run Quality](https://github.com/fabiopbarbieri/claude-test-progress/actions/runs/37236035815)
 passou no commit `9c1cafe0606852a6a47ffd90eb6b8dbab187643d`, com estes checks:
@@ -32,9 +32,9 @@ Instalações pelos marketplaces local e remoto passaram com Claude Code
 2.1.289. A demo local foi observada no host headless. Isso não comprova pintura
 do painel, comportamento Windows ou testes pelo harness oficial do Mod.
 
-## Gaps e evolução proposta
+## Gaps naquele baseline e evolução proposta
 
-**Comprovado:** o workflow atual não executa Windows, JUnit, Karma nem os hooks
+**Comprovado naquele baseline:** o workflow então disponível não executa Windows, JUnit, Karma nem os hooks
 no harness do Mod. PowerShell/C# não são validados pelo check estático;
 XML válido não prova compilação Java.
 
@@ -133,3 +133,20 @@ restringe merge. Não exigir aprovação do único owner nas próprias PRs.
 Preservar `pull_request` sem secrets em runners hospedados. Não executar código
 de forks em `pull_request_target`; manter pins SHA e revisar atualizações.
 [Segurança de Actions](https://docs.github.com/en/actions/reference/security/secure-use).
+
+## Refactor de módulos v2: definições locais
+
+Em 05/10/2026, esta branch preparou gates para o contrato v2: Quality executa
+cadastro/estado/lotes/rollback e smoke Python; Mod valida estritamente diretório
+e manifest antes do test kit; [Windows](../.github/workflows/windows.yml) usa
+PowerShell 5.1/7, collector Node14/24 e app Node12 separados.
+
+O checkout Quality traz histórico completo para extrair o artefato main anterior
+no teste quiescente de rollback. Os jobs continuam com token read-only, actions
+pinadas e sem credenciais persistidas. Lint local dos workflows não comprova CI
+remoto. Não houve push, execução remota desta alteração ou modificação dos
+rulesets. Windows será disponibilizado posteriormente pelo usuário.
+
+Resultados locais e limites: [VALIDATION.md](VALIDATION.md). Reconsultar rulesets
+e checks no SHA exato antes de uma integração futura; o estado histórico acima
+não foi revalidado nesta entrega.

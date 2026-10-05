@@ -20,8 +20,16 @@ export function processIdentity(pid) {
     return { ...identity, bootId: bootId() };
   } catch { return null; }
 }
+export function validProcessIdentity(identity) {
+  if (!identity || !Number.isInteger(identity.pid) || identity.pid <= 0) return false;
+  if (process.platform === 'win32') return identity.platform === 'win32' && typeof identity.startTime === 'string' &&
+    /^\d+$/.test(identity.startTime) && typeof identity.owner === 'string' && /^S-\d+(?:-\d+)+$/.test(identity.owner);
+  return process.platform === 'linux' && Number.isInteger(identity.group) && identity.group > 0 &&
+    Number.isInteger(identity.uid) && identity.uid >= 0 && typeof identity.startTime === 'string' && /^\d+$/.test(identity.startTime) &&
+    typeof identity.bootId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(identity.bootId);
+}
 export function sameProcess(identity) {
-  if (!identity) return false;
+  if (!validProcessIdentity(identity)) return false;
   if (process.platform === 'win32') return windowsSameProcess(identity);
   const current = processIdentity(identity.pid);
   return Boolean(current && current.state !== 'Z' && current.startTime === identity.startTime &&
@@ -29,7 +37,7 @@ export function sameProcess(identity) {
 }
 export function groupState(identity) {
   if (process.platform === 'win32') return windowsGroupState(identity);
-  if (!identity || process.platform !== 'linux') return 'unknown';
+  if (!validProcessIdentity(identity) || process.platform !== 'linux') return 'unknown';
   try {
     if (bootId() !== identity.bootId) return 'empty';
     for (const entry of fs.readdirSync('/proc')) {
@@ -46,14 +54,14 @@ export function groupState(identity) {
 }
 export function canKillOwnedOrphan(identity) {
   if (process.platform === 'win32') return Boolean(identity?.managedBroker && identity?.contained && windowsSameProcess(identity));
-  return Boolean(identity && identity.pid === identity.group && identity.uid === process.getuid?.() &&
+  return Boolean(validProcessIdentity(identity) && identity.pid === identity.group && identity.uid === process.getuid?.() &&
     sameProcess(identity));
 }
 export function killOwnedOrphan(identity) {
   if (process.platform === 'win32') return windowsKillOwnedBroker(identity);
   // No PID-only recovery: require the original, same-user group leader to remain identifiable.
   if (!canKillOwnedOrphan(identity)) {
-    throw new Error('Identidade do líder órfão não confirmada; nenhum processo foi sinalizado. A lane continua bloqueada e exige recuperação manual.');
+    throw new Error('Identidade do líder órfão não confirmada; nenhum processo foi sinalizado. O módulo continua bloqueado e exige recuperação manual.');
   }
   try { process.kill(-identity.group, 'SIGKILL'); }
   catch (error) { if (error.code !== 'ESRCH') throw error; }

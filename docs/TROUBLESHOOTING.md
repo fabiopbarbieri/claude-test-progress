@@ -2,97 +2,99 @@
 
 [Início](../README.md) · [Uso](USAGE.md) · [Compatibilidade](COMPATIBILITY.md)
 
-Comece na sessão que iniciou o job. Use `/test-progress status --text` para
-conferir owner, estado e caminhos; consulte os logs da área afetada. Uma falha
-na consulta não significa que o teste parou. Consulte novamente antes de iniciar
-outra execução. Não existe comando `/test-progress doctor` nesta versão.
+Comece na sessão que iniciou o job. Consulte `/test-progress status all --text`
+e os logs do ID afetado. Falha na consulta não comprova que o teste parou;
+consulte novamente antes de outro start. Não existe `/test-progress doctor`.
 
 ## Sintoma, verificação e ação
 
 | Sintoma | Verificação | Ação |
 | --- | --- | --- |
-| `/test-progress` não aparece | `claude --version`; instalação e permissão de Mods no ambiente | Instale conforme o [guia](USAGE.md), use `/reload-plugins` ou reabra a sessão; respeite políticas da organização |
-| Clone/marketplace SSH falha | Confirme acesso ao repositório com `git ls-remote git@github.com:fabiopbarbieri/claude-test-progress.git HEAD` | Configure o acesso SSH GitHub no seu ambiente; não coloque chaves ou tokens em comandos publicados |
-| Painel sem espaço ou indisponível | `/test-progress status --text` | Use o modo textual e confira a versão do Claude; uma falha de layout não prova falha da suíte |
-| Configuração ausente / inválida | Diretório em que a sessão foi aberta; JSON em `.claude/test-progress.json`, `schemaVersion: 1`, argv de strings | Corrija somente a configuração do app conforme [USAGE](USAGE.md); JSON não aceita comentários |
-| `all` falha mas backend funciona | Presença e validade da área frontend | Use `backend` para uma suíte só; `all` exige as duas e prepara Node do frontend |
-| Node frontend ausente ou versão divergente | `.nvmrc` mais próxima do `cwd` da área, subindo os diretórios; runtime selecionado no status | Disponibilize a versão local necessária; prefira argv começando com `node`; não mude a `.nvmrc` só para satisfazer o coletor |
-| Python/Ruby/Rails procura Node no início | Área configurada | Mova essa suíte para backend; frontend ainda prepara Node/.nvmrc, inclusive para um comando Ruby |
-| `ENOENT` / adaptador não encontrado | `/test-progress paths`, `cwd` e executável do app | Use caminho absoluto atual para o adaptador e executável do ambiente correto; após upgrade, ajuste também `require` no Karma |
-| Caminho contém literalmente `${CLAUDE_PLUGIN_ROOT}` ou `~` | Strings em `command` | Substitua por caminho absoluto; o JSON argv não interpola variáveis nem avalia shell |
-| Erro com `.cmd`/`.bat` | Argumentos com controles/expansão de shell | Siga [WINDOWS](../WINDOWS.md); para Angular prefira `node` + entrypoint JS local; não contorne a recusa por concatenação de shell |
-| Estado `error` mesmo com exit 0 | Diagnóstico, `progressObserved` e stdout do comando | Verifique adaptador e modo; `events` exige eventos. No fallback Maven, um resumo agregado sem classe não basta. Exit 0 sozinho não comprova coleta de testes |
-| Total desconhecido ou percentual parcial | Runner e fase | É esperado em Rails durante execução e no fallback Maven; espere os resultados reais, sem inventar total ou cobertura |
-| 100% e ainda `running` | Estado, código de saída e logs recentes | Aguarde teardown/hooks/encerramento; contadores podem terminar antes do processo |
-| Sem novos logs ou contadores | Último heartbeat, última saída e último evento de progresso | Compare sinais: heartbeat só prova atividade do executor. Investigue a suíte ou cancele explicitamente; silêncio não é sucesso |
-| Já existe execução ativa | Owner e status da área | Aguarde ou cancele na sessão responsável; não apague locks nem inicie outra sessão para contornar a proteção |
-| `orphaned-command` / `recoveryRequired` | Diagnóstico de identidade/árvore de processos no status | Solicite `cancel` na mesma área e owner e consulte novamente; se exigir recuperação manual, preserve evidências e não encerre PIDs por suposição |
-| Cancelamento solicitado, mas ainda ativo | `status --text` até sair de `preparing`/`running`, sem recuperação pendente | Aguarde confirmação; Windows termina o Job de forma forçada, Linux usa o grupo de processos. Pedido de cancelamento não é confirmação |
-| `logs all` mostra só backend | Consulte `logs backend` e `logs frontend` separadamente | Nesta versão, `logs all` (e logs sem área) seleciona backend; use uma consulta por área |
-| Estado sumiu em outra sessão | Diretório e owner originais | Outra sessão não adota o job automaticamente; use o owner conhecido no [comando de consulta](USAGE.md#testes-demorados-e-consultas-pelo-claude) |
-| Suíte continua após fechar painel/reload/uninstall | Owner original e estado do coletor | Jobs são detached. Conclua/cancele antes de alterar a instalação; remover o plugin não apaga necessariamente logs fora do cache |
+| Comando não aparece | Claude, instalação e permissão de Mods | Siga [USAGE](USAGE.md), recarregue ou reabra a sessão |
+| SSH do marketplace falha | `git ls-remote git@github.com:fabiopbarbieri/claude-test-progress.git HEAD` | Configure acesso SSH; não publique chaves/tokens |
+| Painel indisponível | `status all --text` | Use texto; falha de layout não comprova falha da suíte |
+| Nenhum módulo | `list`; cwd da sessão; arquivo default | Declare módulos no workspace; registry sozinho não ativa nada |
+| Configuração global inválida | JSON, schemaVersion 2, modules e limite 1 MiB | Corrija o cadastro local; v1/misto/ID inseguro bloqueiam todos os starts |
+| `all` falha mas um ID funciona | Diagnósticos de cada módulo, inclusive declarações malformadas | Corrija ou desative explicitamente o módulo; preflight de all deve passar por inteiro |
+| Template indisponível | `extends`, registry schemaVersion 2 e CLAUDE_CONFIG_DIR absoluto | Corrija a referência/fonte; standalone não depende do registry |
+| Node do app ausente/divergente | runtime, `.nvmrc` próxima do cwd, descriptor selecionado | Disponibilize a versão local; prefira command iniciando por `node`; não altere .nvmrc só para satisfazer o coletor |
+| Python/Ruby/Rails procura Node | `runtime` efetivo, inclusive template | Configure `inherit`; ID/linguagem não selecionam runtime |
+| Executável/adaptador indisponível | PATH efetivo, cwd, paths da instalação | Corrija o primeiro executável e o caminho do adapter; reconsulte paths após upgrade |
+| `${CLAUDE_PLUGIN_ROOT}` ou `~` aparece literalmente | command/env | Use caminho literal correto; JSON não interpola shell |
+| `.cmd`/`.bat` recusado | Argumentos com expansão/controle | Siga [WINDOWS](../WINDOWS.md); prefira Node com entrypoint JS local quando aplicável |
+| Fonte mudou durante início | Edição de workspace/registry após descoberta | Refaça list/preflight; não contorne a revalidação |
+| Estado legado bloqueia ID novo | Diagnóstico do namespace | Use o artefato antigo com cwd/owner originais; confirme quiescência antes da adoção v2 |
+| Erro antes da barreira | Diagnóstico de preparação/reserva | Nenhum comando deve ser liberado; corrija a causa antes de iniciar novamente |
+| Falha de infraestrutura após liberação | Estado do lote, compensação, recoveryRequired | Consulte todos os participantes; mantenha locks sem encerramento comprovado |
+| Um teste falhou e outros continuam | Exit code e progresso de cada módulo | Falha normal não aborta os demais; espere ou cancele explicitamente |
+| `error` com exit 0 | progressObserved, adapter e stdout | Confira eventos; resumo Maven agregado sem classe não basta para progresso reconhecido |
+| Total desconhecido/parcial | Runner/fase | Esperado no Rails/Maven durante execução; não invente total/cobertura |
+| 100% ainda ativo | Estado, exit code, logs | Espere teardown/hooks/encerramento; contadores podem concluir primeiro |
+| Sem logs/contadores novos | Heartbeat, última saída e último progresso | Atividade do executor não prova avanço; investigue a suíte ou cancele |
+| Lock ocupado | Owner e job do mesmo ID | Espere/cancele na sessão responsável; não apague locks |
+| Job sem módulo no catálogo | Config removida ou ID desativado | Status/logs/cancel permanecem disponíveis para o job v2 autenticado |
+| `orphaned-command` / recoveryRequired | Diagnóstico de identidade/árvore | Peça cancel no mesmo ID/owner; preserve evidência se recuperação manual for necessária |
+| Cancel solicitado ainda ativo | Status até término seguro | Pedido não é confirmação; no Windows o Job é terminado, no Linux usa-se o grupo |
+| Estado sumiu em nova sessão | Cwd canônico e owner originais | A sessão nova não adota outro owner; consulte o owner conhecido |
+| Start passou de 60 s | Status do lote e participantes | Não presuma que parou nem inicie novamente sem consultar |
+| Suíte continua após reload/uninstall | Owner/estado original | Jobs são detached; encerre-os antes de trocar a instalação |
+
+Preparação tem limite de 30 s, confirmação de lançamento 10 s e aborto 10 s.
+São limites do início, separados de qualquer duração de teste. A suíte não tem
+deadline. Logs/status/cancel não dependem de configuração de execução válida.
 
 ## Reprodução mínima sem aplicação privada
 
-Primeiro, em uma sessão sem jobs ativos, execute:
+Em um diretório temporário novo, crie `.claude/test-progress.json` com um módulo
+finito que emite um evento sintético; isso testa o coletor, sem comprovar o runner
+real nem o aceite visual:
 
-```text
-/test-progress help
-/test-progress paths
-/test-progress demo all --text
-/test-progress status --text
-/test-progress logs backend --text
-/test-progress logs frontend --text
+```json
+{
+  "schemaVersion": 2,
+  "modules": {
+    "probe": {
+      "command": ["node", "-e", "console.log('@@TEST_PROGRESS@@'+JSON.stringify({scope:'synthetic',total:1,resolved:1,passed:1,failed:0,skipped:0,final:true,totalStable:true}));"],
+      "runtime": "inherit",
+      "adapter": "events"
+    }
+  }
+}
 ```
 
-Repita status até ambas as áreas terminarem: backend **8/8, 7 passaram, 1 falhou,
-exit 1**; frontend **12/12, 11 passaram, 1 ignorado, exit 0**. A falha do backend
-é deliberada. Isso verifica o caminho da demo; não prova seu runner nem a UI.
-
-Para isolar o coletor do Claude em Linux, use um checkout do plugin e um diretório
-temporário sem configurações reais. Substitua o caminho absoluto no exemplo:
+Com Node do ambiente disponível no PATH, pelo terminal Linux:
 
 ```bash
-repro_dir=$(mktemp -d -t test-progress-repro-XXXXXX)
-node /caminho/absoluto/claude-test-progress/runner/cli.mjs demo \
-  --cwd "$repro_dir" --owner docs-demo --lane all
+node /caminho/absoluto/claude-test-progress/runner/cli.mjs list \
+  --cwd /caminho/absoluto/da/reproducao --owner docs-probe --module all
+node /caminho/absoluto/claude-test-progress/runner/cli.mjs start \
+  --cwd /caminho/absoluto/da/reproducao --owner docs-probe --module probe
 node /caminho/absoluto/claude-test-progress/runner/cli.mjs status \
-  --cwd "$repro_dir" --owner docs-demo --lane all
+  --cwd /caminho/absoluto/da/reproducao --owner docs-probe --module all
 ```
 
-Reutilize o mesmo `repro_dir` e owner nas consultas. O diretório temporário novo
-isola o namespace de outras sessões. Para interromper **essa reprodução**:
+Reutilize cwd e owner até confirmar `completed`, 1/1, exit 0 e ausência de
+recuperação pendente. Se necessário, use `cancel --module probe` e consulte de
+novo. Não apague estado antes da confirmação. A CLI oferece
+`start/list/status/logs/cancel`; help/paths/--text pertencem ao Mod. Não há demo,
+atalhos de início por ID, --lane ou gerenciamento de jobs v1 no produto v2.
 
-```bash
-node /caminho/absoluto/claude-test-progress/runner/cli.mjs cancel \
-  --cwd "$repro_dir" --owner docs-demo --lane all
-node /caminho/absoluto/claude-test-progress/runner/cli.mjs status \
-  --cwd "$repro_dir" --owner docs-demo --lane all
-```
-
-Confirme o estado terminal, sem `recoveryRequired`, antes de limpar os arquivos
-da reprodução. Em `error`, exit code pode ser desconhecido: informe isso, sem
-classificar como sucesso. A CLI do coletor oferece `start/status/logs/cancel/demo`;
-`help/paths/--text` são comandos/opções do Mod, não dessa CLI.
-
-Se a demo funciona, reduza a configuração para **uma área e um teste sintético**
-da linguagem afetada. Execute primeiro o comando nativo no mesmo `cwd` e ambiente,
-depois o wrapper do [adaptador](../adapters/README.md), por fim o coletor. Compare
-contadores e código de saída. Não tente instalar todas as suítes para investigar
-um problema isolado. Prefira comandos finitos, sem watch.
+Se a reprodução funciona, reduza o app a um módulo e um teste da linguagem
+afetada. Execute o comando nativo no mesmo cwd/ambiente, depois o wrapper do
+[adapter](../adapters/README.md), por fim o coletor. Compare contadores e exit
+code. Prefira comandos finitos, sem watch; não instale todas as suítes para
+investigar um problema isolado.
 
 ## Informações úteis para uma issue
 
-Informe sistema operacional, versão do Claude (`claude --version`), Node do
-coletor, runtime/runner do app e versão ou SHA do plugin. Descreva a área, comando
-com argumentos sintéticos, resultado esperado, resultado observado, estado final
-e exit code (ou sua ausência). Inclua passos mínimos e indique se o problema
-ocorre no comando nativo, no adaptador, no coletor ou somente no painel.
+Informe sistema, versão do Claude/Node do coletor, runtime/runner do app e SHA
+ou versão do plugin. Descreva ID, argumentos sintéticos, resultado esperado,
+resultado observado, estado final e exit code ou sua ausência. Indique se o
+problema ocorre no runner, adapter, coletor ou painel. Distingua gate estático,
+comportamento Linux, execução Windows nativa e aceite visual.
 
-Use apenas um trecho pequeno e **revisado** de `logs backend`/`logs frontend` ou
-do arquivo indicado por `logPath`. A cauda local é limitada a aproximadamente
-1 MiB; relatório completo do runner pode ficar em outro lugar. Não publique
-dumps de ambiente, arquivos de configuração reais, tokens, cookies, dados de
-testes privados, caminhos pessoais ou capturas autenticadas. Troque esses dados
-por nomes públicos e sintéticos, preservando a estrutura necessária à reprodução.
-Para suspeita de vulnerabilidade, siga [SECURITY](../SECURITY.md).
+Publique só trechos pequenos e revisados de logs. A cauda local tem cerca de
+1 MiB; o runner pode guardar relatório completo em outro lugar. Não publique
+env, configs reais, tokens, cookies, dados privados, caminhos pessoais ou
+capturas autenticadas. Use valores públicos sintéticos, preservando a estrutura
+necessária à reprodução. Para vulnerabilidades, siga [SECURITY](../SECURITY.md).

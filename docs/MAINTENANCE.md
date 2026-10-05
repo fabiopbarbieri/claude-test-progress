@@ -3,9 +3,30 @@
 `claude-test-progress` ships the `test-progress` plugin without installing test
 frameworks into the user's application. The collector still supports Node
 **14.0.0 and newer**. Files under `tests/dependencies/` are CI fixture inputs,
-not plugin runtime dependencies.
+not plugin runtime dependencies. The active product is **v2 only**: workspace
+and optional registry use `schemaVersion: 2`, with zero or multiple modules
+identified by safe IDs. Only workspace declarations activate modules. Runtime
+is explicit (`inherit` or `node-project`), independent of ID or language;
+`command` and `env` replace whole template fields.
 
-## Automated coverage
+Use `start/list/status/logs/cancel` with `--module id|all` in the collector CLI,
+`-Module` in its PowerShell bootstrap, and explicit verbs in `/test-progress`.
+There is no demo, lane option, shorthand start, v1 conversion or v1 job manager.
+Discovery is read-only for configuration, does not execute app resolvers, and
+publishes neither command nor env. See [USAGE](USAGE.md) for registry location,
+the 1 MiB source limit and CLI-only `--config` scope.
+
+Before adopting v2, finish or cancel old jobs with the **old artifact that
+started them**, using their original cwd/owner. Confirm quiescence and preserve
+legacy evidence. Legacy state blocks new starts globally; changing an ID does
+not bypass it. The v2 runtime cannot manage old jobs or demos.
+
+Historical CI results in [COMPATIBILITY](COMPATIBILITY.md) are tied to
+`cc9c0aa710fa80d123c00856ec277b8f04741544`, not this v2 working tree. Workflow
+configuration below describes intended coverage; it does not claim a new
+hosted run passed. Current local results belong in [VALIDATION](VALIDATION.md).
+
+## Configured update coverage
 
 [Dependabot configuration](../.github/dependabot.yml) checks on Mondays at
 09:00 America/Sao_Paulo. Each of its five update entries allows three open
@@ -48,8 +69,8 @@ still has no runtime dependencies. npm locks are generated with the app runtime
 and must pass a fresh `npm ci`; the Angular 9 fixture uses npm 6 lock format.
 Gitleaks download URLs/checksums, Claude CLI versions, Node/Python/Ruby version
 selectors, Bundler's workflow version and runner images are **manual upkeep**.
-The adapter workflow below supplies Java/browser execution evidence separately
-from Dependabot. An installed Selenium gem does not prove a Rails browser test
+The adapter workflow below defines Java/browser execution gates separately
+from Dependabot; record actual results and the tested SHA before claiming acceptance. An installed Selenium gem does not prove a Rails browser test
 ran: the current Rails system fixture still uses `rack_test`. Native Windows
 acceptance is separate and remains pending.
 
@@ -102,9 +123,9 @@ jobs without adding globally installed frameworks or new required branch checks:
 
 The collector's minimum remains Node 14.0.0. An app has its own runtime: Angular
 9 uses its historical Node 12 toolchain, while Angular 18 uses Node 22. This does
-not claim Angular 9 or 18 runs on the collector's Node version. The existing
-Quality workflow additionally checks both collector versions with Python suites
-and long-running jobs.
+not claim Angular 9 or 18 runs on the collector's Node version. The Quality workflow additionally defines checks for both collector versions
+with Python suites and long-running jobs. Its definition alone is not a passing
+v2 CI result.
 
 `python3 scripts/check-junit.py` builds the checked-out listener, installs it
 into a temporary Maven repository and exercises a real Surefire application:
@@ -133,7 +154,7 @@ them. `node` on the caller's PATH is the collector runtime. The script copies th
 fixture into a temporary directory, runs `npm ci --ignore-scripts`, and invokes
 the actual `ng test` builder with Chrome headless. It tests TestBed rendering,
 DOM clicks, successful/failed/skipped outcomes, reporter events, native exit-code
-parity, collection via the frontend lane, and cancellation. A real run without
+parity, collection via module `web` with `runtime: "node-project"`, and cancellation. A real run without
 the reporter proves the event gate detects missing integration. The app's
 `.nvmrc` selection is checked against its distinct Node executable. npm cache,
 builds and generated app state stay temporary; nothing installs into the plugin.
@@ -144,9 +165,36 @@ in disposable CI, use no secrets and are not deployable sample applications.
 Do not suppress Dependabot alerts or silently upgrade the fixture's framework
 major to make them disappear. Review fixes compatible with each lane, or make
 an explicit supported-matrix decision. Headless Chrome comes from the hosted
-runner and is not pinned/maintained by Dependabot. This is real browser execution
-for Angular, not a claim of visual Claude acceptance, Rails Selenium coverage,
+runner and is not pinned/maintained by Dependabot. When actually run, this gate executes a real Angular browser; it is not a claim of visual Claude acceptance, Rails Selenium coverage,
 watch/re-run cycles, multiple browsers or native Windows support.
+
+## Native Windows v2 gate
+
+[Windows modules](../.github/workflows/windows.yml) is configured for Windows
+PowerShell 5.1 and PowerShell 7, collector Node 14.0.0 and 24, with app Node
+12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
+[tests/windows/native.mjs](../tests/windows/native.mjs). **Neither a native run
+nor hosted CI success is evidenced in this delivery.** Parsing scripts or
+running Linux checks is not Windows acceptance.
+
+Execute the gate separately in each native engine with installed runtimes:
+
+```powershell
+& ./scripts/check-windows.ps1 -NodePath 'C:\Tools\node14\node.exe' -ProjectNode 'C:\Tools\node12\node.exe'
+```
+
+The scenarios are intended to observe scalar wrapper args, spaces, literal argv,
+selected preflight/all, private DACL, Job Object containment, parent/child/
+grandchild cancellation, authenticated broker loss, compensation, removed
+configuration and independent app/collector runtimes. Preserve the existing
+Windows proof sidecar `schema: 1`: it is a distinct proof protocol, not v1
+module configuration, state or CLI envelope. Do not infer support for an Angular
+app/browser from the Node 12 synthetic runtime scenario.
+
+Start coordination uses preparation 30 s, acknowledgement 10 s, abort 10 s and
+a 60 s Mod start call. It does not limit suite duration. Normal test failure does
+not abort peers; infrastructure failure can compensate the batch. Gates must
+check containment and preserve locks when termination cannot be proved.
 
 ## Repository settings and post-merge verification
 

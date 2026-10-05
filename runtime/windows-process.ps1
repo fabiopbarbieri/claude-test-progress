@@ -20,6 +20,8 @@ function Write-Control($Value) {
     [Console]::Out.WriteLine(($Value | ConvertTo-Json -Compress -Depth 8))
 }
 function Write-AtomicJson([string] $Path, $Value) {
+    Assert-PrivatePath (Split-Path -Parent $Path)
+    if ([IO.File]::Exists($Path)) { Assert-PrivatePath $Path }
     $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
     try {
         $json = ($Value | ConvertTo-Json -Compress -Depth 8) + "`n"
@@ -102,25 +104,50 @@ if ($Action -eq 'SecureDirectory') {
 }
 
 Assert-Absolute $JobFile
+function Assert-PrivatePath([string] $Path) {
+    Assert-Absolute $Path
+    $item = Get-Item -LiteralPath $Path -Force
+    $ancestor = $item
+    while ($null -ne $ancestor) {
+        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Reparse points are not allowed in a private state path.'
+        }
+        if ($ancestor -is [IO.DirectoryInfo]) { $ancestor = $ancestor.Parent }
+        else { $ancestor = $ancestor.Directory }
+    }
+}
+Assert-PrivatePath $JobFile
+if ((Get-Item -LiteralPath $JobFile).Length -gt 1048576) { throw 'Private job exceeds size limit.' }
 $job = [IO.File]::ReadAllText($JobFile) | ConvertFrom-Json
-if ([string]::IsNullOrEmpty($job.runId) -or $job.lane -notin @('backend', 'frontend')) {
-    throw 'Invalid run identity or lane.'
+if ($job.schemaVersion -ne 2 -or $job.moduleId -cnotmatch '^[a-z][a-z0-9-]{0,47}$' -or
+    $job.moduleId -in @('all', 'constructor', 'prototype', 'con', 'prn', 'aux', 'nul') -or
+    $job.moduleId -match '^(?:com|lpt)[1-9]$') {
+    throw 'Invalid v2 job or module identity.'
 }
 $runGuid = [Guid]::Empty
 if (-not [Guid]::TryParse([string]$job.runId, [ref]$runGuid)) { throw 'Run identity must be a UUID.' }
 $JobName = 'Local\claude-test-progress-' + $runGuid.ToString('D')
 Assert-Absolute $job.cwd
 Assert-Absolute $job.directory
+Assert-PrivatePath $job.directory
+$expectedJob = Join-Path $job.directory ($job.moduleId + '.' + $runGuid.ToString('D') + '.job.json')
+if ([IO.Path]::GetFullPath($JobFile) -cne [IO.Path]::GetFullPath($expectedJob)) { throw 'Job path does not match its identity.' }
+$claimPath = Join-Path $job.directory ($job.moduleId + '.lock/claim.json')
+Assert-PrivatePath $claimPath
+$claim = [IO.File]::ReadAllText($claimPath) | ConvertFrom-Json
+if ($claim.schemaVersion -ne 2 -or $claim.moduleId -cne $job.moduleId -or $claim.runId -cne $job.runId) {
+    throw 'Run claim does not match job identity.'
+}
 if ($null -eq $job.windowsCommand -or [string]::IsNullOrEmpty($job.windowsCommand.file)) {
     throw 'The private job is missing its validated windowsCommand.'
 }
 Assert-Absolute $job.windowsCommand.file
 $commandArguments = [string[]] @($job.windowsCommand.args)
-$cancelFile = Join-Path $job.directory ($job.lane + '.cancel.json')
+$cancelFile = Join-Path $job.directory ($job.moduleId + '.cancel.json')
 $sidecar = $JobFile + '.windows.json'
 $brokerIdentity = [TestProgress.WindowsProcessHost]::Identity($PID)
 $proof = @{ schema = 1; runId = $job.runId; brokerIdentity = $brokerIdentity;
-    jobName = $JobName; contained = $false; treeEmpty = $false; exitCode = $null; cancelled = $false }
+    jobName = $JobName; contained = $false; resumed = $false; treeEmpty = $false; exitCode = $null; cancelled = $false }
 $hostProcess = $null
 $code = 125
 try {
@@ -133,17 +160,23 @@ try {
     Write-AtomicJson $sidecar $proof
     # No user command executes before both containment and its durable proof exist.
     if ([IO.File]::Exists($cancelFile)) {
+        Assert-PrivatePath $cancelFile
         $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
-        if ($cancel.runId -eq $job.runId) {
+        if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
             $proof.cancelled = $true
             $hostProcess.Cancel()
         }
     }
-    if (-not $proof.cancelled) { $hostProcess.Resume() }
+    if (-not $proof.cancelled) {
+        $hostProcess.Resume()
+        $proof.resumed = $true
+        Write-AtomicJson $sidecar $proof
+    }
     while ($hostProcess.ActiveProcesses() -ne 0) {
         if (-not $proof.cancelled -and [IO.File]::Exists($cancelFile)) {
-            $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
-            if ($cancel.runId -eq $job.runId) {
+            Assert-PrivatePath $cancelFile
+        $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
+            if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
                 $proof.cancelled = $true
                 $hostProcess.Cancel()
             }

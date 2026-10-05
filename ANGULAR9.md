@@ -39,19 +39,19 @@ encontrar uma versão instalada adequada. Se não encontra, informa
 erro; não baixa nem instala versões. Um Node 12 ativo no app pode coexistir
 com um Node 14+ instalado para o coletor.
 
-O frontend procura a `.nvmrc` mais próxima, subindo a partir do `cwd` da lane
+Um módulo com `runtime: "node-project"` procura a `.nvmrc` mais próxima, subindo do `cwd` configurado
 até a raiz do filesystem. Versões numéricas podem ser atendidas por um Node
 compatível já no PATH; demais seletores, como `lts/*` ou aliases, são resolvidos
 pelo nvm. A versão solicitada precisa existir localmente. Não há fallback para
-outra versão quando a `.nvmrc` não pode ser atendida. Sem `.nvmrc`, o frontend
+outra versão quando a `.nvmrc` não pode ser atendida. Sem `.nvmrc`, o resolvedor do módulo
 prefere o Node disponível no PATH e usa nvm apenas se ele estiver ausente.
 
 Por exemplo, uma `.nvmrc` com `12.22.12` permite manter o Angular 9 nesse runtime
-mesmo se o Claude foi aberto com Node 26. A escolha ocorre antes de reservar
-lanes ou iniciar processos. O diretório do Node escolhido é anteposto somente
-ao PATH do processo frontend e seus subprocessos; backend Java e ambiente do
-terminal permanecem como estavam. O CLI inicia worker e demo com seu próprio
-`process.execPath`; a demo não procura `.nvmrc` nem executa Angular.
+mesmo se o Claude foi aberto com Node 26. A escolha ocorre no preflight dos módulos selecionados, antes de reservar
+locks ou iniciar comandos. O diretório do Node escolhido é anteposto somente
+ao PATH do módulo selecionado e seus subprocessos. IDs e linguagem não escolhem
+runtime: um módulo Java/Ruby pode declarar `inherit`, sem consultar `.nvmrc`.
+O CLI inicia workers com seu próprio `process.execPath`; o produto v2 não tem demo.
 
 O Mod detecta `nvm.sh` em `$NVM_DIR`, `$HOME/.nvm` ou `$XDG_CONFIG_HOME/nvm`.
 Carrega-o em subshell com `--no-use` e consulta `nvm which --silent`, usando
@@ -103,19 +103,29 @@ O reporter usa `onRunStart`, `onBrowserStart`, `onSpecComplete`,
 de atualização dos contadores foram conferidas nas versões históricas listadas.
 Não depende de APIs exclusivas de Karma 6.
 
-## 3. Configurar a lane frontend
+## 3. Configurar um módulo Angular
 
 Use [config.angular9.example.json](config.angular9.example.json) como conteúdo
 de `<diretório da sessão>/.claude/test-progress.json`, opt-in no app escolhido:
 
 ```json
 {
-  "schemaVersion": 1,
-  "frontend": {
-    "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "web": {
+      "label": "Angular 9",
+      "runtime": "node-project",
+      "command": [
+        "node",
+        "./node_modules/@angular/cli/bin/ng",
+        "test",
+        "--watch=false",
+        "--browsers=ChromeHeadless"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }
 ```
@@ -134,13 +144,14 @@ Use `"node"` no primeiro argumento para seguir a descoberta automática.
 Um caminho explícito de um executável chamado `node` deve apontar para o mesmo
 binário descoberto; divergências são recusadas antes de iniciar. Comandos de
 outros tipos não são reescritos: wrappers com runtime fixo exigem configuração
-coerente. Os metadados indicam o Node selecionado para o PATH do frontend.
-`env` da lane pode fornecer PATH/NVM_DIR próprios, usados durante
-a descoberta; o diretório escolhido ainda terá precedência no processo frontend.
+coerente. O job registra o Node selecionado para o PATH do módulo.
+`env` pode fornecer PATH/NVM_DIR próprios, usados no preflight; o diretório
+escolhido tem precedência somente no filho. Discovery de catálogo não executa
+esse resolvedor nem expõe command/env.
 Não coloque segredos em arquivos versionados.
 
 O bootstrap requer Bash e ferramentas usuais do Linux; a ordenação das versões
-locais usa GNU `sort -V`. A descoberta frontend tem limite de três segundos.
+locais usa GNU `sort -V`. O resolvedor `node-project` tem limite de três segundos.
 
 O browser deve estar instalado/disponível conforme a configuração existente.
 Não use flags de OpenSSL, `--force`/`--legacy-peer-deps` ou upgrade de pacotes
@@ -148,14 +159,33 @@ como solução genérica para esta integração.
 
 ## 4. Utilizar
 
-`/test-progress` apenas consulta. `/test-progress demo` simula contadores sem
-executar testes. `/test-progress frontend` inicia o comando real somente quando
-você pedir. `logs frontend` e `cancel frontend` consultam/cancelam essa execução.
+```text
+/test-progress list
+/test-progress start web
+/test-progress status web --text
+/test-progress logs web --text
+/test-progress cancel web --text
+```
 
-A validação inicial do protótipo limitou-se a sintaxe, contratos e demo. Os gates
-atuais estão em [VERIFICATION](docs/VERIFICATION.md). Testes locais do coletor e
-do reporter não equivalem ao aceite de um app Angular 9 com seu builder, browser
-e dependências reais; esse aceite continua pendente.
+`web` é o ID deste exemplo. Se conservar `frontend` do arquivo de exemplo,
+use esse ID com os mesmos verbos; nenhum nome seleciona runtime implicitamente.
+`start all` seleciona todos os módulos habilitados e usa a barreira conjunta.
+Preparação 30 s, confirmação 10 s e aborto 10 s; start do Mod tem limite de 60 s,
+sem deadline da suíte. Falha normal de um módulo não aborta os demais.
+
+Somente o workspace ativa módulos; registry schemaVersion 2 é opcional.
+`command` e `env` substituem campos inteiros de templates. `--config` é override
+CLI, com paths relativos ao workspace; o painel usa o arquivo default.
+Não há demo, aliases de início por ID ou fallback/conversão v1. Jobs/estado
+antigos exigem [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado).
+
+A validação inicial do protótipo registrou sintaxe, contratos e demo em um
+artefato legado; ela não comprova runtime v2. Consulte as evidências históricas
+por SHA em [COMPATIBILITY](docs/COMPATIBILITY.md) e os gates atuais em
+[VALIDATION](docs/VALIDATION.md). Contratos do reporter não equivalem ao aceite
+do seu app com builder/browser/dependências reais. A matriz Windows v2 está
+criada, mas execução nativa PowerShell 5.1/7 e sua CI seguem sem resultado
+comprovado nesta entrega.
 
 ## Fontes primárias
 

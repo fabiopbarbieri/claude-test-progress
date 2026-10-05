@@ -1,9 +1,19 @@
 {
-  "schemaVersion": 1,
-  "frontend": {
-    "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "frontend": {
+      "label": "Aplicação web",
+      "runtime": "node-project",
+      "command": [
+        "node",
+        "./node_modules/@angular/cli/bin/ng",
+        "test",
+        "--watch=false",
+        "--browsers=ChromeHeadless"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }

@@ -1,0 +1,75 @@
+// Pure presentation rules shared by native surfaces and text. No host APIs.
+import { validModuleId } from './module-id.mjs';
+export const ACTIVE = new Set(['preparing', 'running']);
+export const labels = { preparing: 'Preparando', running: 'Em execução', completed: 'Encerrado',
+  failed: 'Encerrado com falha', cancelled: 'Cancelado', error: 'Erro' };
+const record = value => value && typeof value === 'object' && !Array.isArray(value);
+export function validateEnvelope(data) {
+  const config = data?.workspace?.moduleConfig;
+  if (data?.schemaVersion !== 2 || data.schema !== undefined || data.lanes !== undefined || typeof data.ok !== 'boolean' || !record(data.modules) ||
+      !record(data.jobs) || !record(data.stateDiagnostics) || !record(config) ||
+      !['absent', 'valid', 'invalid'].includes(config.status) ||
+      ![2, null].includes(config.schemaVersion) || !Array.isArray(config.enabledIds)) {
+    throw new Error('Versão de resposta do coletor incompatível; requer schemaVersion 2.');
+  }
+  for (const [id, module] of Object.entries(data.modules)) {
+    if (!validModuleId(id) || module?.id !== id || typeof module.label !== 'string' ||
+        !(module.language === null || typeof module.language === 'string') ||
+        !Number.isFinite(module.order) || typeof module.enabled !== 'boolean' ||
+        typeof module.directoryPresent !== 'boolean' || typeof module.origin !== 'string' || !Array.isArray(module.diagnostics)) {
+      throw new Error('Catálogo de módulos inválido na resposta do coletor.');
+    }
+  }
+  for (const [id, job] of Object.entries(data.jobs)) {
+    if (!validModuleId(id) || job?.schemaVersion !== 2 || job.moduleId !== id ||
+        typeof job.runId !== 'string' || !job.runId || job.source !== 'config' || !Object.prototype.hasOwnProperty.call(labels, job.status) ||
+        typeof job.phase !== 'string' || job.command !== undefined && !Array.isArray(job.command)) {
+      throw new Error('Snapshot de job incompatível na resposta do coletor.');
+    }
+  }
+  for (const [id, items] of Object.entries(data.stateDiagnostics)) {
+    if (id !== '*' && !validModuleId(id) || !Array.isArray(items)) throw new Error('Diagnósticos de estado inválidos na resposta do coletor.');
+  }
+  if (config.enabledIds.some(id => !validModuleId(id))) throw new Error('IDs de módulos inválidos na resposta do coletor.');
+  return data;
+}
+export function parseCommand(raw) {
+  const tokens = String(raw ?? '').trim().split(/\s+/).filter(Boolean);
+  const text = tokens.includes('--text');
+  const args = tokens.filter(token => token !== '--text');
+  const action = args[0] ?? 'status';
+  if (!['list', 'start', 'status', 'logs', 'cancel', 'help', 'paths'].includes(action) || args.length > 2 ||
+      (['list', 'help', 'paths'].includes(action) && args.length > 1) ||
+      (action === 'start' && args.length !== 2)) throw new Error('Use /test-progress help para consultar os comandos.');
+  const moduleId = args[1] ?? 'all';
+  if (moduleId !== 'all' && !validModuleId(moduleId)) throw new Error('ID de módulo inválido. Use list para ver os IDs.');
+  return { action, moduleId, text };
+}
+export function visibleModuleIds(modules, jobs, diagnostics) {
+  const enabled = Object.keys(modules).filter(id => modules[id].enabled)
+    .sort((a, b) => modules[a].order - modules[b].order || a.localeCompare(b));
+  const retained = new Set(Object.keys(jobs).filter(id => ACTIVE.has(jobs[id].status) || jobs[id].recoveryRequired));
+  for (const id of Object.keys(diagnostics)) if (id !== '*' && validModuleId(id) && diagnostics[id]?.length) retained.add(id);
+  return [...enabled, ...[...retained].filter(id => !enabled.includes(id)).sort()];
+}
+export const moduleTitle = (id, module) => `${module?.label ?? id} · ${id}`;
+export function percentage(job) {
+  return typeof job.percent === 'number' && Number.isFinite(job.percent) ? `${job.percent.toFixed(job.percent % 1 ? 1 : 0)}%` : '—';
+}
+export function progressText(job) {
+  if (job.total === 0) return '— [ sem testes ]';
+  if (job.total === null || job.total === undefined || typeof job.percent !== 'number' || !Number.isFinite(job.percent)) return '— [ total desconhecido ]';
+  const filled = Math.max(0, Math.min(16, Math.round(job.percent / 100 * 16)));
+  return `${percentage(job)} [${'■'.repeat(filled)}${'·'.repeat(16 - filled)}]`;
+}
+export function countSummary(job) {
+  const denominator = job.total == null ? 'total desconhecido' : `${job.total} no total${job.totalStable ? '' : ' · total parcial'}`;
+  return `${job.resolved ?? 0} resolvidos / ${denominator}`;
+}
+export const diagnosticText = item => typeof item === 'string' ? item : item?.message ?? item?.code ?? 'Diagnóstico indisponível.';
+export function sanitizeText(value) {
+  return String(value ?? '').replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b[@-_]/g, '')
+    .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '').replace(/\t/g, '    ');
+}
+export const sanitizeTail = tail => Array.isArray(tail) ? tail.slice(-200).map(sanitizeText) : [];
