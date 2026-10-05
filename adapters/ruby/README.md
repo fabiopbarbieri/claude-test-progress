@@ -1,5 +1,9 @@
 # Ruby / RSpec
 
+[Compatibilidade e versões testadas](../../docs/COMPATIBILITY.md) ·
+[Uso e atualização de caminhos](../../docs/USAGE.md) ·
+[Diagnóstico](../../docs/TROUBLESHOOTING.md)
+
 Adaptador opt-in para **RSpec Core 3.13.x**, em uma execução serial e finita.
 Use o Ruby e o bundle do aplicativo: o adaptador não instala gems, muda o Gemfile
 nem inicializa uma aplicação Rails. Ruby 3.1+ é o alvo desta integração.

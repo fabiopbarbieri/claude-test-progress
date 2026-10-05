@@ -22,8 +22,8 @@ com resultados redigidos e sem publicar relatórios que possam conter segredos.
 Essas verificações detectam padrões conhecidos; não são uma promessa de detecção
 universal. `.gitignore` não remove dados já commitados.
 
-Para comunicar uma vulnerabilidade, use a aba **Security → Report a vulnerability**
-do repositório, se disponível. Se precisar abrir uma issue, informe apenas que
-precisa de um canal privado; não anexe uma credencial, exploit sensível ou log
-de ambiente real. Credenciais expostas devem ser revogadas antes de compartilhar
-qualquer reprodução sanitizada.
+Para comunicar uma vulnerabilidade, use o
+[canal privado de segurança do repositório](https://github.com/fabiopbarbieri/claude-test-progress/security/advisories/new)
+(**Security → Report a vulnerability**). Não publique detalhes sensíveis em uma
+issue. Credenciais expostas devem ser revogadas antes de compartilhar qualquer
+reprodução sanitizada.

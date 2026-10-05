@@ -1,0 +1,37 @@
+name: Sugerir uma melhoria
+description: Explique o problema, o uso e o resultado desejado.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use exemplos públicos e sintéticos, sem credenciais ou configurações reais.
+        Uma issue prévia não é obrigatória para abrir um PR.
+        Vulnerabilidades devem ir pelo [canal privado](https://github.com/fabiopbarbieri/claude-test-progress/security/advisories/new).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: Que dificuldade você encontrou?
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Caso de uso
+      description: Em qual fluxo ou suíte essa melhoria ajudaria?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Resultado desejado
+      description: O que você gostaria de conseguir fazer ou observar?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas (opcional)
+      description: Há uma solução atual ou outro caminho possível?
+    validations:
+      required: false
