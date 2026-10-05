@@ -5,8 +5,38 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [0.2.0] - Em preparação, não publicada
 
+### Mudança incompatível
+
+- Configuração e estado exigem `schemaVersion: 2`. Suites passam a ser módulos
+  com ID declarados em `modules` (com `templates` opcionais do usuário); lanes
+  fixas `backend`/`frontend` deixam de existir. Config v1 é recusada, sem
+  fallback nem conversão automática.
+- Removidos a opção `--lane`, os atalhos de início por ID e a demo sintética.
+  O coletor aceita apenas `start/list/status/cancel/logs` com `--cwd`,
+  `--owner`, `--module` e `--config`; a resposta lista `modules` e `jobs`.
+- Estado legado no namespace bloqueia **todos** os novos starts. O 0.2.0 não
+  consulta, cancela nem converte jobs v1 ou demos antigas.
+
+### Migração a partir de 0.1.0
+
+1. **Antes de atualizar**, use a instalação 0.1.0 que iniciou os jobs, com o
+   cwd/owner originais, para concluir ou cancelar cada execução e confirmar
+   estado terminal sem recuperação pendente.
+2. Reescreva a configuração em schema v2: cada lane antiga vira um módulo em
+   `modules` (por exemplo `backend`), com `runtime: "inherit"` ou
+   `"node-project"` (este último substitui a preparação Node/`.nvmrc` que a
+   lane `frontend` fazia). Veja [config.example.json](config.example.json),
+   [config.modules.example.json](config.modules.example.json) e
+   [config.registry.example.json](config.registry.example.json).
+3. Atualize o plugin e reinicie a sessão. Se um start for bloqueado por estado
+   legado, siga a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado);
+   não apague locks ativos.
+
 ### Adicionado
 
+- Módulos v2 por workspace com IDs, rótulos, ordem e templates, preparação em
+  lote tudo-ou-nada, supervisão destacada, recuperação autenticada de estado e
+  painéis nativos por módulo.
 - Adaptador Ruby/RSpec opt-in com eventos de progresso, seleção nativa de
   exemplos e cobertura de retries, sem instalar gems no plugin.
 - Adaptador Rails/Minitest opt-in, integrado ao runner nativo, com contagem de
@@ -28,12 +58,13 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 ### Limites de aceite
 
 - Esta entrada descreve código presente, não uma release já publicada.
-  Publicação depende da integração das revisões de documentação e das
-  correções/evidências de validação descritas no [roteiro](docs/RELEASING.md).
+  Publicação depende dos gates e evidências do SHA final descritos no
+  [roteiro](docs/RELEASING.md).
 - Node 14 continua sendo o mínimo do coletor. Python, Ruby, Java e Karma são
-  opcionais conforme a suíte. O frontend ainda prepara Node/`.nvmrc`; testes
-  Rails de views/system usam backend. Selenium e Windows nativo não têm
-  aceite funcional comprovado por esta preparação.
+  opcionais conforme o módulo. Só `runtime: "node-project"` prepara
+  Node/`.nvmrc`; fixtures Rails de views/system usam `rack_test`. Selenium não
+  tem aceite funcional; Windows nativo tem CI própria, mas os limites de aceite
+  descritos em [compatibilidade](docs/COMPATIBILITY.md) continuam valendo.
 
 ## [0.1.0] - Baseline público
 

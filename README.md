@@ -6,7 +6,7 @@
 O plugin `test-progress` apresenta os módulos declarados no seu workspace,
 com contadores, estado e logs por ID. É um
 [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.1.0**, licença **MIT**.
+independente da Anthropic. Versão **0.2.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal.
 
 ## Funcionalidades e limites

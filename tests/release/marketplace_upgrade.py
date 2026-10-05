@@ -60,9 +60,10 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def suite(cache, work, env):
+def suite(cache, work, env, schema):
     # Real stdlib unittest outcomes, not demo events. Run the installed bootstrap
     # from an unrelated directory; both plugin and project paths contain spaces.
+    # 0.1.0 speaks the v1 lane contract; 0.2.0 only accepts v2 modules.
     project = work / "project with spaces"
     project.mkdir(exist_ok=True)
     (project / "test_cases.py").write_text(
@@ -72,21 +73,25 @@ def suite(cache, work, env):
         " def test_fail(self): self.fail('intentional fixture failure')\n"
         " @unittest.skip('fixture')\n"
         " def test_skip(self): pass\n")
-    config = project / "suite.json"
-    config.write_text(json.dumps({"schemaVersion": 1, "backend": {
-        "cwd": ".", "adapter": "events", "env": {},
-        "command": [sys.executable, str(cache / "adapters/python/run.py"), "unittest", "test_cases.Cases"]}}))
+    module = {"cwd": ".", "adapter": "events", "env": {},
+              "command": [sys.executable, str(cache / "adapters/python/run.py"), "unittest", "test_cases.Cases"]}
+    if schema == 1:
+        document, selector, results = {"schemaVersion": 1, "backend": module}, "--lane", "lanes"
+    else:
+        document, selector, results = {"schemaVersion": 2, "modules": {"backend": module}}, "--module", "jobs"
+    config = project / ("suite.v{}.json".format(schema))
+    config.write_text(json.dumps(document))
     original_config = config.read_bytes()
     owner = "release-upgrade-" + uuid.uuid4().hex
 
     def collect(action):
         args = ["bash", cache / "scripts/run-collector.sh", action, "--cwd", project,
-                "--owner", owner, "--lane", "backend"]
+                "--owner", owner, selector, "backend"]
         if action == "start":
             args += ["--config", config]
         response = json.loads(run(args, work, env))
         require(response.get("ok"), "Installed collector returned an error")
-        return response["lanes"]["backend"]
+        return response[results]["backend"]
 
     job = collect("start")
     try:
@@ -150,7 +155,7 @@ def main():
     def cli(*arguments):
         return run([claude, "plugin", *arguments], work, env, timeout=180)
 
-    def installed(version, snapshot, commit):
+    def installed(version, snapshot, commit, schema):
         entries = json.loads(cli("list", "--json"))
         require(len(entries) == 1 and entries[0]["id"] == PLUGIN, "Unexpected installed plugins")
         entry = entries[0]
@@ -175,7 +180,7 @@ def main():
         return cache, {"version": version, "cache": str(cache.relative_to(base)),
                        "syntheticMarketplaceCommit": commit, "filesVerified": len(hashes),
                        "manifestSha256": hashes[".claude-plugin/plugin.json"],
-                       "suite": suite(cache, work, env)}
+                       "suite": suite(cache, work, env, schema)}
 
     old_commit = advance(base / "previous")
     cli("marketplace", "add", SOURCE, "--json")
@@ -188,7 +193,7 @@ def main():
     require(run(["git", "config", "--get", "remote.origin.url"], marketplace_path, env) == SOURCE,
             "Unexpected marketplace origin")
     cli("install", PLUGIN, "--scope", "user", "--json")
-    old_cache, before = installed("0.1.0", base / "previous", old_commit)
+    old_cache, before = installed("0.1.0", base / "previous", old_commit, 1)
     old_manifest_hash = digest(old_cache / ".claude-plugin/plugin.json")
     settings = base / "config/settings.json"
     saved_settings = json.loads(settings.read_text())
@@ -197,7 +202,7 @@ def main():
     new_commit = advance(base / "candidate")
     cli("marketplace", "update", MARKETPLACE)
     cli("update", PLUGIN, "--scope", "user", "--json")
-    new_cache, after = installed("0.2.0", base / "candidate", new_commit)
+    new_cache, after = installed("0.2.0", base / "candidate", new_commit, 2)
     require(old_cache != new_cache, "Upgrade reused the old cache directory")
     require(digest(old_cache / ".claude-plugin/plugin.json") == old_manifest_hash, "Old cache modified")
     require(json.loads(settings.read_text()) == saved_settings, "User settings changed during update")

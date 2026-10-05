@@ -48,22 +48,22 @@ O autor prepara versão, notas, teste de atualização e evidências. O mantened
 confere escopo, fontes, CI e comportamento, decide se o bump pode alcançar os
 usuários e faz o merge pelo fluxo protegido. Não dispense checks ou proteções.
 
-A preparação 0.2.0 depende explicitamente destas entregas independentes:
+A preparação 0.2.0 recebe pela `main` estas entregas, já integradas:
+documentação (frente 02, PR #7), validação e correções (frente 03, PR #9) e
+módulos v2 com supervisão em lote (frente 06, PR #29). A frente 06 é uma
+**mudança incompatível**: config e estado `schemaVersion: 2`, sem lanes, `--lane`
+ou demo. Antes do merge do bump:
 
-1. **Documentação (frente 02, integrada pelo PR #7):** conferir README e guias no
-   SHA final, mantendo coerência com instalação,
-   suites opcionais, Node 14 do coletor, frontend Node/`.nvmrc`, Rails views/system
-   em backend e limites de Windows/Selenium. Os arquivos pertencem à outra
-   frente; esta preparação os recebe por merge da `main`.
-2. **Validação e correções (frente 03):** integrar fixes e evidências de runners,
-   contratos e Mod que essa frente entregar. Conferir `scripts/check.py`, testes,
-   workflows e relatórios finais; adaptar a lista de gates deste roteiro se novos
-   workflows forem introduzidos. O código desta preparação não presume esses
-   resultados nem declara o painel interativo validado.
+1. Conferir README, guias e o [changelog](../CHANGELOG.md) no SHA final: seção de
+   mudança incompatível, passos de migração a partir de 0.1.0, Node 14 do
+   coletor, `runtime: "node-project"` para Node/`.nvmrc` e limites de
+   Windows/Selenium. Não reintroduzir texto sobre demo ou lanes.
+2. Se novos workflows com gatilho `push` entrarem na `main`, incluí-los em
+   `WORKFLOWS` de [check-release.py](../scripts/check-release.py); o teste de
+   release falha enquanto a lista divergir.
 3. No SHA combinado, repetir as verificações abaixo e o ensaio de atualização.
-   Registrar versões, resultados, links de CI e limitações na revisão. Windows
-   nativo permanece pendente até haver execução nativa; não anunciar aceite de
-   Selenium ou frontend agnóstico com evidência apenas Linux/backend.
+   Registrar versões, resultados, links de CI e limitações na revisão. Não
+   anunciar aceite de Selenium nem do painel interativo sem evidência própria.
 
 Enquanto esses gates estiverem pendentes, mantenha o PR de bump em **draft**.
 Uma evidência desta branch não substitui a do SHA integrado.
@@ -83,7 +83,7 @@ bash scripts/scan-secrets.sh
 ```
 
 O smoke seleciona unittest e exige Python; não torna Python dependência do
-core/demo. Os testes de release usam apenas a biblioteca padrão. O verificador
+core. Os testes de release usam apenas a biblioteca padrão. O verificador
 rejeita divergências entre manifests, versão no catálogo, mudança do source,
 versão não estável, changelog ausente, reutilização/regressão de tags e, quando
 solicitado, SHA incorreto, árvore suja e commit fora de `main`.
@@ -109,8 +109,11 @@ ambiente é uma lista permitida sem tokens herdados. O teste verifica origem
 Git registrada, commit, versão e cache distintos, bytes dos arquivos, paths
 relativos dos hooks e execução do bootstrap instalado a partir de outro
 projeto com espaços no caminho. Em ambas as versões, uma suíte unittest real
-produz 1 sucesso, 1 falha intencional, 1 skip e exit code 1. O teste também
-confere preservação de settings e do manifest do cache anterior.
+produz 1 sucesso, 1 falha intencional, 1 skip e exit code 1: em 0.1.0 pelo
+contrato v1 (`--lane backend`), em 0.2.0 por um módulo v2 (`--module backend`,
+`schemaVersion: 2`). O teste também confere preservação de settings e do
+manifest do cache anterior. Ele usa owners distintos por versão; não exercita a
+adoção v2 sobre estado legado no mesmo namespace.
 
 O diretório temporário fica disponível para inspeção. `report.json` contém
 somente evidência sintética e paths relativos; revise-o antes de anexar ao PR.
@@ -127,12 +130,14 @@ completo e versão. O workflow precisa existir na branch padrão para despacho.
 
 O workflow exige que o SHA pertença ao histórico da `main` no instante do
 despacho, confere versão/tag e o run mais recente de cada workflow
-`quality.yml`, `ruby.yml`, `rails.yml` e `adapters.yml` no mesmo SHA, evento
-`push`, branch `main`.
+`quality.yml`, `ruby.yml`, `rails.yml`, `adapters.yml`, `mod-integration.yml` e
+`windows.yml` no mesmo SHA, evento `push`, branch `main`.
 Falha, ausência, cancelamento ou execução pendente bloqueiam a preparação.
 Quality inclui scanner de árvore/histórico; Ruby e Rails cobrem suas suites;
-Adapters executa JUnit/Surefire e Angular 9/18 com Karma/browser. A matriz adicional repete release/core em Node 14.0.0 e Node 24.
-Gates adicionados pela frente 03 precisam ser incorporados antes da publicação.
+Adapters executa JUnit/Surefire e Angular 9/18 com Karma/browser; Mod integration
+roda os testes nativos do Mod no Claude CLI fixado; Windows executa os cenários
+nativos em PowerShell 5.1/7. A matriz adicional repete release/core em Node
+14.0.0 e Node 24.
 
 Os jobs têm somente `contents: read` e, no job que consulta CI, `actions: read`.
 Actions são fixadas por SHA; o checkout não persiste credenciais. Inputs entram
