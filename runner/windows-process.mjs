@@ -27,7 +27,7 @@ function argumentsFor(action, parameters) {
 }
 function control(action, parameters) {
   const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
-    encoding: 'utf8', timeout: 2000, maxBuffer: 64 * 1024, windowsHide: true,
+    encoding: 'utf8', timeout: 5000, maxBuffer: 64 * 1024, windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   return JSON.parse(output.replace(/^\uFEFF/, '').trim());

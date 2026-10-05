@@ -57,9 +57,11 @@ if ($Action -eq 'Kill') {
 }
 if ($Action -eq 'SecureDirectory') {
     Assert-Absolute $Directory
-    $item = Get-Item -LiteralPath $Directory -Force
+    # Validate the existing chain before creation or any ACL change.
+    $existing = Test-Path -LiteralPath $Directory
+    if ($existing) { $item = Get-Item -LiteralPath $Directory -Force }
+    else { $item = Get-Item -LiteralPath (Split-Path -Parent $Directory) -Force }
     if (-not $item.PSIsContainer) { throw 'Private state path must be a directory.' }
-    # Reject junctions/symlinks in the full chain before changing any ACL.
     $ancestor = $item
     while ($null -ne $ancestor) {
         if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -70,31 +72,39 @@ if ($Action -eq 'SecureDirectory') {
     $identity = [TestProgress.WindowsProcessHost]::Identity($PID)
     $user = New-Object Security.Principal.SecurityIdentifier($identity.owner)
     $system = New-Object Security.Principal.SecurityIdentifier('S-1-5-18')
-    $original = Get-Acl -LiteralPath $Directory
-    if ($original.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) {
+    if (-not $existing) {
+        [TestProgress.WindowsProcessHost]::CreatePrivateDirectory($Directory, $user.Value)
+    }
+    $item = Get-Item -LiteralPath $Directory -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Private state directory was substituted during creation.'
+    }
+    $ancestor = $item
+    while ($null -ne $ancestor) {
+        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'Reparse points are not allowed in a private state path.'
+        }
+        $ancestor = $ancestor.Parent
+    }
+    # Existing state must already be private; never take ownership or repair a
+    # permissive directory that could contain another user's injected files.
+    $verified = Get-Acl -LiteralPath $Directory
+    if ($verified.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) {
         throw 'Private state directory has a different owner.'
     }
-    $acl = New-Object Security.AccessControl.DirectorySecurity
-    $acl.SetOwner($user)
-    $acl.SetAccessRuleProtection($true, $false)
     $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
-    foreach ($principal in @($user, $system)) {
-        $rule = New-Object Security.AccessControl.FileSystemAccessRule($principal,
-            [Security.AccessControl.FileSystemRights]::FullControl, $inheritance,
-            [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
-        $acl.AddAccessRule($rule)
-    }
-    Set-Acl -LiteralPath $Directory -AclObject $acl
-    $verified = Get-Acl -LiteralPath $Directory
-    if (-not $verified.AreAccessRulesProtected -or
-        $verified.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $user.Value) {
+    if (-not $verified.AreAccessRulesProtected) {
         throw 'Private state ACL could not be verified.'
     }
     $rules = @($verified.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
-    if ($rules.Count -ne 2) { throw 'Private state ACL has unexpected entries.' }
+    if ($rules.Count -ne 2 -or @($rules.IdentityReference.Value | Select-Object -Unique).Count -ne 2) {
+        throw 'Private state ACL has unexpected entries.'
+    }
     foreach ($rule in $rules) {
         if ($rule.IsInherited -or $rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
             $rule.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl -or
+            $rule.InheritanceFlags -ne $inheritance -or
+            $rule.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None -or
             $rule.IdentityReference.Value -notin @($user.Value, $system.Value)) {
             throw 'Private state ACL has unexpected permissions.'
         }

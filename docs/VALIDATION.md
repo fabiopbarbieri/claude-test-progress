@@ -1,5 +1,29 @@
 # Validação do contrato v2
 
+## Correções após a primeira publicação do PR
+
+O commit inicial `ee181b6` passou nos grupos de coletor, Mods, Ruby, JUnit,
+Angular e segredos da CI. A CI também expôs duas lacunas de ambiente:
+
+- Rails usava checkout shallow, sem o commit publicado anterior exigido pelo
+  gate de rollback. O workflow agora traz o histórico completo. O erro foi
+  reproduzido em clone shallow sem remotes; clone completo sem remotes passou
+  o rollback e `python3 scripts/check.py`.
+- Windows elevado criava estado com o proprietário padrão Administrators;
+  PowerShell também podia exceder o limite de dois segundos. A criação Win32
+  agora atribui atomicamente o SID do usuário e DACL privada; diretórios
+  existentes inseguros e junctions são recusados sem alteração. O controle
+  PowerShell admite até cinco segundos para inicializar.
+
+Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
+parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
+Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório
+existente inseguro e junction no leaf/pai sem criar estado no alvo externo.
+Esse gate ainda precisa executar na matriz nativa da CI; parsing Linux não
+comprova as APIs Windows. Os aceites locais abaixo permanecem vinculados aos
+digests e revisões registrados em cada evidência, anteriores a essa correção
+específica de Windows.
+
 Este documento registra os gates da implementação de
 [MODULES-PLAN.md](MODULES-PLAN.md). Configuração, cadastro, respostas CLI e estado
 persistido usam somente `schemaVersion: 2`. `backend` e `frontend` são IDs comuns;

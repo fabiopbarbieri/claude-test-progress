@@ -60,7 +60,15 @@ namespace TestProgress {
             public IntPtr Process, Thread;
             public uint ProcessId, ThreadId;
         }
+        [StructLayout(LayoutKind.Sequential)] private struct SecurityAttributes {
+            public uint Size;
+            public IntPtr Descriptor;
+            public int InheritHandle;
+        }
 
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool CreateDirectoryW(string path, ref SecurityAttributes attributes);
+        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string descriptor, uint revision, out IntPtr security, out uint size);
+        [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr value);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr OpenJobObject(uint access, bool inherit, string name);
         [DllImport("kernel32.dll")] private static extern void SetLastError(uint error);
@@ -89,6 +97,26 @@ namespace TestProgress {
 
         private static void Check(bool success) {
             if (!success) throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        public static void CreatePrivateDirectory(string path, string owner) {
+            // The owner and protected DACL are present at creation, including
+            // elevated tokens whose default owner is the Administrators group.
+            string sid = new SecurityIdentifier(owner).Value;
+            IntPtr security;
+            uint size;
+            Check(ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                "O:" + sid + "D:P(A;OICI;FA;;;" + sid + ")(A;OICI;FA;;;SY)", 1, out security, out size));
+            try {
+                SecurityAttributes attributes = new SecurityAttributes {
+                    Size = (uint)Marshal.SizeOf(typeof(SecurityAttributes)), Descriptor = security, InheritHandle = 0
+                };
+                if (!CreateDirectoryW(path, ref attributes)) {
+                    int error = Marshal.GetLastWin32Error();
+                    // Existing paths are authenticated by the caller, never
+                    // adopted or assigned a new owner by this creation step.
+                    if (error != 183) throw new Win32Exception(error);
+                }
+            } finally { LocalFree(security); }
         }
         private static WindowsIdentity IdentityForHandle(IntPtr handle, int pid) {
             FileTime creation, exit, kernel, user;

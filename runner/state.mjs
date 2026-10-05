@@ -72,11 +72,17 @@ export function atomicJson(file, value) {
   finally { removePath(temporary, { force: true }); }
 }
 function privateDirectory(directory) {
+  if (process.platform === 'win32') {
+    // Create with an explicit user SID: elevated Windows otherwise defaults to
+    // the Administrators group, which cannot authenticate this private state.
+    windowsSecureDirectory(directory);
+    securePath(directory, true);
+    return;
+  }
   try { fs.mkdirSync(directory, { mode: 0o700 }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
   securePath(directory, true);
-  if (process.platform === 'win32') windowsSecureDirectory(directory);
-  else fs.chmodSync(directory, 0o700);
+  fs.chmodSync(directory, 0o700);
 }
 export function namespace(cwd, owner) {
   if (!path.isAbsolute(cwd)) throw new Error('--cwd precisa ser absoluto');

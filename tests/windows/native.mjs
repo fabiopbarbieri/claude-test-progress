@@ -78,9 +78,39 @@ function assertPidsGone(id) {
     assert.strictEqual(windowsIdentity(pid), null, `${role} survived cancellation`);
   }
 }
+function assertPrivateCreation() {
+  const control = path.join(root, 'runtime/windows-process.ps1');
+  const secure = directory => shell(['-File', control, '-Action', 'SecureDirectory', '-Directory', directory]);
+  const describe = directory => shell(['-Command', '$acl=Get-Acl -LiteralPath $env:TEST_PROGRESS_GATE_DIRECTORY; ' +
+    '$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
+    '@{sddl=$acl.Sddl; owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value; user=$sid} | ConvertTo-Json -Compress'],
+    { ...process.env, TEST_PROGRESS_GATE_DIRECTORY: directory });
+  const fresh = path.join(app, 'private creation');
+  assert.strictEqual(secure(fresh).status, 0, 'First creation must assign the token user as owner');
+  const created = JSON.parse(describe(fresh).stdout.trim());
+  assert.strictEqual(created.owner, created.user);
+  assert.strictEqual(secure(fresh).status, 0, 'Existing private directory must remain usable');
+  assert.strictEqual(JSON.parse(describe(fresh).stdout.trim()).sddl, created.sddl, 'Reopening must not rewrite ACLs');
+
+  const insecure = path.join(app, 'untrusted existing');
+  fs.mkdirSync(insecure);
+  const before = JSON.parse(describe(insecure).stdout.trim());
+  assert.notStrictEqual(secure(insecure).status, 0, 'Existing inherited ACL or foreign owner must be rejected');
+  assert.strictEqual(JSON.parse(describe(insecure).stdout.trim()).sddl, before.sddl, 'Rejected state must not be adopted');
+
+  const target = path.join(app, 'junction target');
+  const link = path.join(app, 'junction link');
+  fs.mkdirSync(target);
+  fs.symlinkSync(target, link, 'junction');
+  assert.notStrictEqual(secure(link).status, 0, 'A junction leaf must be rejected');
+  assert.notStrictEqual(secure(path.join(link, 'new state')).status, 0, 'A junction ancestor must be rejected before creation');
+  assert(!fs.existsSync(path.join(target, 'new state')), 'Rejected ancestor must have zero effects outside the namespace');
+  console.log('Atomic user-owned private creation, unchanged existing/rejected ACLs and junction rejection: OK');
+}
 async function main() {
   let safeToRemove = false;
   try {
+    assertPrivateCreation();
     // The selected command is independent of other malformed registrations.
     configure({ api: module('api'), broken: module('broken', { command: ['missing-gate-executable.exe'] }) });
     assert.strictEqual(collect('start').ok, false);
@@ -92,9 +122,9 @@ async function main() {
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(app, 'api.argv'), 'utf8')),
       ['literal space', 'quote"value', 'trailing\\']);
     const acl = shell(['-Command', '$acl=Get-Acl -LiteralPath $env:TEST_PROGRESS_GATE_STATE; ' +
-      '$owner=$acl.Owner; $rules=@($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }); ' +
+      '$owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]).Value; $rules=@($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value }); ' +
       '$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; ' +
-      'if(-not $acl.AreAccessRulesProtected -or @($rules|Where-Object { $_ -ne $sid -and $_ -ne "S-1-5-18" }).Count -ne 0) { exit 1 }; "private-dacl"'],
+      'if($owner -ne $sid -or -not $acl.AreAccessRulesProtected -or @($rules|Where-Object { $_ -ne $sid -and $_ -ne "S-1-5-18" }).Count -ne 0) { exit 1 }; "private-dacl"'],
       { ...process.env, TEST_PROGRESS_GATE_STATE: context.directory });
     assert.strictEqual(acl.status, 0, 'State DACL must be private and inheritance disabled');
     fs.unlinkSync(config);
