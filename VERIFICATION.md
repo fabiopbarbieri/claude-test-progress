@@ -28,10 +28,26 @@ em aceite desta revisão.
   unittest pass/fail/skip e cancelamento passaram com Python 3.14.8.
 - `python3 scripts/check-long-running.py`: 4 testes passaram (22,958 s): silêncio,
   consultas separadas, rotação de logs e recuperação controlada após perda de worker.
-- Claude Code 2.1.289: `plugin validate` passou; `plugin test` passou em 9 testes.
+- Claude Code 2.1.289: `plugin validate` passou; o primeiro `plugin test` passou em 9 testes.
   A distribuição npm fixada também foi instalada em prefixo temporário e executou
   os mesmos 9 testes, sem conta ou API key. Isso valida o procedimento do workflow
   localmente; o resultado remoto deve ser conferido no SHA do PR.
+- Ajustes de painel e workspace: `plugin test` passou em 14 testes. O check
+  de workspace passou com Node 14.0.0 e 26.7.0: somente backend/frontend,
+  configuração removida com execução ativa, logs/cancelamento, saída de
+  worker/comando e lock liberado. O gate completo de fontes + smoke passou
+  novamente com Node 14.0.0 após esses ajustes (`a056c55`).
+- Cancelamento Karma (`5f916e7`): a fixture anterior, com polling forçado e
+  espera reduzida a 2 s, reproduziu o defeito do gate: `completed`, 2/2, sem
+  resultado parcial observável. A fixture corrigida, no mesmo ambiente,
+  retornou `cancelled`, 50/51 e `totalStable: false`. O gate completo Angular
+  18 passou com aplicativo Node 22.23.3 (arquivo oficial e SHA-256 conferido),
+  coletor Node 24.20.0 e Chrome real. Instalação e cache foram isolados;
+  manifests e lockfiles não mudaram. No SHA `5f916e7`, os 32 checks da PR
+  passaram, incluindo Angular 9 e 18 com coletores Node 14.0.0/24,
+  JUnit, Ruby, Rails, fontes/isolamento, scanner e Mod nativo. Os resultados
+  podem ser conferidos no [gate de adaptadores](https://github.com/fabiopbarbieri/claude-test-progress/actions/runs/37284775781)
+  e na [PR](https://github.com/fabiopbarbieri/claude-test-progress/pull/9).
 
 ## Soak
 
@@ -66,23 +82,57 @@ Gitleaks 8.30.1 (checksum conferido) examinou a árvore e o histórico com saíd
 redigida, sem achados. A inspeção final não encontrou workers ativos originados
 desta worktree; nenhum processo de outra sessão foi encerrado.
 
+## Painel real no Claude interativo
+
+Claude Code 2.1.289 foi aberto com `--plugin-dir` apontando para o checkout e
+`--setting-sources ''` em um projeto Node público/sintético descartável. Não
+foram feitas chamadas ao modelo. A fixture reproduzível está em
+`tests/collector/fixtures/panel-suite.mjs`.
+
+Foram observados progresso conhecido e desconhecido, 100% ainda em execução,
+zero testes, sucesso/falha/skip, logs e duas lanes. `/clear` mostrou outra sessão
+sem os jobs; `/resume` retornou à sessão com os mesmos runIds; hot reload manteve
+as execuções. A perda controlada do worker exibiu o estado órfão, preservou os
+contadores e permitiu cancelamento seguro. Depois do cancelamento, a identidade
+do worker/comando não existia, o grupo estava vazio e o lock havia sido liberado.
+
+Capturas reais em Linux/Wayland, recortadas diretamente por `grim` para publicar
+somente o painel sintético, foram inspecionadas antes de entrar na árvore:
+
+| Estado | Captura |
+| --- | --- |
+| Worker perdido, resultados conservados e recuperação disponível | [panel-worker-loss.png](docs/assets/panel-worker-loss.png) |
+| Grupo órfão encerrado e resultado preservado | [panel-cancelled.png](docs/assets/panel-cancelled.png) |
+
+As capturas foram feitas sobre `50afab1`, com a remoção visual de “total parcial”
+então local e posteriormente incorporada a `a056c55`. Não são imagens geradas
+nem evidência de uma versão futura. Não contêm conta, conversa, diretório pessoal
+ou dados de aplicativos. A evidência de pixels acima cobre esses dois estados;
+o harness e as observações interativas têm alcances distintos.
+
+O desenho foi revisado a partir dessas capturas. Os símbolos mantêm rótulos de
+texto; ainda aparecem fases técnicas e uma mensagem histórica vermelha no
+cancelamento órfão. Não foi encontrada API documentada para consultar/herdar a
+cor de fundo do terminal hospedeiro; nenhuma cor pessoal foi fixada no plugin.
+
 ## Pendências de aceite
 
-- **Captura visual real:** indisponível neste ambiente. `orca-ide computer
-  capabilities --json` retornou `unsupported_capability`: “Linux Computer Use
-  requires python3-gi and AT-SPI packages. Install python3-gi gir1.2-atspi-2.0
-  at-spi2-core, then retry.” Não foi alterada a configuração global do desktop.
-  Nenhuma imagem gerada foi publicada como screenshot. Faltam captura e inspeção
-  do painel real, teclado/foco/scroll e ciclos reais de `/clear`, `/resume` e hot reload.
+- **Teclado/foco/scroll:** falta o aceite interativo completo dos botões no dock,
+  especialmente fechar/reabrir por teclado. O callback de fechar sem cancelar foi
+  validado no test kit. `orca-ide computer capabilities --json` continua retornando
+  `unsupported_capability` por indisponibilidade de python3-gi/AT-SPI no runtime
+  do Orca; as capturas reais foram obtidas pelo compositor Wayland. A configuração
+  global do desktop não foi alterada. Larguras menores e contraste não foram medidos.
 - **Windows nativo:** PowerShell 5.1/7 e comportamento de Job Objects continuam
   pendentes. Testes Linux e desenho no harness `surface: desktop` não provam Win32
   nem o aplicativo Claude Desktop.
 - **Duração:** o soak controlado não prova execuções de horas.
-- **Aplicativos/frameworks reais:** esta revisão usa fixtures públicas Node e
-  unittest; não amplia o aceite para Maven paralelo, Karma/browser ou Selenium.
+- **Aplicativos/frameworks reais:** esta revisão usa fixtures públicas Node,
+  unittest e Angular 18/Karma/Chrome; não amplia o aceite para aplicações privadas,
+  Maven paralelo ou Selenium.
 - **Documentação externa:** `docs/VALIDATION.md` está pronto para ligação futura
-  pelo README. `docs/assets/panel-*.png` permanece reservado para captura real;
+  pelo README. `docs/assets/panel-*.png` contém os dois recortes reais acima;
   README/guias de outra frente não foram alterados.
 
-O PR permanece draft até obter e revisar a evidência visual ausente. Não houve
+O PR permanece draft para o aceite de teclado/foco/scroll pendente. Não houve
 merge, publicação de release, alteração de tags ou de proteção do repositório.

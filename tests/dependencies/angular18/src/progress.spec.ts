@@ -27,6 +27,18 @@ describe('real Angular component', () => {
     xit('reports a skipped test', () => fail('must not run'));
   }
   if (mode === 'slow') {
-    it('waits while the collector can cancel', done => setTimeout(done, 60000));
+    // Karma can buffer 50 results on polling. Fill that real transport batch
+    // before the pending spec; a one-result fixture can finish before reporting.
+    for (let index = 1; index < 50; index++) {
+      it('renders transport batch case ' + index, () => {
+        const fixture = TestBed.createComponent(CounterComponent);
+        fixture.detectChanges();
+        expect(fixture.nativeElement.querySelector('button').textContent).toBe('0');
+      });
+    }
+    it('waits for collector cancellation', (_done: DoneFn) => {
+      // Deliberately unresolved: cancellation must happen before suite completion.
+      // Jasmine's existing timeout still makes a broken cancellation gate fail.
+    });
   }
 });

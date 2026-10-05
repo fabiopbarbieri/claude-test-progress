@@ -14,8 +14,9 @@ agnóstico de runtime.
 node tests/collector/lock-race.mjs
 node tests/collector/maven.mjs
 node tests/collector/isolation.mjs
+node tests/collector/workspace.mjs
 
-# Verificação de fontes + os três checks acima; este script de desenvolvimento usa Python:
+# Verificação de fontes + os checks acima; este script de desenvolvimento usa Python:
 python3 scripts/check.py
 
 # Apenas quando quiser verificar o adaptador Python:
@@ -37,6 +38,32 @@ duas lanes da demo e seleciona um comando `python3` inexistente. O resultado dev
 identificar o comando e `ENOENT`, sem inventar testes ou validar a configuração
 inválida da lane não selecionada. É uma prova Linux do núcleo via CLI Node;
 não elimina Bash do bootstrap Unix nem PowerShell do Windows.
+
+O gate `scripts/check-karma.py` requer somente as ferramentas da suíte Angular
+selecionada: Node do coletor, Node do aplicativo e Chrome. Ele instala a fixture
+com lockfile em diretório temporário, sem alterar manifests do plugin. No cenário
+de cancelamento, o transporte polling é explícito: o
+[cliente oficial do Karma](https://github.com/karma-runner/karma/blob/v6.4.4/client/karma.js)
+pode acumular 50 resultados antes do upgrade para WebSocket. A fixture executa
+50 testes reais de TestBed e deixa o 51º pendente; o gate exige `cancelled`,
+50/51, nenhuma falha e `totalStable: false`. Assim, um término completo antes
+do cancelamento falha no check. Os cenários normais preservam os transportes
+padrão e seus resultados originais.
+
+`workspace.mjs` inicia e cancela comandos Node reais em projetos com somente
+backend ou somente frontend. `start --lane all` inicia apenas as suítes habilitadas
+em `.claude/test-progress.json`; uma suíte omitida, `null`, `false` ou com
+`enabled: false` não aparece entre os botões de início. Não há descoberta automática
+por nomes de pastas. Uma suíte habilitada inválida continua falhando ao ser selecionada.
+O painel conserva logs/cancelamento de uma execução ativa ou órfã mesmo se sua
+configuração for removida. Consultar estado, logs e cancelar não exige configuração
+válida nem resolve ferramentas de suítes. O teste confirma a saída dos processos
+da fixture e a liberação dos locks.
+
+O painel oculta o sufixo “total parcial”; os diagnósticos de texto mantêm essa
+distinção. Suítes ausentes também ficam fora do resumo acima do prompt. O cadastro
+geral de módulos por usuário/workspace é uma evolução separada; esta mudança mantém
+os contratos e as identidades backend/frontend existentes.
 
 O workflow [Mod integration](../.github/workflows/mod-integration.yml) instala
 `@anthropic-ai/claude-code@2.1.289` em um prefixo temporário. Node 24 atende ao
@@ -139,8 +166,11 @@ A captura deve mostrar apenas dados públicos; não publique nome de conta, hist
 caminhos pessoais, credenciais ou aplicativos autenticados. Não gere imagens como
 substituto de screenshot.
 
-Destino reservado para capturas verificadas: `docs/assets/panel-*.png`. Enquanto
-não houver captura real inspecionada, nenhum desses assets deve ser referenciado
-como evidência. A integração de links/imagens no README pertence à frente de
-documentação. O bloqueio local de captura e os demais limites estão registrados
-em [VERIFICATION.md](../VERIFICATION.md).
+As capturas reais inspecionadas de perda do worker e cancelamento ficam em
+[panel-worker-loss.png](assets/panel-worker-loss.png) e
+[panel-cancelled.png](assets/panel-cancelled.png). Elas foram obtidas pelo
+compositor Wayland e contêm somente o painel da fixture sintética. Versão,
+proveniência, ciclos interativos observados e limites estão em
+[VERIFICATION.md](../VERIFICATION.md). Teclado/foco/scroll completos do dock
+continuam pendentes; capturas e harness não substituem esse aceite. A integração
+de links/imagens no README pertence à frente de documentação.
