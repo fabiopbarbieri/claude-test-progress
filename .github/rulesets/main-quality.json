@@ -1,0 +1,53 @@
+{
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/main"
+      ],
+      "exclude": []
+    }
+  },
+  "name": "main-quality",
+  "bypass_actors": [],
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "Collector (Node 14.0.0, Python 3.8)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Collector (Node 24, Python 3.14)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Secrets (tree and history)",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}
