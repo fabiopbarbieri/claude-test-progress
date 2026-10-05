@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "backend": {
+    "command": [
+      "bundle", "exec", "ruby",
+      "/absolute/path/to/claude-test-progress/adapters/rails/run.rb",
+      "test"
+    ],
+    "cwd": ".",
+    "adapter": "events",
+    "env": {}
+  }
+}
