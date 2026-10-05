@@ -52,11 +52,16 @@ function configuration(cwd, requestedPath, lanes) {
     const workingDirectory = fs.realpathSync(path.resolve(cwd, item.cwd ?? '.'));
     if (!fs.statSync(workingDirectory).isDirectory()) throw new Error(`cwd não é diretório em ${lane}`);
     const environment = item.env ?? {};
+    if (item.language !== undefined && (typeof item.language !== 'string' ||
+        !item.language.trim() || item.language.length > 40 || /[\x00-\x1f\x7f-\x9f]/.test(item.language))) {
+      throw new Error(`language precisa ser um nome de até 40 caracteres em ${lane}`);
+    }
     if (!environment || Array.isArray(environment) || typeof environment !== 'object' ||
         Object.entries(environment).some(([key, value]) => !key || key.includes('=') || key.includes('\0') ||
           typeof value !== 'string' || value.includes('\0'))) throw new Error(`env inválido em ${lane}`);
     const runtime = lane === 'frontend' ? frontendRuntime(workingDirectory, environment, item.command) : { env: environment };
-    return [lane, { command: item.command, cwd: workingDirectory, adapter, ...runtime }];
+    return [lane, { command: item.command, cwd: workingDirectory, adapter,
+      ...(item.language ? { language: item.language.trim() } : {}), ...runtime }];
   }));
 }
 async function start(context, lane, config, source, codeRevision, runId) {
@@ -69,9 +74,10 @@ async function start(context, lane, config, source, codeRevision, runId) {
       totalStable: false, percent: null, progressObserved: false,
       startedAt: timestamp(), updatedAt: timestamp(), endedAt: null, exitCode: null,
       heartbeatAt: null, lastOutputAt: null, lastProgressAt: null,
-      pid: null, workerPid: null, command: config.command, cwd: config.cwd,
+      pid: null, workerPid: null, command: config.command, cwd: config.cwd, adapter: config.adapter,
       logPath: path.join(context.directory, `${lane}.${runId}.log`), revision: codeRevision,
       collectorRuntime,
+      ...(config.language ? { language: config.language } : {}),
       ...(config.nodeRuntime ? { nodeRuntime: config.nodeRuntime } : {}),
     };
     atomicJson(locations.snapshot, snapshot);
