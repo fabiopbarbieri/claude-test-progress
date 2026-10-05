@@ -1,7 +1,7 @@
 {
   "name": "test-progress",
-  "version": "0.1.0",
-  "description": "Acompanha a execução de testes de backend e frontend em segundo plano, com contadores observados e demonstração sintética.",
+  "version": "0.2.0",
+  "description": "Acompanha em segundo plano os testes dos módulos cadastrados no workspace, com contadores observados, estado e logs por módulo.",
   "author": { "name": "Fabio Barbieri", "url": "https://github.com/fabiopbarbieri" },
   "homepage": "https://github.com/fabiopbarbieri/claude-test-progress",
   "repository": "https://github.com/fabiopbarbieri/claude-test-progress",

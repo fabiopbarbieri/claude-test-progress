@@ -1,0 +1,101 @@
+name: Prepare release
+
+# Preparation only. Publishing remains a separate, explicitly approved human action.
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA already merged into main
+        required: true
+        type: string
+      version:
+        description: Exact stable version in plugin.json (for example 0.2.0)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  provenance:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Validate inputs before checkout
+        env:
+          RELEASE_SHA: ${{ inputs.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the chosen commit in reviewed main history
+        env:
+          RELEASE_SHA: ${{ inputs.sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          git merge-base --is-ancestor "$RELEASE_SHA" "$DISPATCH_SHA"
+          git checkout --detach "$RELEASE_SHA"
+      - name: Check version, unused tag and existing CI for this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/check-release.py --expected-sha "$RELEASE_SHA" \
+            --expected-version "$RELEASE_VERSION" --require-clean \
+            --github-ci "$RELEASE_REPOSITORY"
+
+  checks:
+    needs: provenance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['14.0.0', '24']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Release regression tests and collector smoke (stdlib unittest)
+        run: |
+          python3 -B -m unittest discover -s tests/release -p 'test_*.py' -v
+          python3 scripts/check.py --smoke
+          python3 scripts/check-long-running.py
+      - name: Record preparation, never publish
+        env:
+          RELEASE_SHA: ${{ inputs.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 scripts/check-release.py --expected-sha "$RELEASE_SHA" \
+            --expected-version "$RELEASE_VERSION" --require-clean
+          {
+            echo '## Preparation passed; publication still requires human approval'
+            echo "Commit: $RELEASE_SHA"
+            echo "Version: $RELEASE_VERSION"
+            echo 'Check docs/RELEASING.md, integrated adapter/Mod evidence and isolated marketplace upgrade evidence for this SHA.'
+            echo 'No tag, GitHub release or distribution asset was created.'
+          } >> "$GITHUB_STEP_SUMMARY"
