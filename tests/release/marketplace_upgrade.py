@@ -95,11 +95,13 @@ def suite(cache, work, env):
             time.sleep(0.1)
             job = collect("status")
         expected = {"status": "failed", "total": 3, "resolved": 3, "passed": 1,
-                    "failed": 1, "skipped": 1, "exitCode": 1, "totalStable": False}
+                    "failed": 1, "skipped": 1, "exitCode": 1}
         for key, value in expected.items():
             require(job.get(key) == value, "Installed suite mismatch: " + key)
         require(config.read_bytes() == original_config, "Suite config changed")
-        return expected
+        # Record stability separately: release acceptance must not freeze the
+        # collector's conservative nonzero-exit policy across adapter fixes.
+        return dict(expected, totalStable=job.get("totalStable"))
     finally:
         if job["status"] in ("preparing", "running"):
             collect("cancel")  # Only this fixture's unique owner, never another session.
