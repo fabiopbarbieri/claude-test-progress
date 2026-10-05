@@ -1,5 +1,9 @@
 # Listener JUnit 5
 
+[Compatibilidade e versões testadas](../../docs/COMPATIBILITY.md) ·
+[Uso e atualização de caminhos](../../docs/USAGE.md) ·
+[Diagnóstico](../../docs/TROUBLESHOOTING.md)
+
 `local.claude.progress.TestProgressListener` usa JUnit Platform 1.11.3 e bytecode
 Java 11. Não inclui engine de testes, não executa testes e não altera o resultado
 da execução. A descoberta automática usa
