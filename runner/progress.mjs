@@ -48,7 +48,7 @@ export class Progress {
         return false;
       }
       if (/^\s*(?:\[INFO\]\s*)?Results:/.test(clean)) this.currentClass = null;
-      const running = clean.match(/(?:\[INFO\]\s*)?Running\s+([\w.$]+)/);
+      const running = clean.match(/^\s*(?:\[INFO\]\s*)?Running\s+([\w.$]+)\s*$/);
       if (running) {
         this.currentClass = running[1];
         this.kind = 'maven';
