@@ -37,8 +37,9 @@ erros de compartilhamento. A compilação C# 5 e os checks Linux passaram após
 essa alteração; a matriz nativa seguinte determina seu resultado Windows.
 
 O stress nativo de `0c7edd8` reproduziu `EPERM` nas substituições mesmo com
-compartilhamento de exclusão. `atomicJson` agora repete somente erros transitórios
-de compartilhamento Windows por até 300 ms, autentica pai/leaf a cada tentativa
+compartilhamento de exclusão. A correção inicial de `atomicJson` repetia somente
+erros transitórios de compartilhamento Windows por até 300 ms, autenticava
+pai/leaf a cada tentativa
 e mantém o registro anterior inteiro se o bloqueio persistir. A regressão no
 Node 14 cobre sucesso posterior, falha limitada, limpeza do temporário e recusa
 de destino substituído por link durante a repetição; os cenários simulados não
@@ -83,14 +84,38 @@ da gravação final do snapshot `ready`. O teste agora aguarda também essa fase
 a liberação do gate de mutação, enquanto mantém o outro worker retido; a troca
 não compete com uma gravação normal de preparação.
 
-Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
-parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
-Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório
-existente inseguro e junction no leaf/pai sem criar estado no alvo externo.
-Esse gate ainda precisa executar na matriz nativa da CI; parsing Linux não
-comprova as APIs Windows. Os aceites locais abaixo permanecem vinculados aos
-digests e revisões registrados em cada evidência, anteriores a essa correção
-específica de Windows.
+Em `9b12b3c`, os seis workflows do evento PR passaram, incluindo as quatro
+combinações Windows (`37309171936`). Os cinco workflows não Windows do push
+também passaram; a combinação PowerShell 7/Node14 do push `37308999754` falhou
+no stress de leitura concorrente com `EPERM` após esgotar os 300 ms. As outras
+sete combinações Windows desses dois eventos passaram. O log não identifica
+qual handle bloqueou a substituição.
+
+O limite de repetição de gravação Windows passa a 750 ms, abaixo da espera de
+1000 ms pelo gate de mutação. Um relógio monotônico evita estender esse limite
+com ajustes no relógio civil; as pausas crescem de 5 até 20 ms e respeitam o
+tempo restante. Apenas `EPERM`, `EACCES` e `EBUSY` de rename são repetidos.
+A autenticação do pai/destino acontece a cada tentativa, sem remover previamente
+o registro anterior. A regressão simulada de bloqueio por 450 ms falhou com o
+limite antigo e passou com o novo; falha persistente mantém o JSON anterior,
+limpa somente o temporário próprio e termina mesmo com o relógio civil parado.
+O gate nativo também inclui um holder real sem compartilhamento de exclusão,
+com bloqueios de 450 e 1500 ms, para verificar sucesso e falha limitada.
+
+O [código de rename do Node14](https://github.com/nodejs/node/blob/v14.0.0/deps/uv/src/win/fs.c)
+usa `MoveFileExW(REPLACE_EXISTING)`. A [documentação Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)
+distingue essa substituição da opção POSIX que admite handles abertos. Isso
+sustenta a possibilidade de contenção mesmo com `FileShare.Delete`; não prova
+a identidade do bloqueador observado na CI.
+
+Na revisão do limite de gravação, `python3 scripts/check.py` completo passou
+com Node14. A regressão de estado também passou no Node26; actionlint, sintaxe,
+parsing PowerShell 7.4.7 e Gitleaks da árvore/histórico passaram. As APIs Windows
+são comprovadas pelos runs nativos citados, separadamente do parsing Linux.
+Os aceites locais abaixo
+permanecem vinculados aos digests e revisões de cada evidência, anteriores às
+correções específicas de Windows. A nova revisão de gravação ainda precisa
+passar pela matriz nativa da CI.
 
 Este documento registra os gates da implementação de
 [MODULES-PLAN.md](MODULES-PLAN.md). Configuração, cadastro, respostas CLI e estado

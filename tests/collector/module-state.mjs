@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { performance } from 'perf_hooks';
 import { namespace, inspectState, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock } from '../../runner/state.mjs';
 import { processIdentity } from '../../runner/process-identity.mjs';
 import { batchFiles, changeBatch } from '../../runner/module-batch.mjs';
@@ -25,11 +26,25 @@ try {
     atomicJson(replacementFile, replacementValue);
     assert.strictEqual(attempts, 4);
     assert.deepStrictEqual(readJson(replacementFile), replacementValue, 'Sharing retries publish the complete new record');
+    const heldUntil = performance.now() + 450;
+    attempts = 0;
+    fs.renameSync = function(from, to) {
+      attempts++;
+      if (performance.now() < heldUntil) throw Object.assign(new Error('Held sharing violation'), { code: 'EPERM' });
+      return originalRename(from, to);
+    };
+    atomicJson(replacementFile, originalValue);
+    assert(attempts > 1, 'A bounded sharing hold longer than 300 ms must be retried');
+    assert.deepStrictEqual(readJson(replacementFile), originalValue, 'The complete new record publishes after the held reader releases');
+    atomicJson(replacementFile, replacementValue);
     attempts = 0;
     fs.renameSync = function() { attempts++; throw Object.assign(new Error('Persistent sharing violation'), { code: 'EPERM' }); };
-    const started = Date.now();
-    assert.throws(() => atomicJson(replacementFile, originalValue), /Persistent sharing/);
-    assert(attempts > 1 && Date.now() - started < 1500, 'Persistent sharing failure must remain bounded');
+    const started = performance.now();
+    const originalNow = Date.now;
+    Date.now = () => 0;
+    try { assert.throws(() => atomicJson(replacementFile, originalValue), /Persistent sharing/); }
+    finally { Date.now = originalNow; }
+    assert(attempts > 1 && performance.now() - started < 1500, 'Persistent sharing failure must remain bounded even if the wall clock stops');
     assert.deepStrictEqual(readJson(replacementFile), replacementValue, 'Failure preserves the previous complete record');
     assert(!fs.readdirSync(context.directory).some(name => name.endsWith('.tmp')), 'Failed writes must remove only their own temporary file');
     const substituted = path.join(cwd, 'outside-retry.json');

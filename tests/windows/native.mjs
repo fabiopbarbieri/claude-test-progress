@@ -180,10 +180,74 @@ async function assertPrivateSharing() {
     await closed;
   }
 }
+async function assertBoundedSharing() {
+  const directory = path.join(app, 'bounded rename sharing');
+  fs.mkdirSync(directory);
+  async function runCase(name, holdMilliseconds, succeeds) {
+    const fixture = path.join(directory, name);
+    fs.mkdirSync(fixture);
+    const file = path.join(fixture, 'state.json');
+    const ready = path.join(fixture, 'holder.ready');
+    const begin = path.join(fixture, 'writer.begin');
+    const original = { sequence: 0, payload: 'old'.repeat(1000) };
+    const replacement = { sequence: 1, payload: 'new'.repeat(1000) };
+    atomicJson(file, original);
+    const originalBytes = fs.readFileSync(file, 'utf8');
+    let stderr = '';
+    let exit = null;
+    const holder = spawn(engine, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+      path.join(root, 'tests/windows/rename-lock.ps1'), '-TargetPath', file,
+      '-ReadyPath', ready, '-BeginPath', begin, '-HoldMilliseconds', String(holdMilliseconds)],
+    { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    holder.stderr.on('data', data => { stderr += data; });
+    const closed = new Promise(resolve => {
+      holder.once('error', error => { exit = { error }; resolve(exit); });
+      holder.once('close', (code, signal) => { exit = { code, signal }; resolve(exit); });
+    });
+    async function waitClosed() {
+      let timer;
+      try {
+        return await Promise.race([closed, new Promise((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('Rename lock holder did not close')), 10000);
+        })]);
+      } finally { clearTimeout(timer); }
+    }
+    try {
+      const readyBy = Date.now() + 10000;
+      while (!fs.existsSync(ready)) {
+        assert(exit === null && Date.now() < readyBy, 'Rename lock holder did not become ready');
+        await sleep(5);
+      }
+      assert(exit === null, 'Rename lock holder exited before the write');
+      fs.writeFileSync(begin, 'begin');
+      const started = process.hrtime.bigint();
+      if (succeeds) atomicJson(file, replacement);
+      else assert.throws(() => atomicJson(file, replacement), error => ['EPERM', 'EACCES', 'EBUSY'].includes(error.code));
+      const elapsed = Number(process.hrtime.bigint() - started) / 1000000;
+      assert(elapsed >= 300, 'The real sharing lock must outlast the previous retry budget');
+      assert(elapsed < 1500, 'Rename retries must remain bounded');
+      if (succeeds) assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), replacement);
+      else assert.strictEqual(fs.readFileSync(file, 'utf8'), originalBytes, 'Failed replacement must preserve the original bytes');
+      assert(!fs.readdirSync(fixture).some(name => name.startsWith('state.json.') && name.endsWith('.tmp')),
+        'The writer must clean its temporary file after success or failure');
+      const result = await waitClosed();
+      assert(!result.error, 'Rename lock holder could not start');
+      assert.strictEqual(result.code, 0, stderr.split(directory).join('<fixture>') || 'Rename lock holder failed');
+      console.log(`Native bounded rename ${name}: ${Math.round(elapsed)} ms, original/replacement bytes and temporary cleanup: OK`);
+    } finally {
+      // Kill only our original child handle if a failed assertion leaves it live.
+      if (exit === null) holder.kill();
+      await waitClosed();
+    }
+  }
+  await runCase('released-after-450ms', 450, true);
+  await runCase('held-past-retry-budget', 1500, false);
+}
 async function main() {
   let safeToRemove = false;
   try {
     assertPrivateCreation();
+    await assertBoundedSharing();
     await assertPrivateSharing();
     // The selected command is independent of other malformed registrations.
     configure({ api: module('api'), broken: module('broken', { command: ['missing-gate-executable.exe'] }) });

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
+import { performance } from 'perf_hooks';
 import { processIdentity, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, validProcessIdentity } from './process-identity.mjs';
 import { removePath } from './runtime.mjs';
 import { windowsSecureDirectory } from './windows-process.mjs';
@@ -79,17 +80,22 @@ export function atomicJson(file, value) {
   const temporary = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' });
   try {
-    const retryUntil = Date.now() + 300;
+    // Stay below the one-second mutation-gate wait. Wall-clock changes must not
+    // extend this retry window; only the rename's sharing errors are retried.
+    const retryUntil = performance.now() + 750;
     const wait = process.platform === 'win32' ? new Int32Array(new SharedArrayBuffer(4)) : null;
+    let pause = 5;
     for (;;) {
       securePath(path.dirname(file), true);
       securePath(file, false, true);
       try { fs.renameSync(temporary, file); break; }
       catch (error) {
-        // Windows metadata readers and scanners can briefly prevent replacement
-        // even with delete sharing. Preserve the old complete record while retrying.
-        if (!wait || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || Date.now() >= retryUntil) throw error;
-        Atomics.wait(wait, 0, 0, 5);
+        // Windows readers can briefly prevent replacement even with delete
+        // sharing. Preserve the old complete record while retrying.
+        const remaining = retryUntil - performance.now();
+        if (!wait || !['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || remaining <= 0) throw error;
+        Atomics.wait(wait, 0, 0, Math.min(pause, remaining));
+        pause = Math.min(pause * 2, 20);
       }
     }
   }
