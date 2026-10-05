@@ -76,6 +76,13 @@ divergentes, respostas desconhecidas, limites e uma chamada por lista.
 O host nativo também espera até 1,5 segundo pelo handle do líder após o Job
 ficar vazio e reconfirma a árvore antes de obter o código de saída.
 
+O runtime `b2d8ce7` completou as quatro combinações nativas Windows PS5.1/7 e
+coletor Node14/24 no workflow de push `37308208288`. Quality passou no push,
+mas a execução PR revelou que a injeção de ownership observava `readyAt` antes
+da gravação final do snapshot `ready`. O teste agora aguarda também essa fase e
+a liberação do gate de mutação, enquanto mantém o outro worker retido; a troca
+não compete com uma gravação normal de preparação.
+
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
 Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório

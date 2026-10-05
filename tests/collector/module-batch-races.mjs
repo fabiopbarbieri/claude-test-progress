@@ -112,8 +112,11 @@ async function main() {
     const readyGateFile = path.join(cwd, 'release-preparation');
     const launching = launch({ ui: { readyGateFile } });
     const deadline = Date.now() + 5000;
-    while (!readJson(files(context.directory, 'api').claim)?.readyAt && Date.now() < deadline) await pause(25);
-    assert(readJson(files(context.directory, 'api').claim)?.readyAt, 'api must be ready while ui is held before injecting ownership replacement');
+    const api = files(context.directory, 'api');
+    const apiMutation = path.join(context.directory, 'api.mutation');
+    const preparationWritten = () => readJson(api.claim)?.readyAt && readJson(api.snapshot)?.phase === 'ready' && !fs.existsSync(apiMutation);
+    while (!preparationWritten() && Date.now() < deadline) await pause(25);
+    assert(preparationWritten(), 'api must finish its ready snapshot write while ui is held before injecting ownership replacement');
     const original = readJson(files(context.directory, 'api').snapshot);
     const replaced = { ...original, runId: randomUUID() };
     atomicJson(files(context.directory, 'api').snapshot, replaced);
