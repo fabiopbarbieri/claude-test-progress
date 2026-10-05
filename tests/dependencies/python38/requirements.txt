@@ -1,2 +1,2 @@
 # CI fixtures only; not a plugin runtime dependency.
-pytest==8.3.5
+pytest==9.1.1
