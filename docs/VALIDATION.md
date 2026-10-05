@@ -114,8 +114,19 @@ parsing PowerShell 7.4.7 e Gitleaks da árvore/histórico passaram. As APIs Wind
 são comprovadas pelos runs nativos citados, separadamente do parsing Linux.
 Os aceites locais abaixo
 permanecem vinculados aos digests e revisões de cada evidência, anteriores às
-correções específicas de Windows. A nova revisão de gravação ainda precisa
-passar pela matriz nativa da CI.
+correções específicas de Windows. A revisão de gravação passou na matriz nativa
+da CI em `f7af854`.
+
+No push de `f7af854`, Rails 8.0 falhou intermitentemente em
+`tests/collector/module-batch.mjs`: durante o teardown do cancelamento, o claim
+já removido com lock e gate ainda presentes era diagnosticado como legado, e o
+job sumia do status. Em `37b80b7`, a inspeção aguarda o gate autenticado com
+backoff limitado de 1–10 ms por até 100 ms monotônicos; se ele persistir, emite
+o diagnóstico local `state-busy`, sem bloqueio global, e mantém visível o
+resultado terminal autenticado. Claims legados estáveis e gates inseguros
+continuam bloqueando. `tests/collector/state-inspection.mjs` cobre esses casos
+de forma determinística, e o teste de lote espera módulos sem lock, gate ou
+diagnóstico. Os seis workflows passaram em push e PR nesse commit.
 
 Este documento registra os gates da implementação de
 [MODULES-PLAN.md](MODULES-PLAN.md). Configuração, cadastro, respostas CLI e estado
@@ -213,7 +224,8 @@ Quality usa checkout completo.
 A branch incorporou `main` no merge
 `921b953741b10c3e0bec185013a7434a46495b77`. As evidências abaixo foram obtidas com
 as alterações de implementação ainda no working tree; o SHA identifica a base,
-não um commit da implementação. Não houve push nem execução remota dos workflows.
+não um commit da implementação. Registro histórico, anterior ao commit `ee181b6`,
+ao push e à execução remota dos workflows descrita acima.
 
 | Gate | Resultado observado |
 | --- | --- |

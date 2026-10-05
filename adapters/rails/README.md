@@ -46,7 +46,8 @@ já selecionou esse ambiente, a configuração acima o herda. Um caminho absolut
 para o executável também funciona. Cada argumento ocupa um elemento no JSON;
 caminhos com espaços não precisam de aspas adicionais dentro do elemento.
 
-Execute `/test-progress start rails`. Consulte `status rails`, `logs rails`
+O exemplo versionado usa o ID `backend`; o trecho acima usa `rails`. Use o ID
+que estiver no seu arquivo. Com este trecho, execute `/test-progress start rails`. Consulte `status rails`, `logs rails`
 e `cancel rails`. `start all` seleciona todos os módulos habilitados; não exige
 configuração de outra linguagem.
 

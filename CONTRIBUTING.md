@@ -42,7 +42,7 @@ Quem tem acesso de escrita também trabalha em branch própria e abre PR.
 
 ## Dependências e checks locais
 
-O coletor e a demo usam **Node 14+**. Os checks básicos abaixo usam também
+O coletor usa **Node 14+**. Os checks básicos abaixo usam também
 **Python 3.8+**, **Bash** e Git em Linux/WSL. Não é necessário instalar pacotes
 npm, Ruby, Rails, Java, Karma ou pytest para esse primeiro passo:
 

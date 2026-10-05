@@ -43,7 +43,8 @@ pertencem ao seu app:
 }
 ```
 
-Depois execute `/test-progress start python`. Consulte `status python`,
+O exemplo versionado usa o ID `backend`; o trecho acima usa `python`. Use o ID
+que estiver no seu arquivo. Com este trecho, execute `/test-progress start python`. Consulte `status python`,
 `logs python` e `cancel python`. `start all` seleciona somente módulos
 habilitados do workspace. Você pode cadastrar vários módulos Python com IDs
 distintos, sem depender de Node do app: este exemplo usa `runtime: "inherit"`.

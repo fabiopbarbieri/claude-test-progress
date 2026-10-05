@@ -41,7 +41,8 @@ quando o workspace referencia um template.
 - Preservar adapters e suas limitações: percentual de testes resolvidos,
   total desconhecido distinto de zero, exit code nativo, parcial após interrupção.
 - Não migrar frameworks, instalar dependências no app, elevar mínimo Node,
-  publicar release, enviar a GitHub ou alterar outros worktrees nesta entrega.
+  publicar release ou alterar outros worktrees nesta entrega. A branch é
+  publicada somente como PR draft para a CI remota.
 
 A prova privada do broker Windows permanece **`schema: 1`**, pois é um protocolo
 independente de contenção por runId. Isso não mantém suporte ao estado v1.
@@ -323,10 +324,10 @@ para essa etapa. Os gates Linux e a implementação continuam nesta entrega.
 ## 9. Estado da implementação em 05/10/2026
 
 A integração com `main` foi concluída no merge `921b953`. O refactor v2, os
-exemplos, a CLI, o supervisor/barreira, o painel e os gates foram implementados
-no working tree, sem commit da implementação ou push. A versão v2 deste
-checkout pode ser carregada por `--plugin-dir`; instalação remota ainda não
-garante incluir essas alterações.
+exemplos, a CLI, o supervisor/barreira, o painel e os gates foram commitados em
+`ee181b6` e publicados no PR draft #29, seguidos das correções expostas pela CI.
+A versão v2 deste checkout pode ser carregada por `--plugin-dir`; a instalação
+remota só inclui essas alterações após o merge.
 
 Passaram gates completos com Node 14.0.0/24.20.0, adaptadores reais Linux,
 rollout/rollback quiescente, 28 testes do Mod, revisão de padrões/especificação,
@@ -337,6 +338,7 @@ O CLI real mostrou 0/1/2/12 módulos, teclado/scroll, desconhecido versus zero,
 
 O registro completo e as capturas estão em [VALIDATION.md](VALIDATION.md).
 Permanecem para aceite posterior: Windows nativo PS5.1/7, Claude Desktop real,
-`/resume` de conversa/branch e a matriz completa de hot reload; CI remoto não foi
-executado. Implementação local concluída não equivale ao aceite completo dessas
-superfícies nem à publicação da v2.
+`/resume` de conversa/branch e a matriz completa de hot reload. A CI remota,
+incluindo a matriz Windows Server PS5.1/7, passou nos seis workflows em push e PR
+no commit `37b80b7`. CI verde não equivale ao aceite completo dessas superfícies
+nem à publicação da v2.

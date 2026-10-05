@@ -48,7 +48,7 @@ A tabela seguinte descreve somente o SHA de referência legado.
 | Componente / sistema | Requisito declarado ou caminho implementado | Evidência disponível | Limite |
 | --- | --- | --- | --- |
 | Claude Code | 2.1.287+, com Mods permitido | Claude 2.1.289 em Linux: instalação isolada, paths, demo e consultas headless em [VERIFICATION](VERIFICATION.md); versão mínima em [launch.sh](../launch.sh) e [launch.ps1](../launch.ps1) | Não prova todas as versões posteriores nem aceite visual interativo |
-| Coletor e demo legados | Node >=14.0.0; sem dependências npm | [package.json](../package.json); CI Quality em Node 14.0.0 e 24 | Não exige um framework de testes global; Node do app é independente |
+| Coletor | Node >=14.0.0; sem dependências npm | [package.json](../package.json); CI Quality em Node 14.0.0 e 24 | Não exige um framework de testes global; Node do app é independente |
 | Linux | Bash; GNU `sort -V` para descoberta nvm; recuperação de processos por `/proc` | Quality e Ruby em `ubuntu-latest`; Rails em `ubuntu-24.04`; uso local descrito em VERIFICATION | Não é uma matriz de todas as distribuições Linux |
 | WSL | Claude, Bash, Node e toolchain executados dentro do WSL, pelo caminho Linux | Roteamento em [hooks/register.mjs](../hooks/register.mjs) e descoberta em [runtime](../runtime/resolve-node.sh) | Sem aceite WSL próprio; não misture executáveis Windows com recuperação Linux |
 | Windows nativo | Windows 10/11 ou Server 2019+ como alvos; PowerShell 5.1/7 e Node 14+ | Scripts e Job Objects implementados; [guia Windows](../WINDOWS.md) e [host nativo](../runtime/WindowsProcessHost.cs) | Aceite operacional pendente: nenhum job Windows nos workflows de referência |
