@@ -130,4 +130,99 @@ async function main() {
     removePath(cwd, { recursive: true, force: true });
   }
 }
-main().then(atomicHeartbeatStress).catch(error => { console.error(error); process.exitCode = 1; });
+async function releaseDuringIdentityProbe() {
+  if (process.platform !== 'linux') return;
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-slow-probe-'));
+  const owner = randomUUID();
+  const context = namespace(cwd, owner);
+  const config = path.join(cwd, 'config.json');
+  const suite = path.join(cwd, 'suite.mjs');
+  const preload = path.join(cwd, 'slow-probe.cjs');
+  const observed = path.join(cwd, 'probe-observed');
+  fs.writeFileSync(suite, 'setInterval(()=>{},1000);');
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: {
+    api: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {} }
+  } }));
+  fs.writeFileSync(preload, `const fs=require('fs'),path=require('path');
+const original=fs.readFileSync,now=Date.now;let offset=0,injected=false;
+Date.now=()=>now()+offset;
+fs.readFileSync=function(file,...args){
+  const match=typeof file==='string'&&/^\\/proc\\/([0-9]+)\\/stat$/.exec(file);
+  if(match&&Number(match[1])!==process.pid&&!injected){
+    for(const name of fs.readdirSync(${JSON.stringify(context.directory)})){
+      if(!/^batch\\.[0-9a-f-]{36}\\.json$/.test(name))continue;
+      const manifestPath=path.join(${JSON.stringify(context.directory)},name);
+      let manifest=JSON.parse(original(manifestPath,'utf8'));
+      if(manifest.coordinatorIdentity?.pid!==Number(match[1])||manifest.state!=='preparing')continue;
+      injected=true;const deadline=now()+5000,wait=new Int32Array(new SharedArrayBuffer(4));
+      while(manifest.state==='preparing'&&now()<deadline){Atomics.wait(wait,0,0,5);manifest=JSON.parse(original(manifestPath,'utf8'));}
+      if(manifest.state==='released'){offset=31000;fs.writeFileSync(${JSON.stringify(observed)},'released during identity query');}
+      break;
+    }
+  }
+  return original.call(this,file,...args);
+};`);
+  const args = action => [cli, action, '--cwd', cwd, '--owner', owner, '--module', 'api', '--config', config];
+  try {
+    const result = spawnSync(process.execPath, ['-r', preload, ...args('start')], { encoding: 'utf8', timeout: 15000 });
+    assert(!result.error, result.error?.message);
+    const started = JSON.parse(result.stdout);
+    assert(fs.existsSync(observed), 'The identity probe must span actual release and cross the preparation deadline');
+    assert.strictEqual(started.ok, true, started.error);
+    assert.strictEqual(started.actionResults.api.ok, true);
+    assert(!started.jobs.api.cancellationRequestedAt, 'The CLI must not cancel a barrier already released during its query');
+    console.log('A durable release during a slow identity query wins over the obsolete preparation deadline: OK');
+  } finally {
+    spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
+    const until = Date.now() + 10000;
+    while (fs.existsSync(files(context.directory, 'api').lock) && Date.now() < until) await pause(25);
+    assert(!fs.existsSync(files(context.directory, 'api').lock), 'The slow-probe fixture must safely release its lock');
+    removePath(context.directory, { recursive: true, force: true });
+    removePath(cwd, { recursive: true, force: true });
+  }
+}
+async function deadlineDuringFinalConfirmation() {
+  if (process.platform !== 'linux') return;
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-final-deadline-'));
+  const owner = randomUUID();
+  const context = namespace(cwd, owner);
+  const config = path.join(cwd, 'config.json');
+  const suite = path.join(cwd, 'suite.mjs');
+  const preload = path.join(cwd, 'final-deadline.cjs');
+  const marker = path.join(cwd, 'command-started');
+  const injected = path.join(cwd, 'deadline-observed');
+  fs.writeFileSync(suite, `import fs from 'fs';fs.writeFileSync(${JSON.stringify(marker)},'started');setInterval(()=>{},1000);`);
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: {
+    api: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {} }
+  } }));
+  fs.writeFileSync(preload, `if(process.argv[1]?.endsWith('module-batch-worker.mjs')){
+const fs=require('fs'),original=fs.openSync,now=Date.now;let offset=0,reads=0;
+Date.now=()=>now()+offset;
+fs.openSync=function(file,...args){
+  if(file===${JSON.stringify(files(context.directory, 'api').claim)}&&
+      fs.readdirSync(${JSON.stringify(context.directory)}).some(name=>/^batch\\.[0-9a-f-]{36}\\.mutation$/.test(name))&&++reads===2){
+    offset=31000;fs.writeFileSync(${JSON.stringify(injected)},'deadline crossed in final claim revalidation');
+  }
+  return original.call(this,file,...args);
+};}`);
+  const args = action => [cli, action, '--cwd', cwd, '--owner', owner, '--module', 'api', '--config', config];
+  try {
+    const result = spawnSync(process.execPath, args('start'), { encoding: 'utf8', timeout: 15000,
+      env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require ${JSON.stringify(preload)}` } });
+    assert(!result.error, result.error?.message);
+    const started = JSON.parse(result.stdout);
+    assert(fs.existsSync(injected), 'The deadline must expire in the final ownership confirmation');
+    assert.strictEqual(started.ok, false, 'Expired preparation cannot release the batch');
+    assert.match(started.error, /Prazo de preparação expirado antes de confirmar liberação/);
+    assert(!fs.existsSync(marker), 'Expiry immediately before release must execute zero commands');
+    console.log('Preparation expiry during final ownership confirmation aborts with zero command effects: OK');
+  } finally {
+    spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
+    const until = Date.now() + 10000;
+    while (fs.existsSync(files(context.directory, 'api').lock) && Date.now() < until) await pause(25);
+    assert(!fs.existsSync(files(context.directory, 'api').lock), 'The final-deadline fixture must safely release its lock');
+    removePath(context.directory, { recursive: true, force: true });
+    removePath(cwd, { recursive: true, force: true });
+  }
+}
+main().then(releaseDuringIdentityProbe).then(deadlineDuringFinalConfirmation).then(atomicHeartbeatStress).catch(error => { console.error(error); process.exitCode = 1; });

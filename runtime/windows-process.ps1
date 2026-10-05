@@ -1,6 +1,6 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Run', 'Identity', 'State', 'Group', 'Kill', 'SecureDirectory', 'LaunchCoordinator')]
+    [ValidateSet('Run', 'Identity', 'IdentityMany', 'State', 'StateMany', 'Group', 'Kill', 'SecureDirectory', 'LaunchCoordinator')]
     [string] $Action,
     [string] $JobFile,
     [int] $ProcessId,
@@ -9,7 +9,9 @@
     [string] $JobName,
     [int] $SessionId = -1,
     [string] $Directory,
-    [string] $Collector
+    [string] $Collector,
+    [string] $Queries,
+    [int] $SelfProcessId
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,6 +43,53 @@ function Assert-Absolute([string] $Path) {
     }
 }
 
+if ($Action -eq 'IdentityMany' -or $Action -eq 'StateMany') {
+    if ([string]::IsNullOrWhiteSpace($Queries) -or $Queries.Length -gt 65536 -or
+        -not $Queries.TrimStart().StartsWith('[') -or -not $Queries.TrimEnd().EndsWith(']')) {
+        throw 'Windows queries must be a bounded JSON array.'
+    }
+    # An object property preserves empty/singleton arrays and null entries on
+    # PowerShell 5.1 as well as 7, without pipeline array enumeration.
+    $parsed = ('{"items":' + $Queries + '}') | ConvertFrom-Json
+    $items = @($parsed.items)
+    if ($items.Count -gt 64) { throw 'Windows queries exceed 64 items.' }
+    # Validate every entry before invoking any native process query.
+    foreach ($entry in $items) {
+        $queryPid = $entry
+        if ($Action -eq 'StateMany') { $queryPid = $entry.pid }
+        if (($queryPid -isnot [int] -and $queryPid -isnot [long]) -or $queryPid -le 0 -or $queryPid -gt [int]::MaxValue) {
+            throw 'Windows query PID must be a positive Int32.'
+        }
+        if ($Action -eq 'StateMany' -and
+            ($entry.startTime -isnot [string] -or $entry.startTime -cnotmatch '^[0-9]{1,20}$' -or
+             $entry.owner -isnot [string] -or $entry.owner.Length -gt 184 -or $entry.owner -cnotmatch '^S-[0-9]+(?:-[0-9]+)+$')) {
+            throw 'Windows state query identity is invalid.'
+        }
+    }
+    if ($SelfProcessId -lt 0 -or ($SelfProcessId -gt 0 -and $Action -ne 'StateMany')) {
+        throw 'Invalid self identity query.'
+    }
+    $results = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($entry in $items) {
+        if ($Action -eq 'IdentityMany') {
+            try { $results.Add([TestProgress.WindowsProcessHost]::Identity([int]$entry)) }
+            catch { $results.Add($null) }
+        } else {
+            try { $results.Add([TestProgress.WindowsProcessHost]::State([int]$entry.pid, $entry.startTime, $entry.owner) -eq 'present') }
+            catch { $results.Add($false) }
+        }
+    }
+    if ($Action -eq 'IdentityMany') {
+        Write-Control @{ identities = $results.ToArray() }
+    } else {
+        $originalSelf = $null
+        if ($SelfProcessId -gt 0) {
+            try { $originalSelf = [TestProgress.WindowsProcessHost]::Identity($SelfProcessId) } catch { }
+        }
+        Write-Control @{ matches = $results.ToArray(); selfIdentity = $originalSelf }
+    }
+    exit 0
+}
 if ($Action -eq 'Identity') {
     Write-Control ([TestProgress.WindowsProcessHost]::Identity($ProcessId))
     exit 0

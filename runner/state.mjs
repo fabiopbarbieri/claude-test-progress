@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
-import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, validProcessIdentity } from './process-identity.mjs';
+import { processIdentity, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, validProcessIdentity } from './process-identity.mjs';
 import { removePath } from './runtime.mjs';
 import { windowsSecureDirectory } from './windows-process.mjs';
 import { windowsProof } from './windows-proof.mjs';
@@ -222,13 +222,31 @@ export function stateIds(directory) {
   }
   return [...ids].sort();
 }
-export function inspectState(directory) {
+export function inspectState(directory, { recover = true } = {}) {
   securePath(directory, true);
   const jobs = Object.create(null);
   const stateDiagnostics = Object.create(null);
   let blocked = false;
   const diagnose = (id, message, global = false) => { (stateDiagnostics[id] || (stateDiagnostics[id] = [])).push({ code: 'state-unavailable', message, blocking: true }); if (global) blocked = true; };
-  for (const moduleId of stateIds(directory)) {
+  const ids = stateIds(directory);
+  const queried = new Map();
+  if (recover && process.platform === 'win32') {
+    for (const moduleId of ids) {
+      try {
+        const loc = files(directory, moduleId);
+        const snapshot = readJson(loc.snapshot);
+        if (!snapshot || (!ACTIVE.has(snapshot.status) && !snapshot.recoveryRequired)) continue;
+        const claim = readJson(loc.claim);
+        for (const identity of [claim?.workerIdentity, claim?.coordinatorIdentity, claim?.launchIdentity]) {
+          if (validProcessIdentity(identity)) queried.set(JSON.stringify(identity), identity);
+        }
+      } catch { /* The authenticated observation below reports any invalid record. */ }
+    }
+  }
+  const presence = sameProcesses([...queried.values()]);
+  const liveness = new Map([...queried.keys()].map((key, index) => [key, presence[index]]));
+  const alive = identity => liveness.has(JSON.stringify(identity)) ? liveness.get(JSON.stringify(identity)) : sameProcess(identity);
+  for (const moduleId of ids) {
     const loc = files(directory, moduleId);
     try {
       let snapshot, lock, claim, pendingCancel, gate;
@@ -273,7 +291,7 @@ export function inspectState(directory) {
       let current = snapshot;
       if (ACTIVE.has(snapshot.status) || snapshot.recoveryRequired) {
         if (!claim) { diagnose(moduleId, 'Execução ativa sem claim autenticado.'); }
-        else if (!sameProcess(claim.workerIdentity) && !sameProcess(claim.coordinatorIdentity) && !sameProcess(claim.launchIdentity)) {
+        else if (recover && !alive(claim.workerIdentity) && !alive(claim.coordinatorIdentity) && !alive(claim.launchIdentity)) {
           current = mutateLock(directory, moduleId, () => {
             // Liveness can take seconds on Windows. Read again under the same gate used by workers.
             const latest = readJson(loc.snapshot);

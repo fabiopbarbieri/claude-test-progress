@@ -61,6 +61,21 @@ remoções durante leitura, gates liberados/persistentes/inseguros e o gate de l
 O isolamento Node14 passou em 30 execuções consecutivas; o gate de troca de
 ownership usa uma barreira explícita, sem depender de uma janela de 1,2 segundos.
 
+A matriz `dd5cb7b` confirmou que chamadas PowerShell repetidas podiam consumir o
+prazo de preparação, inclusive enquanto o coordenador liberava a barreira. As
+consultas Windows agora agrupam até 64 identidades por chamada e reutilizam
+somente a identidade imutável do próprio processo. Inspeções de status e
+supervisão usam consultas em lote; o coordenador valida o namespace sem repetir
+recuperação, e revalida fontes, claims e prazo após a consulta, antes de liberar.
+O CLI relê a barreira depois de consultas lentas e confirma release sob gate
+antes de decidir abortar. Os prazos de preparação/ACK/aborto permanecem 30/10/10
+segundos. Regressões reais cobrem release durante uma consulta que atravessa o
+prazo e expiração na confirmação final com zero execução de comandos. A API de
+controle simulado cobre cache próprio, consultas externas novas, identidades
+divergentes, respostas desconhecidas, limites e uma chamada por lista.
+O host nativo também espera até 1,5 segundo pelo handle do líder após o Job
+ficar vazio e reconfirma a árvore antes de obter o código de saída.
+
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
 Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório

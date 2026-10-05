@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { windowsIdentity, windowsGroupState, windowsSameProcess, windowsKillOwnedBroker } from './windows-process.mjs';
+import { windowsIdentity, windowsIdentities, windowsGroupState, windowsSameProcess, windowsSameProcesses, windowsKillOwnedBroker } from './windows-process.mjs';
 
 function proc(pid) {
   const directory = `/proc/${pid}`;
@@ -34,6 +34,18 @@ export function sameProcess(identity) {
   const current = processIdentity(identity.pid);
   return Boolean(current && current.state !== 'Z' && current.startTime === identity.startTime &&
     current.uid === identity.uid && current.group === identity.group && current.bootId === identity.bootId);
+}
+export function processIdentities(pids) {
+  if (process.platform !== 'win32') return pids.map(processIdentity);
+  const results = [];
+  for (let index = 0; index < pids.length; index += 64) results.push(...windowsIdentities(pids.slice(index, index + 64)));
+  return results;
+}
+export function sameProcesses(identities) {
+  if (process.platform !== 'win32') return identities.map(sameProcess);
+  const results = [];
+  for (let index = 0; index < identities.length; index += 64) results.push(...windowsSameProcesses(identities.slice(index, index + 64)));
+  return results;
 }
 export function groupState(identity) {
   if (process.platform === 'win32') return windowsGroupState(identity);

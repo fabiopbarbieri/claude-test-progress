@@ -379,8 +379,14 @@ namespace TestProgress {
             return info.ActiveProcesses;
         }
         public int ExitCode() {
-            if (ActiveProcesses() != 0 || WaitForSingleObject(process, 0) != 0)
+            if (ActiveProcesses() != 0)
                 throw new InvalidOperationException("Process tree has not exited.");
+            // The job's active count may reach zero just before the retained
+            // leader handle is signalled. Observe kernel exit with a bounded wait.
+            uint observed = WaitForSingleObject(process, 1500);
+            if (observed == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (observed != 0 || ActiveProcesses() != 0)
+                throw new InvalidOperationException("Process tree exit was not confirmed.");
             uint code;
             Check(GetExitCodeProcess(process, out code));
             return unchecked((int)code);

@@ -53,6 +53,9 @@ async function start(selection, preparationStartedAt) {
   const reserved = [];
   let coordinator;
   let manifestCreated = false;
+  const acknowledgeRelease = () => {
+    actionResults = Object.fromEntries(entries.map((entry) => [entry.moduleId, { ok: true, runId: entry.runId, batchId, action: 'start' }]));
+  };
   try {
     assertSourcesUnchanged(selection.revision);
     for (const entry of entries) {
@@ -92,18 +95,27 @@ async function start(selection, preparationStartedAt) {
     for (;;) {
       const manifest = readBatch(context.directory, batchId);
       if (manifest.state === 'released') {
-        actionResults = Object.fromEntries(entries.map((entry) => [entry.moduleId, { ok: true, runId: entry.runId, batchId, action: 'start' }]));
+        acknowledgeRelease();
         return;
       }
       if (manifest.state === 'aborted') throw new Error(manifest.error || 'Lote abortado antes da execução');
-      if (!sameProcess(identity)) throw new Error('Coordenador perdido antes da liberação do lote');
+      const alive = sameProcess(identity);
+      // A native identity query can outlive preparation. The durable barrier,
+      // reread after that query, decides whether launch has already succeeded.
+      const afterProbe = readBatch(context.directory, batchId);
+      if (afterProbe.state === 'released') { acknowledgeRelease(); return; }
+      if (afterProbe.state === 'aborted') throw new Error(afterProbe.error || 'Lote abortado antes da execução');
+      if (!alive) throw new Error('Coordenador perdido antes da liberação do lote');
       if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preparação do lote expirado');
       await pause();
     }
   } catch (error) {
     if (manifestCreated) {
-      try { changeBatch(context.directory, batchId, (value) => value.state === 'preparing' ?
-        { ...value, state: 'aborted', error: error.message, abortedAt: timestamp() } : value); } catch { /* Retain unsafe gate. */ }
+      try {
+        const final = changeBatch(context.directory, batchId, (value) => value.state === 'preparing' ?
+          { ...value, state: 'aborted', error: error.message, abortedAt: timestamp() } : value);
+        if (final.state === 'released') { acknowledgeRelease(); return; }
+      } catch { /* Retain unsafe gate. */ }
     }
     for (const entry of reserved) {
       try {

@@ -2,7 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { readJson, atomicJson, files, ownedClaim, updateClaim, validRecord, jobFile, releaseLock, timestamp, ACTIVE, inspectState } from './state.mjs';
-import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
+import { processIdentity, processIdentities, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
 import { removePath } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
@@ -72,6 +72,16 @@ async function main() {
   }
   async function supervise() {
     manifest = readBatch(request.directory, request.batchId);
+    const queried = [];
+    for (const entry of manifest.entries) {
+      if (finalAcknowledged(manifest, entry)) continue;
+      try { queried.push(readJson(files(request.directory, entry.moduleId).claim)?.workerIdentity ?? null); }
+      catch { queried.push(null); }
+      queried.push(workerLaunches.get(entry.moduleId) ?? null);
+    }
+    const present = sameProcesses(queried);
+    const liveness = new Map(queried.map((identity, index) => [JSON.stringify(identity), present[index]]));
+    const alive = identity => liveness.has(JSON.stringify(identity)) ? liveness.get(JSON.stringify(identity)) : sameProcess(identity);
     let allSafe = true;
     for (const entry of manifest.entries) {
       try {
@@ -90,10 +100,10 @@ async function main() {
         if (claim.batchId !== request.batchId || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity)) throw new Error('Identidade de coordenação substituída');
         allSafe = false;
         if (snapshot.infrastructureFailure) cancelAll(snapshot.error || 'Falha de infraestrutura');
-        if (!sameProcess(claim.workerIdentity)) {
+        if (!alive(claim.workerIdentity)) {
           if (acknowledged(entry)) continue;
           const worker = workerLaunches.get(entry.moduleId);
-          if (worker && sameProcess(worker)) continue; // Worker has not yet published its own identity.
+          if (worker && alive(worker)) continue; // Worker has not yet published its own identity.
           if (snapshot.finalSafe === true && !snapshot.recoveryRequired && !ACTIVE.has(snapshot.status)) {
             const identity = snapshot.childIdentity ?? claim.childIdentity;
             if (groupState(identity) === 'empty') {
@@ -124,7 +134,7 @@ async function main() {
   process.on('SIGTERM', () => { try { cancelAll('Coordenador interrompido'); } catch { /* Retain state. */ } });
   try {
     assertSourcesUnchanged(request.revision);
-    if (inspectState(request.directory).blocked) throw new Error('Estado global incompatível durante preparação');
+    if (inspectState(request.directory, { recover: false }).blocked) throw new Error('Estado global incompatível durante preparação');
     for (const entry of manifest.entries) {
       if (Date.now() >= deadline) throw new Error('Prazo de preparação expirado');
       const claim = ownedClaim(request.directory, entry.moduleId, entry.runId);
@@ -134,38 +144,59 @@ async function main() {
       updateClaim(request.directory, entry.moduleId, entry.runId, { coordinatorIdentity });
     }
     // Every job and claim has passed preflight before the first worker is prepared.
+    const launched = [];
     for (const entry of manifest.entries) {
       const worker = spawn(process.execPath, [workerPath, jobFile(request.directory, entry.moduleId, entry.runId)],
         { detached: true, stdio: 'ignore', cwd: path.dirname(workerPath), windowsHide: true });
       await new Promise((resolve, reject) => { worker.once('error', reject); if (worker.pid) resolve(); });
-      const identity = processIdentity(worker.pid);
-      if (!identity) throw new Error('Identidade do worker não confirmada');
-      workerLaunches.set(entry.moduleId, identity);
+      launched.push({ entry, pid: worker.pid });
       worker.unref();
+    }
+    const launchedIdentities = processIdentities(launched.map(value => value.pid));
+    for (const [index, value] of launched.entries()) {
+      const identity = launchedIdentities[index];
+      if (!identity) throw new Error('Identidade do worker não confirmada');
+      workerLaunches.set(value.entry.moduleId, identity);
     }
     for (;;) {
       let ready = true;
+      const identities = [];
       for (const entry of manifest.entries) {
         const claim = ownedClaim(request.directory, entry.moduleId, entry.runId);
         if (!validRecord(readJson(files(request.directory, entry.moduleId).snapshot), entry.moduleId, entry.runId)) throw new Error('Snapshot substituído durante preparação');
         if (validRecord(readJson(files(request.directory, entry.moduleId).cancel), entry.moduleId, entry.runId)) throw new Error('Cancelamento antes da liberação');
-        if (claim.workerIdentity ? !sameProcess(claim.workerIdentity) : !sameProcess(workerLaunches.get(entry.moduleId))) throw new Error('Worker perdido durante preparação');
+        identities.push(claim.workerIdentity ?? workerLaunches.get(entry.moduleId));
         if (!claim.readyAt || !claim.workerIdentity) ready = false;
       }
+      if (sameProcesses(identities).some(value => !value)) throw new Error('Worker perdido durante preparação');
       if (ready) break;
       if (stopping || Date.now() >= deadline) throw new Error('Prazo de preparação dos workers expirado');
       await pause();
     }
     assertSourcesUnchanged(request.revision);
-    if (inspectState(request.directory).blocked) throw new Error('Estado global incompatível durante preparação');
+    if (inspectState(request.directory, { recover: false }).blocked) throw new Error('Estado global incompatível durante preparação');
     manifest = changeBatch(request.directory, request.batchId, (current) => {
       if (current.state !== 'preparing' || !sameProcess(current.coordinatorIdentity) || Date.now() >= deadline) throw new Error('Barreira não pode ser liberada');
+      const identities = [];
       for (const entry of current.entries) {
         const claim = ownedClaim(request.directory, entry.moduleId, entry.runId);
         if (!validRecord(readJson(files(request.directory, entry.moduleId).snapshot), entry.moduleId, entry.runId)) throw new Error('Snapshot substituído antes da liberação');
-        if (!claim.readyAt || !sameProcess(claim.workerIdentity) || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity) ||
+        if (!claim.readyAt || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity) ||
             validRecord(readJson(files(request.directory, entry.moduleId).cancel), entry.moduleId, entry.runId)) throw new Error('Preparo mudou antes da liberação');
+        identities.push(claim.workerIdentity);
       }
+      if (sameProcesses(identities).some(value => !value) || Date.now() >= deadline) throw new Error('Preparo ou prazo mudou antes da liberação');
+      // The native query can take seconds. Revalidate ownership once more before
+      // committing release; the query result never substitutes for the current claim.
+      for (const [index, entry] of current.entries.entries()) {
+        const claim = ownedClaim(request.directory, entry.moduleId, entry.runId);
+        if (!claim.readyAt || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity) ||
+            !sameIdentity(claim.workerIdentity, identities[index]) ||
+            !validRecord(readJson(files(request.directory, entry.moduleId).snapshot), entry.moduleId, entry.runId) ||
+            validRecord(readJson(files(request.directory, entry.moduleId).cancel), entry.moduleId, entry.runId)) throw new Error('Ownership mudou durante confirmação do preparo');
+      }
+      assertSourcesUnchanged(request.revision);
+      if (Date.now() >= deadline) throw new Error('Prazo de preparação expirado antes de confirmar liberação');
       return { ...current, state: 'released', releasedAt: timestamp() };
     });
   } catch (error) { cancelAll(error.message); }
