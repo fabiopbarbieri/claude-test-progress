@@ -215,9 +215,11 @@ export function register(on) {
     if (command.action === 'help') return { text: HELP };
     if (command.action === 'paths') return { text: [
       `Plugin: ${$.plugin.root}`,
+      `Rails: ${$.plugin.root}/adapters/rails/run.rb`,
       `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`,
       `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
+      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
       `Exemplos: ${$.plugin.root}/config.example.json`,
       'Use caminhos absolutos nos comandos do seu projeto. Confira novamente após atualizar o plugin.',
     ].join('\n') };
