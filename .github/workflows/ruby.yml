@@ -20,22 +20,25 @@ jobs:
       matrix:
         ruby: ['3.1', '3.4', '4.0']
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
-      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with:
           ruby-version: ${{ matrix.ruby }}
-      - name: Install verification dependencies in temporary directory
+          bundler: '2.6.9'
+      - name: Install locked fixture dependencies
+        env:
+          BUNDLE_GEMFILE: tests/dependencies/rspec/Gemfile
+          BUNDLE_PATH: ${{ runner.temp }}/fixture-bundle
+          BUNDLE_FROZEN: 'true'
         run: |
-          echo "GEM_HOME=$RUNNER_TEMP/ruby-gems" >> "$GITHUB_ENV"
-          echo "GEM_PATH=$RUNNER_TEMP/ruby-gems" >> "$GITHUB_ENV"
-          gem install rspec -v 3.13.2 --no-document --install-dir "$RUNNER_TEMP/ruby-gems"
-          gem install rspec-core -v 3.13.6 --no-document --install-dir "$RUNNER_TEMP/ruby-gems"
-          gem install rspec-retry -v 0.6.2 --no-document --install-dir "$RUNNER_TEMP/ruby-gems"
+          bundle install --jobs 4 --retry 3
+          # Fixtures create their own Gemfiles: expose installed gems, not this bundle.
+          bundle exec ruby -e 'puts "GEM_HOME=#{Gem.dir}"; puts "GEM_PATH=#{Gem.path.join(File::PATH_SEPARATOR)}"' >> "$GITHUB_ENV"
       - name: Syntax and integration checks
         run: |
           ruby -c adapters/ruby/run.rb

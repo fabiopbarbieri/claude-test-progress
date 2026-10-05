@@ -1,0 +1,6 @@
+# CI fixtures only; not plugin runtime dependencies.
+source "https://rubygems.org"
+
+gem "rspec", "3.13.2"
+gem "rspec-core", "3.13.6"
+gem "rspec-retry", "0.6.2"
