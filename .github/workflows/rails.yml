@@ -21,33 +21,40 @@ jobs:
       matrix:
         include:
           - ruby: '3.3'
-            rails: '7.2.4'
-            minitest: '5.20.0'
+            rails: '7.2'
+            gemfile: tests/dependencies/rails72/Gemfile
           - ruby: '3.4'
-            rails: '8.0.5.1'
-            minitest: '5.25.4'
+            rails: '8.0'
+            gemfile: tests/dependencies/rails80/Gemfile
           - ruby: '3.4'
-            rails: '8.1.4'
-            minitest: '5.25.4'
-    env:
-      RAILS_VERSION: ${{ matrix.rails }}
-      MINITEST_VERSION: ${{ matrix.minitest }}
+            rails: '8.1'
+            gemfile: tests/dependencies/rails81/Gemfile
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
-      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
+      - uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1.327.0
         with:
           ruby-version: ${{ matrix.ruby }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+          bundler: '2.6.9'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
-      - name: Install fixture dependencies
+      - name: Install locked fixture dependencies
+        env:
+          BUNDLE_GEMFILE: ${{ matrix.gemfile }}
+          BUNDLE_PATH: ${{ runner.temp }}/fixture-bundle
+          BUNDLE_FROZEN: 'true'
+          RAILS_SERIES: ${{ matrix.rails }}
         run: |
-          gem install rails --version "$RAILS_VERSION" --no-document
-          gem install minitest --version "$MINITEST_VERSION" --no-document
-          gem install mutex_m --version '0.3.0' --no-document
-          gem install capybara --version '3.40.0' --no-document
-          gem install selenium-webdriver --version '4.50.0' --no-document
+          bundle install --jobs 4 --retry 3
+          # Fixtures create their own Gemfiles: expose installed gems, not this bundle.
+          bundle exec ruby -e 'puts "GEM_HOME=#{Gem.dir}"; puts "GEM_PATH=#{Gem.path.join(File::PATH_SEPARATOR)}"' >> "$GITHUB_ENV"
+          bundle exec ruby -e '
+            rails = Gem.loaded_specs.fetch("rails").version.to_s
+            abort "Rails matrix series mismatch" unless rails.start_with?(ENV.fetch("RAILS_SERIES") + ".")
+            puts "RAILS_VERSION=#{rails}"
+            puts "MINITEST_VERSION=#{Gem.loaded_specs.fetch("minitest").version}"
+          ' >> "$GITHUB_ENV"
       - run: python3 scripts/check.py
       - run: python3 scripts/check-rails.py
