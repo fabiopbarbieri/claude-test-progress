@@ -8,6 +8,25 @@ import { namespace, files, readJson, atomicJson } from '../../runner/state.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 const cli = fileURLToPath(new URL('../../runner/cli.mjs', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Status polls drive the documented recovery path when the worker is already gone;
+// a lock that still survives is reported with the evidence needed to diagnose it.
+async function cancelAndAwaitRelease(args, context, fixture) {
+  const cancelled = spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
+  const lock = files(context.directory, 'api').lock;
+  let status;
+  const until = Date.now() + 12000;
+  while (fs.existsSync(lock) && Date.now() < until) {
+    status = spawnSync(process.execPath, args('status'), { encoding: 'utf8', timeout: 15000 });
+    await pause(50);
+  }
+  if (!fs.existsSync(lock)) return;
+  let job;
+  try { job = JSON.parse(status.stdout).jobs?.api; } catch { job = status?.stdout; }
+  assert.fail(`The ${fixture} fixture must safely release its lock: ${JSON.stringify({
+    cancel: { status: cancelled.status, error: cancelled.error?.message, stdout: cancelled.stdout?.slice(0, 2000), stderr: cancelled.stderr?.slice(0, 2000) },
+    job: job && typeof job === 'object' ? { status: job.status, phase: job.phase, recoveryRequired: job.recoveryRequired,
+      cancellationRequestedAt: job.cancellationRequestedAt, heartbeatAt: job.heartbeatAt, error: job.error } : job })}`);
+}
 async function atomicHeartbeatStress() {
   if (process.platform !== 'linux') { console.log('SKIP: accelerated real 12-module process stress requires Linux'); return; }
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'batch-heartbeats-'));
@@ -176,10 +195,7 @@ fs.readFileSync=function(file,...args){
     assert(!started.jobs.api.cancellationRequestedAt, 'The CLI must not cancel a barrier already released during its query');
     console.log('A durable release during a slow identity query wins over the obsolete preparation deadline: OK');
   } finally {
-    spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
-    const until = Date.now() + 10000;
-    while (fs.existsSync(files(context.directory, 'api').lock) && Date.now() < until) await pause(25);
-    assert(!fs.existsSync(files(context.directory, 'api').lock), 'The slow-probe fixture must safely release its lock');
+    await cancelAndAwaitRelease(args, context, 'slow-probe');
     removePath(context.directory, { recursive: true, force: true });
     removePath(cwd, { recursive: true, force: true });
   }
@@ -220,10 +236,7 @@ fs.openSync=function(file,...args){
     assert(!fs.existsSync(marker), 'Expiry immediately before release must execute zero commands');
     console.log('Preparation expiry during final ownership confirmation aborts with zero command effects: OK');
   } finally {
-    spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
-    const until = Date.now() + 10000;
-    while (fs.existsSync(files(context.directory, 'api').lock) && Date.now() < until) await pause(25);
-    assert(!fs.existsSync(files(context.directory, 'api').lock), 'The final-deadline fixture must safely release its lock');
+    await cancelAndAwaitRelease(args, context, 'final-deadline');
     removePath(context.directory, { recursive: true, force: true });
     removePath(cwd, { recursive: true, force: true });
   }

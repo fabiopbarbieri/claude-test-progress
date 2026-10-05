@@ -26,12 +26,18 @@ export function windowsPowerShell(environment = process.env) {
 function argumentsFor(action, parameters) {
   return ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-Action', action, ...parameters];
 }
-function control(action, parameters) {
-  const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
-    encoding: 'utf8', timeout: 7500, maxBuffer: 64 * 1024, windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  return JSON.parse(output.replace(/^\uFEFF/, '').trim());
+function control(action, parameters, attempts = 1) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
+        encoding: 'utf8', timeout: 7500, maxBuffer: 64 * 1024, windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return JSON.parse(output.replace(/^\uFEFF/, '').trim());
+    } catch (error) {
+      if (error.code !== 'ETIMEDOUT' || attempt >= attempts) throw error;
+    }
+  }
 }
 function valid(identity) {
   return Boolean(identity && identity.platform === 'win32' && Number.isInteger(identity.pid) &&
@@ -149,7 +155,11 @@ export function windowsKillOwnedBroker(identity) {
 }
 export function windowsSecureDirectory(directory) {
   if (!path.win32.isAbsolute(directory)) throw new Error('Diretório Windows precisa ser absoluto');
-  const value = control('SecureDirectory', ['-Directory', directory]);
+  // The first control process of a CLI call compiles WindowsProcessHost.cs; a cold
+  // PowerShell 7 start can exceed the timeout. Retrying is safe: creation is atomic
+  // with a protected DACL and an existing directory is only verified, never repaired.
+  // Deadline-bound queries are not retried; they already fail closed as unknown.
+  const value = control('SecureDirectory', ['-Directory', directory], 2);
   if (value.secured !== true) throw new Error('DACL do diretório Windows não confirmada');
 }
 export function windowsLaunchCoordinator(collector, request) {
