@@ -154,5 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--pytest", action="store_true", help="Also run pytest from this Python environment")
     options = parser.parse_args()
     static_checks()
+    for check in sorted((ROOT / "tests/collector").glob("*.mjs")):
+        print(command(["node", check]), end="", flush=True)
     if options.smoke or options.pytest:
         smoke_checks(options.pytest)

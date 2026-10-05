@@ -88,3 +88,23 @@ test('resumed owner reloads its own persistent state without starting a suite', 
   expect((await $.command.run({command:'test-progress',args:'status --text'})).text).toContain('runId=public-fixture');
   expect(actions).toEqual(['status', 'status', 'status']);
 });
+
+test('worker loss retains counts, unknown exit and only offers proven orphan cancellation', async ($, on) => {
+  let cancellable = false;
+  on('session.cwd', () => ({ value: '/work/public-fixture' }));
+  on('session.id', () => ({ value: 'public-owner' }));
+  on('process.run', () => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify({
+    schema: 1, ok: true, lanes: { backend: job({ status: 'error', phase: 'orphaned-command',
+      total: null, percent: null, recoveryRequired: true, cancellable,
+      error: 'Fixture worker disappeared; command identity requires recovery.' }), frontend: null },
+  }) } }));
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  expect(await ui.find({ type: 'Text', text: 'Erro · orphaned-command' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '2 passaram · 1 falharam · 1 ignorados' })).toBeDefined();
+  expect(await ui.find({ key: 'cancel-backend' })).toBeUndefined();
+  cancellable = true;
+  await ui.press({ key: 'refresh' });
+  expect(await ui.find({ key: 'cancel-backend' })).toMatchObject({ props: { label: 'Cancelar órfão' } });
+  await ui.unmount();
+});
