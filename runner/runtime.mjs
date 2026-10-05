@@ -2,6 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
 
+// Windows environment names are case-insensitive; find one regardless of its spelling.
+export function environmentValue(environment, name) {
+  const key = Object.keys(environment).find((entry) => entry.toUpperCase() === name);
+  return key === undefined ? undefined : environment[key];
+}
+
 export function mergeEnvironment(...environments) {
   const result = Object.create(null);
   for (const environment of environments) for (const [key, value] of Object.entries(environment)) {
