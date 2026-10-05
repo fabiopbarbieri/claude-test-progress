@@ -1,0 +1,31 @@
+{
+  "name": "test-progress-angular9-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated browser integration fixture; not a plugin runtime dependency.",
+  "scripts": {
+    "test": "ng test fixture --watch=false --progress=false"
+  },
+  "dependencies": {
+    "@angular/common": "9.1.13",
+    "@angular/compiler": "9.1.13",
+    "@angular/core": "9.1.13",
+    "@angular/platform-browser": "9.1.13",
+    "@angular/platform-browser-dynamic": "9.1.13",
+    "rxjs": "6.5.5",
+    "tslib": "1.14.1",
+    "zone.js": "0.10.3"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "0.901.15",
+    "@angular/cli": "9.1.15",
+    "@angular/compiler-cli": "9.1.13",
+    "@types/jasmine": "3.5.14",
+    "jasmine-core": "3.5.0",
+    "karma": "5.2.3",
+    "karma-chrome-launcher": "3.1.1",
+    "karma-jasmine": "3.3.1",
+    "typescript": "3.8.3",
+    "@types/node": "12.20.55"
+  }
+}

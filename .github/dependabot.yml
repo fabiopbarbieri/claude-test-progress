@@ -15,7 +15,12 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
   - package-ecosystem: "maven"
-    directory: "/adapters/junit"
+    directories:
+      - "/adapters/junit"
+      - "/tests/dependencies/junit"
+    # Built from this checkout, not a third-party Maven Central artifact.
+    ignore:
+      - dependency-name: "local.claude:test-progress-listener"
     schedule:
       interval: weekly
       day: monday
@@ -48,6 +53,21 @@ updates:
       - "/tests/dependencies/rails72"
       - "/tests/dependencies/rails80"
       - "/tests/dependencies/rails81"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directories:
+      - "/tests/dependencies/angular9"
+      - "/tests/dependencies/angular18"
     schedule:
       interval: weekly
       day: monday

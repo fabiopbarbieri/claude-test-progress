@@ -1,0 +1,78 @@
+name: Java and Angular adapters
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adapters-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  junit:
+    name: JUnit (Java ${{ matrix.java }}, collector Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - java: '11'
+            node: '14.0.0'
+          - java: '21'
+            node: '24'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Real JUnit and Surefire integration
+        run: python3 scripts/check-junit.py
+
+  angular:
+    name: Angular ${{ matrix.angular }} (app Node ${{ matrix.frontend }}, collector Node ${{ matrix.collector }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - angular: '9'
+            frontend: '12.22.12'
+            collector: '14.0.0'
+          - angular: '9'
+            frontend: '12.22.12'
+            collector: '24'
+          - angular: '18'
+            frontend: '22'
+            collector: '14.0.0'
+          - angular: '18'
+            frontend: '22'
+            collector: '24'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.frontend }}
+      - name: Record app Node and headless Chrome
+        run: |
+          echo "FRONTEND_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          echo "CHROME_BIN=$(command -v google-chrome)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.collector }}
+      - name: Real Angular CLI, Karma and browser integration
+        env:
+          ANGULAR_VERSION: ${{ matrix.angular }}
+        run: python3 scripts/check-karma.py --angular "$ANGULAR_VERSION" --frontend-node "$FRONTEND_NODE"
