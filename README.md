@@ -196,4 +196,5 @@ Anthropic; este projeto é independente.
 - [Adicionar outros runners](docs/EXTENDING.md): pontos de extensão, candidatos
   e dificuldade estimada. Os runners candidatos ainda não são suportados.
 - [CI e governança](docs/CI-GOVERNANCE.md): checks existentes, lacunas e proposta
-  de regras para PRs e `main`. As regras propostas ainda não estão ativadas.
+  de evolução do CI. A proteção de `main` está ativa: PR e checks obrigatórios,
+  com integração restrita ao mantenedor autorizado.

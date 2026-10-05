@@ -1,9 +1,9 @@
 # CI e governança
 
-Avaliação registrada em 04/10/2026 para o repositório público pessoal
-`fabiopbarbieri/claude-test-progress`, branch `main`. As propostas abaixo não
-ativam proteção de branch nem adicionam workflows. Evidências complementares
-estão em [VERIFICATION.md](VERIFICATION.md).
+Estado registrado em 04/10/2026 para o repositório público pessoal
+`fabiopbarbieri/claude-test-progress`, branch `main`. A proteção descrita abaixo
+foi ativada pela API do GitHub. As sugestões de evolução do CI continuam sendo
+propostas. Evidências complementares estão em [VERIFICATION.md](VERIFICATION.md).
 
 ## Baseline observado
 
@@ -19,7 +19,7 @@ Usa token com `contents: read`, checkout sem credenciais persistidas, actions
 fixadas por SHA, limites de duração e cancelamento de runs anteriores da mesma
 PR ou branch. O Gitleaks tem versão e checksum fixados e verifica arquivos e
 histórico completo. Secret scanning, push protection e private vulnerability
-reporting estão habilitados; proteção de `main` ainda não foi ativada.
+reporting estão habilitados; os dois rulesets de `main` estão ativos.
 
 O [check.py](../scripts/check.py) verifica sintaxe, manifests, links e arquivos
 da distribuição. Seus smoke tests criam um projeto temporário com espaços no
@@ -66,7 +66,7 @@ Prioridades sugeridas, usando fixtures próprias e sem credenciais:
    Não presumir que o harness moderno roda em Node 14.
    [Fonte Anthropic](https://code.claude.com/docs/en/plugins/mods/test).
 
-## Governança proposta para um proprietário único
+## Proteção ativa de main
 
 Repositórios pessoais têm owner e colaboradores, sem papel granular
 `maintain`. A restrição clássica de quem pode fazer push é destinada a
@@ -74,26 +74,48 @@ organizações. Branch rulesets estão disponíveis em repositórios públicos n
 GitHub Free. [Permissões pessoais](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/repository-access-and-collaboration/permission-levels-for-a-personal-account-repository),
 [proteção clássica](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/managing-a-branch-protection-rule).
 
-**A — Recomendação:** dois rulesets separados para `main`:
+Dois rulesets separados se aplicam a `refs/heads/main`:
 
-- **Autorização:** `Restrict updates`, com bypass somente do owner/admin e
-  modo `For pull requests only`. Colaboradores propõem; o proprietário integra.
-- **Qualidade:** exigir PR, os três checks observados, conversas resolvidas e
-  bloquear force push/exclusão, sem bypass. Assim, a exceção de autorização
-  não dispensa os checks.
+- [main-maintainer-merge](https://github.com/fabiopbarbieri/claude-test-progress/rules/24473698):
+  restringe atualizações, com exceção somente para `fabiopbarbieri` em merges
+  por PR. A conta foi identificada pelo ID público `49872514`, tipo `User`.
+  Push direto não tem exceção. Colaboradores propõem; o mantenedor integra.
+- [main-quality](https://github.com/fabiopbarbieri/claude-test-progress/rules/24473696):
+  exige PR, os três checks Quality listados acima, branch atualizada com `main`
+  e conversas resolvidas; bloqueia force push e exclusão. Não tem bypass,
+  inclusive para o proprietário. A exceção de autorização não dispensa qualidade.
 
-Confirmar os atores disponíveis na UI/API antes de ativar. Exigir **zero
-aprovações** enquanto houver um único mantenedor: o autor não pode aprovar sua
-própria PR. Com segundo revisor real, considerar uma aprovação e descarte de
-aprovações antigas. Ao ativar, inclusive o proprietário passa pelo fluxo
-branch → PR → checks → merge; continua podendo editar as regras.
+No painel de uma PR, a restrição de atualização aparece como
+`Cannot update this protected ref`. O mantenedor autorizado dispõe da opção
+`Merge without waiting for requirements to be met (bypass rules)` para liberar
+a regra de autorização antes de confirmar o merge. Essa exceção não libera os
+checks ou demais requisitos de `main-quality`, que não permite bypass.
+O controle foi observado na conta proprietária, sem marcar a opção nem fazer merge.
+
+Foram configuradas **zero aprovações obrigatórias** enquanto há um único
+mantenedor: o autor não pode aprovar sua própria PR. O descarte de aprovações
+antigas está ativo; aprovação do último push e de CODEOWNERS não são exigidas.
+Com segundo revisor real, reavaliar uma aprovação obrigatória. Inclusive o
+proprietário passa pelo fluxo branch → PR → checks → merge, mas continua podendo
+administrar as regras. Um novo mantenedor precisa ser incluído explicitamente
+na regra de autorização; conceder acesso de escrita sozinho não libera merge.
 [Rulesets e bypass](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository),
 [restrição de atualização](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets),
 [aprovação de PR](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews).
 
-Selecionar checks pelos nomes registrados e, quando disponível, origem GitHub
-Actions. Evitar filtros que deixem um workflow obrigatório pendente.
+Os checks foram vinculados aos nomes registrados e à origem GitHub Actions
+(`integration_id: 15368`). Os workflows Ruby/Rails dos PRs ainda abertos não são
+exigidos globalmente enquanto não fizerem parte da branch principal; exigir agora
+bloquearia PRs que ainda não contêm esses workflows. Reavaliar os checks após
+integrar novas suítes. Evitar filtros que deixem um workflow obrigatório pendente.
 [Checks obrigatórios](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
+Os payloads de criação estão em
+[main-quality.json](../.github/rulesets/main-quality.json) e
+[main-maintainer-merge.json](../.github/rulesets/main-maintainer-merge.json).
+Editar esses arquivos não muda o GitHub automaticamente. A ativação foi conferida
+pela leitura dos rulesets e de `/rules/branches/main`; `/branches/main` retornou
+`protected: true`, com o mesmo commit. Nenhum PR foi mesclado para testar a regra.
 
 ## Convenções e forks
 
