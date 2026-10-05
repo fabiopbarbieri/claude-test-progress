@@ -67,6 +67,7 @@ namespace TestProgress {
         }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool CreateDirectoryW(string path, ref SecurityAttributes attributes);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern IntPtr CreateFileW(string path, uint access, uint sharing, ref SecurityAttributes attributes, uint disposition, uint flags, IntPtr template);
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)] private static extern bool ConvertStringSecurityDescriptorToSecurityDescriptorW(string descriptor, uint revision, out IntPtr security, out uint size);
         [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr value);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateJobObject(IntPtr attributes, string name);
@@ -217,6 +218,74 @@ namespace TestProgress {
             IntPtr duplicate;
             Check(DuplicateHandle(GetCurrentProcess(), GetStdHandle(which), GetCurrentProcess(), out duplicate, 0, true, 2));
             return duplicate;
+        }
+
+        private static IntPtr InheritNullHandle(uint access) {
+            SecurityAttributes attributes = new SecurityAttributes {
+                Size = (uint)Marshal.SizeOf(typeof(SecurityAttributes)), InheritHandle = 1
+            };
+            IntPtr handle = CreateFileW("NUL", access, 0x00000001 | 0x00000002,
+                ref attributes, 3, 0x00000080, IntPtr.Zero); // SHARE_READ | SHARE_WRITE, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL
+            if (handle == new IntPtr(-1)) throw new Win32Exception(Marshal.GetLastWin32Error());
+            return handle;
+        }
+
+        public static WindowsIdentity StartDetached(string file, string[] args, string cwd) {
+            if (String.IsNullOrEmpty(file) || !System.IO.Path.IsPathRooted(file))
+                throw new ArgumentException("Executable must be an absolute path.");
+            if (args == null) throw new ArgumentNullException("args");
+            StringBuilder command = new StringBuilder(QuoteArgument(file));
+            foreach (string argument in args) { command.Append(' '); command.Append(QuoteArgument(argument)); }
+            IntPtr attributes = IntPtr.Zero, handles = IntPtr.Zero;
+            IntPtr input = IntPtr.Zero, output = IntPtr.Zero, error = IntPtr.Zero;
+            bool initialized = false, created = false;
+            ProcessInformation info = new ProcessInformation();
+            try {
+                // The coordinator must not retain ancestor pipes, even if the
+                // Node/PowerShell caller inherited other handles from its parent.
+                input = InheritNullHandle(0x80000000); // GENERIC_READ
+                output = InheritNullHandle(0x40000000); // GENERIC_WRITE
+                error = InheritNullHandle(0x40000000);
+                UIntPtr size = UIntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+                attributes = Marshal.AllocHGlobal(checked((int)size.ToUInt64()));
+                Check(InitializeProcThreadAttributeList(attributes, 1, 0, ref size));
+                initialized = true;
+                handles = Marshal.AllocHGlobal(3 * IntPtr.Size);
+                Marshal.WriteIntPtr(handles, 0, input);
+                Marshal.WriteIntPtr(handles, IntPtr.Size, output);
+                Marshal.WriteIntPtr(handles, 2 * IntPtr.Size, error);
+                Check(UpdateProcThreadAttribute(attributes, 0, new UIntPtr(0x00020002), handles,
+                    new UIntPtr((uint)(3 * IntPtr.Size)), IntPtr.Zero, IntPtr.Zero)); // HANDLE_LIST only; no containment JOB_LIST
+                StartupInfoEx startup = new StartupInfoEx();
+                startup.Startup.Size = (uint)Marshal.SizeOf(typeof(StartupInfoEx));
+                startup.Startup.Flags = 0x00000100; // STARTF_USESTDHANDLES
+                startup.Startup.Input = input; startup.Startup.Output = output; startup.Startup.Error = error;
+                startup.Attributes = attributes;
+                Check(CreateProcessW(file, command, IntPtr.Zero, IntPtr.Zero, true,
+                    0x00000004 | 0x00080000 | 0x08000000, IntPtr.Zero, cwd, ref startup, out info)); // SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW
+                created = true;
+                // Capture durable identity before user code can run or exit.
+                WindowsIdentity identity = IdentityForHandle(info.Process, checked((int)info.ProcessId));
+                if (ResumeThread(info.Thread) == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+                return identity;
+            } catch (Exception failure) {
+                // This is the handle returned by this creation, never a reopened
+                // PID; failed identity capture/resume cannot target a reused PID.
+                if (created && !TerminateProcess(info.Process, 125))
+                    throw new InvalidOperationException("Detached coordinator cleanup failed.",
+                        new AggregateException(failure, new Win32Exception(Marshal.GetLastWin32Error())));
+                throw;
+            } finally {
+                if (created && info.Thread != IntPtr.Zero) CloseHandle(info.Thread);
+                if (created && info.Process != IntPtr.Zero) CloseHandle(info.Process);
+                if (initialized) DeleteProcThreadAttributeList(attributes);
+                if (attributes != IntPtr.Zero) Marshal.FreeHGlobal(attributes);
+                if (handles != IntPtr.Zero) Marshal.FreeHGlobal(handles);
+                if (input != IntPtr.Zero) CloseHandle(input);
+                if (output != IntPtr.Zero) CloseHandle(output);
+                if (error != IntPtr.Zero) CloseHandle(error);
+            }
         }
 
         public WindowsProcessHost(string file, string[] arguments, string cwd, string jobName) {

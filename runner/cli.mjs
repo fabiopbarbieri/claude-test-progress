@@ -9,6 +9,7 @@ import { randomUUID, removePath } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
 import { discoverModules, prepareSelection, assertSourcesUnchanged } from './module-config.mjs';
 import { batchFiles, readBatch, changeBatch, PREPARE_MS, ABORT_MS, pause } from './module-batch.mjs';
+import { windowsLaunchCoordinator } from './windows-process.mjs';
 
 const runnerDirectory = path.dirname(fileURLToPath(import.meta.url));
 const collectorRuntime = { path: process.execPath, version: process.version, source: process.env.TEST_PROGRESS_NODE_SOURCE || 'direct' };
@@ -75,12 +76,19 @@ async function start(selection, preparationStartedAt) {
       coordinatorIdentity: null, createdAt: timestamp(), deadlineAt });
     manifestCreated = true;
     atomicJson(loc.request, { schemaVersion: 2, batchId, directory: context.directory, revision: selection.revision });
-    coordinator = spawn(process.execPath, [path.join(runnerDirectory, 'module-batch-worker.mjs'), loc.request],
-      { detached: true, stdio: 'ignore', cwd: runnerDirectory, windowsHide: true });
-    await new Promise((resolve, reject) => { coordinator.once('error', reject); if (coordinator.pid) resolve(); });
-    const identity = processIdentity(coordinator.pid);
+    let identity;
+    if (process.platform === 'win32') {
+      // Whitelist only NUL handles. Native PowerShell must receive EOF even
+      // while the detached coordinator and user command keep running.
+      identity = windowsLaunchCoordinator(process.execPath, loc.request);
+    } else {
+      coordinator = spawn(process.execPath, [path.join(runnerDirectory, 'module-batch-worker.mjs'), loc.request],
+        { detached: true, stdio: 'ignore', cwd: runnerDirectory, windowsHide: true });
+      await new Promise((resolve, reject) => { coordinator.once('error', reject); if (coordinator.pid) resolve(); });
+      identity = processIdentity(coordinator.pid);
+      coordinator.unref();
+    }
     if (!identity) throw new Error('Identidade do coordenador não confirmada');
-    coordinator.unref();
     for (;;) {
       const manifest = readBatch(context.directory, batchId);
       if (manifest.state === 'released') {

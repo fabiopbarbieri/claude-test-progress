@@ -76,6 +76,12 @@ export function windowsSecureDirectory(directory) {
   const value = control('SecureDirectory', ['-Directory', directory]);
   if (value.secured !== true) throw new Error('DACL do diretório Windows não confirmada');
 }
+export function windowsLaunchCoordinator(collector, request) {
+  if (!path.win32.isAbsolute(collector) || !path.win32.isAbsolute(request)) throw new Error('Coordenador Windows precisa de caminhos absolutos');
+  const identity = control('LaunchCoordinator', ['-Collector', collector, '-JobFile', request]);
+  if (!valid(identity)) throw new Error('Identidade do coordenador Windows não confirmada');
+  return identity;
+}
 export function windowsSpawnSpec(jobPath, environment = process.env) {
   if (!path.win32.isAbsolute(jobPath)) throw new Error('Arquivo de execução Windows precisa ser absoluto');
   return { file: windowsPowerShell(environment), args: argumentsFor('Run', ['-JobFile', jobPath]),

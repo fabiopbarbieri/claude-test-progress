@@ -2,9 +2,9 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { namespace, files, readJson, jobFile } from '../../runner/state.mjs';
+import { namespace, files, readJson, jobFile, atomicJson } from '../../runner/state.mjs';
 import { windowsProof } from '../../runner/windows-proof.mjs';
 import { windowsGroupState, windowsIdentity, windowsKillOwnedBroker } from '../../runner/windows-process.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
@@ -117,10 +117,48 @@ function assertPrivateCreation() {
   assert(!fs.existsSync(path.join(target, 'new state')), 'Rejected ancestor must have zero effects outside the namespace');
   console.log('Atomic user-owned private creation, unchanged existing/rejected ACLs and junction rejection: OK');
 }
+async function assertPrivateSharing() {
+  const directory = path.join(app, 'atomic sharing');
+  fs.mkdirSync(directory);
+  const file = path.join(directory, 'sharing.json');
+  const value = { moduleId: 'sharing', sequence: 0, payload: 'x'.repeat(65536) };
+  atomicJson(file, value);
+  let stderr = '';
+  let stdout = '';
+  const reader = spawn(engine, ['-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+    path.join(root, 'tests/windows/sharing-reader.ps1'), '-Directory', directory],
+  { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  reader.stderr.on('data', data => { stderr += data; });
+  reader.stdout.on('data', data => { stdout += data; });
+  const closed = new Promise((resolve, reject) => { reader.once('error', reject); reader.once('close', resolve); });
+  try {
+    const readyBy = Date.now() + 10000;
+    while (!fs.existsSync(path.join(directory, 'reader.ready'))) {
+      assert(reader.exitCode === null && Date.now() < readyBy, 'Private sharing reader did not become ready');
+      await sleep(10);
+    }
+    const until = Date.now() + 3000;
+    let writes = 0;
+    while (Date.now() < until || writes < 100) {
+      atomicJson(file, { ...value, sequence: ++writes });
+      if (writes % 10 === 0) await sleep(1);
+    }
+    fs.writeFileSync(path.join(directory, 'reader.stop'), 'stop');
+    const code = await Promise.race([closed, sleep(10000).then(() => { throw new Error('Private sharing reader did not close'); })]);
+    assert.strictEqual(code, 0, stderr.split(directory).join('<fixture>'));
+    assert.match(stdout, /observed [1-9]\d* complete versions/);
+    console.log(`Real PowerShell private reads during ${writes} atomic Node replacements: OK`);
+  } finally {
+    fs.writeFileSync(path.join(directory, 'reader.stop'), 'stop');
+    if (reader.exitCode === null) reader.kill();
+    await closed;
+  }
+}
 async function main() {
   let safeToRemove = false;
   try {
     assertPrivateCreation();
+    await assertPrivateSharing();
     // The selected command is independent of other malformed registrations.
     configure({ api: module('api'), broken: module('broken', { command: ['missing-gate-executable.exe'] }) });
     assert.strictEqual(collect('start').ok, false);

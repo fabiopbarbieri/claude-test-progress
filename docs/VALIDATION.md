@@ -25,6 +25,17 @@ em `tests/windows/atomic-write.ps1` cobre três gravações da mesma prova sem
 backup nem temporários e roda também no gate nativo PS5.1/7. O gate mede o
 bootstrap real do namespace sem executar previamente o helper Windows.
 
+O runtime `396aa0f` passou nos cinco workflows de Quality/Mods/Ruby/Rails/Java e
+Angular. Algumas execuções PowerShell 7 completaram o gate Windows, mas a matriz
+ainda revelou timeout do wrapper PS5.1 durante uma suíte ativa e colisão `EPERM`
+no cancelamento: o broker usava a leitura .NET padrão que bloqueia substituição
+do arquivo aberto. O lançamento Windows do coordenador passa a usar uma lista
+explícita de três handles `NUL`, sem herdar pipes do chamador; leituras privadas
+do broker usam `FileShare.ReadWrite | Delete`. O gate exercita o leitor real em
+paralelo com substituições atômicas Node e exige JSON completo e ausência de
+erros de compartilhamento. A compilação C# 5 e os checks Linux passaram após
+essa alteração; a matriz nativa seguinte determina seu resultado Windows.
+
 Após essas correções, `python3 scripts/check.py`, actionlint, sintaxe JavaScript,
 parsing PowerShell e compilação C# com PowerShell 7.4.7 no Linux passaram. O gate
 Windows verifica criação, reabertura sem reescrever ACL, recusa de diretório

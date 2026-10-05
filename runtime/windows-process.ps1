@@ -1,6 +1,6 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Run', 'Identity', 'State', 'Group', 'Kill', 'SecureDirectory')]
+    [ValidateSet('Run', 'Identity', 'State', 'Group', 'Kill', 'SecureDirectory', 'LaunchCoordinator')]
     [string] $Action,
     [string] $JobFile,
     [int] $ProcessId,
@@ -8,7 +8,8 @@
     [string] $Owner,
     [string] $JobName,
     [int] $SessionId = -1,
-    [string] $Directory
+    [string] $Directory,
+    [string] $Collector
 )
 
 $ErrorActionPreference = 'Stop'
@@ -128,9 +129,39 @@ function Assert-PrivatePath([string] $Path) {
         else { $ancestor = $ancestor.Directory }
     }
 }
+function Read-PrivateText([string] $Path) {
+    Assert-PrivatePath $Path
+    # Readers must permit atomic replacement of the pathname while retaining
+    # their original fd. The default ReadAllText share mode blocks Node rename.
+    $share = [IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, $share)
+    try {
+        if ($stream.Length -gt 1048576) { throw 'Private state exceeds size limit.' }
+        $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } finally { $stream.Dispose() }
+}
 Assert-PrivatePath $JobFile
+if ($Action -eq 'LaunchCoordinator') {
+    Assert-Absolute $Collector
+    if (-not [IO.File]::Exists($Collector)) { throw 'Collector executable is unavailable.' }
+    $request = (Read-PrivateText $JobFile) | ConvertFrom-Json
+    $batchGuid = [Guid]::Empty
+    if ($request.schemaVersion -ne 2 -or -not [Guid]::TryParse([string]$request.batchId, [ref]$batchGuid)) {
+        throw 'Invalid v2 coordinator request.'
+    }
+    Assert-PrivatePath $request.directory
+    $expectedRequest = Join-Path $request.directory ('batch.' + $batchGuid.ToString('D') + '.request.json')
+    if ([IO.Path]::GetFullPath($JobFile) -cne [IO.Path]::GetFullPath($expectedRequest)) {
+        throw 'Coordinator request path does not match its identity.'
+    }
+    $runner = Join-Path (Split-Path -Parent $PSScriptRoot) 'runner'
+    $coordinator = Join-Path $runner 'module-batch-worker.mjs'
+    Write-Control ([TestProgress.WindowsProcessHost]::StartDetached($Collector, [string[]]@($coordinator, $JobFile), $runner))
+    exit 0
+}
 if ((Get-Item -LiteralPath $JobFile).Length -gt 1048576) { throw 'Private job exceeds size limit.' }
-$job = [IO.File]::ReadAllText($JobFile) | ConvertFrom-Json
+$job = (Read-PrivateText $JobFile) | ConvertFrom-Json
 if ($job.schemaVersion -ne 2 -or $job.moduleId -cnotmatch '^[a-z][a-z0-9-]{0,47}$' -or
     $job.moduleId -in @('all', 'constructor', 'prototype', 'con', 'prn', 'aux', 'nul') -or
     $job.moduleId -match '^(?:com|lpt)[1-9]$') {
@@ -146,7 +177,7 @@ $expectedJob = Join-Path $job.directory ($job.moduleId + '.' + $runGuid.ToString
 if ([IO.Path]::GetFullPath($JobFile) -cne [IO.Path]::GetFullPath($expectedJob)) { throw 'Job path does not match its identity.' }
 $claimPath = Join-Path $job.directory ($job.moduleId + '.lock/claim.json')
 Assert-PrivatePath $claimPath
-$claim = [IO.File]::ReadAllText($claimPath) | ConvertFrom-Json
+$claim = (Read-PrivateText $claimPath) | ConvertFrom-Json
 if ($claim.schemaVersion -ne 2 -or $claim.moduleId -cne $job.moduleId -or $claim.runId -cne $job.runId) {
     throw 'Run claim does not match job identity.'
 }
@@ -173,7 +204,7 @@ try {
     # No user command executes before both containment and its durable proof exist.
     if ([IO.File]::Exists($cancelFile)) {
         Assert-PrivatePath $cancelFile
-        $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
+        $cancel = (Read-PrivateText $cancelFile) | ConvertFrom-Json
         if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
             $proof.cancelled = $true
             $hostProcess.Cancel()
@@ -187,7 +218,7 @@ try {
     while ($hostProcess.ActiveProcesses() -ne 0) {
         if (-not $proof.cancelled -and [IO.File]::Exists($cancelFile)) {
             Assert-PrivatePath $cancelFile
-        $cancel = [IO.File]::ReadAllText($cancelFile) | ConvertFrom-Json
+            $cancel = (Read-PrivateText $cancelFile) | ConvertFrom-Json
             if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
                 $proof.cancelled = $true
                 $hostProcess.Cancel()
