@@ -95,7 +95,7 @@ def suite(cache, work, env):
             time.sleep(0.1)
             job = collect("status")
         expected = {"status": "failed", "total": 3, "resolved": 3, "passed": 1,
-                    "failed": 1, "skipped": 1, "exitCode": 1, "totalStable": True}
+                    "failed": 1, "skipped": 1, "exitCode": 1, "totalStable": False}
         for key, value in expected.items():
             require(job.get(key) == value, "Installed suite mismatch: " + key)
         require(config.read_bytes() == original_config, "Suite config changed")
