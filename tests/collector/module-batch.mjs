@@ -29,12 +29,21 @@ function collect(action, target = 'all', hooks = null) {
 }
 async function waitFor(predicate, ms = 12000) {
   const deadline = Date.now() + ms;
+  let last;
   while (Date.now() < deadline) {
     const result = collect('status');
+    last = result;
     if (predicate(result)) return result;
     await new Promise(resolve => setTimeout(resolve, 75));
   }
-  throw new Error('Module batch behavior timed out');
+  throw new Error('Module batch behavior timed out: ' + JSON.stringify({
+    jobs: Object.fromEntries(Object.entries(last?.jobs || {}).map(([id, job]) => [id, { status: job.status, phase: job.phase, error: job.error }])),
+    diagnostics: last?.stateDiagnostics, error: last?.error }));
+}
+function settled(result, id, status = null) {
+  const job = result.jobs[id];
+  return Boolean(job && (status === null || job.status === status) && !result.stateDiagnostics[id]?.length &&
+    !fs.existsSync(files(context.directory, id).lock) && !fs.existsSync(path.join(context.directory, `${id}.mutation`)));
 }
 async function main() {
   try {
@@ -51,18 +60,18 @@ async function main() {
     assert(!('lanes' in started));
     await waitFor(() => fs.existsSync(path.join(cwd, 'api.marker')) && fs.existsSync(path.join(cwd, 'ui.marker')));
     assert.strictEqual(collect('cancel', 'api').ok, true);
-    await waitFor(result => result.jobs.api.status === 'cancelled');
+    await waitFor(result => settled(result, 'api', 'cancelled'));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'individual cancel after release must not cancel sibling');
     fs.unlinkSync(config);
     assert.strictEqual(collect('logs').ok, true, 'logs remains available when config removed');
     assert.strictEqual(collect('cancel', 'ui').ok, true);
-    await waitFor(result => result.jobs.ui.status === 'cancelled');
+    await waitFor(result => settled(result, 'ui', 'cancelled'));
     configure({ api: descriptor('api'), ui: descriptor('ui') });
     assert.strictEqual(collect('start', 'all', { api: { failAfterAckMs: 300 } }).ok, true);
-    await waitFor(result => result.jobs.api.infrastructureFailure && result.jobs.ui.status === 'cancelled');
+    await waitFor(result => result.jobs.api?.infrastructureFailure && settled(result, 'api') && settled(result, 'ui', 'cancelled'));
     configure({ api: descriptor('api', { env: { MARKER: path.join(cwd, 'api.marker'), FAIL: '1' } }), ui: descriptor('ui') });
     assert.strictEqual(collect('start').ok, true);
-    await waitFor(result => result.jobs.api.status === 'failed');
+    await waitFor(result => settled(result, 'api', 'failed'));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'suite failure must not compensate sibling');
     assert.strictEqual(collect('start', 'api').ok, true, 'a finished module can restart while sibling remains active');
     await new Promise(resolve => setTimeout(resolve, 250));
@@ -74,7 +83,7 @@ async function main() {
     const cancelled = collect('cancel');
     assert.strictEqual(cancelled.ok, false, 'cancel all reports incompatible entry');
     assert.strictEqual(cancelled.actionResults.ui.ok, true, 'cancel all still processes healthy sibling');
-    await waitFor(result => result.jobs.ui.status === 'cancelled');
+    await waitFor(result => settled(result, 'ui', 'cancelled'));
     const shortcuts = spawnSync(process.execPath, [cli, 'demo', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
     assert.strictEqual(shortcuts.status, 1);
     console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation and legacy blocking: OK');

@@ -66,7 +66,7 @@ export function readPrivate(file, limit = 1024 * 1024) {
       return buffer.subarray(0, length).toString('utf8');
     } finally { fs.closeSync(fd); }
   }
-  throw new Error('Não foi possível autenticar o arquivo de estado após novas tentativas');
+  throw Object.assign(new Error('Não foi possível autenticar o arquivo de estado após novas tentativas'), { code: 'ESTATECHANGED' });
 }
 
 export const readJson = (file) => {
@@ -233,7 +233,7 @@ export function inspectState(directory, { recover = true } = {}) {
   const jobs = Object.create(null);
   const stateDiagnostics = Object.create(null);
   let blocked = false;
-  const diagnose = (id, message, global = false) => { (stateDiagnostics[id] || (stateDiagnostics[id] = [])).push({ code: 'state-unavailable', message, blocking: true }); if (global) blocked = true; };
+  const diagnose = (id, message, global = false, code = 'state-unavailable') => { (stateDiagnostics[id] || (stateDiagnostics[id] = [])).push({ code, message, blocking: true }); if (global) blocked = true; };
   const ids = stateIds(directory);
   const queried = new Map();
   if (recover && process.platform === 'win32') {
@@ -256,9 +256,21 @@ export function inspectState(directory, { recover = true } = {}) {
     const loc = files(directory, moduleId);
     try {
       let snapshot, lock, claim, pendingCancel, gate;
-      // Claims and locks are removed separately under the mutation gate. Do not
-      // diagnose an obsolete lock or hide a valid result from an earlier read.
-      for (let attempt = 0; attempt < 8; attempt++) {
+      const observationUntil = performance.now() + 100;
+      const observationWait = new Int32Array(new SharedArrayBuffer(4));
+      let observationPause = 1;
+      let busy = false;
+      const pauseObservation = () => {
+        const remaining = observationUntil - performance.now();
+        if (remaining <= 0) return false;
+        Atomics.wait(observationWait, 0, 0, Math.min(observationPause, remaining));
+        observationPause = Math.min(observationPause * 2, 10);
+        return true;
+      };
+      // A writer may be paused between claim removal and lock/gate removal.
+      // Yield before reauthenticating; tight synchronous retries can all observe
+      // that same intermediate state. The response budget never proves corruption.
+      for (let attempt = 0; ; attempt++) {
         try {
           gate = securePath(path.join(directory, `${moduleId}.mutation`), true, true);
           snapshot = readJson(loc.snapshot);
@@ -267,6 +279,11 @@ export function inspectState(directory, { recover = true } = {}) {
           pendingCancel = readJson(loc.cancel);
           const currentLock = securePath(loc.lock, true, true);
           const currentGate = securePath(path.join(directory, `${moduleId}.mutation`), true, true);
+          if (gate || currentGate) {
+            if (pauseObservation()) { attempt = -1; continue; }
+            busy = true;
+            break;
+          }
           if (attempt < 7 && (Boolean(gate) !== Boolean(currentGate) || Boolean(lock) !== Boolean(currentLock) ||
               (lock && currentLock && (lock.dev !== currentLock.dev || lock.ino !== currentLock.ino)) ||
               (lock && !validRecord(claim, moduleId, snapshot?.runId ?? null)))) continue;
@@ -278,9 +295,26 @@ export function inspectState(directory, { recover = true } = {}) {
         } catch (error) {
           // A claim fd can remain open after its parent lock is removed. Retry
           // the whole observation rather than read through an unauthenticated parent.
+          if ((error.code === 'ENOENT' && gate) || error.code === 'ESTATECHANGED') {
+            if (pauseObservation()) { attempt = -1; continue; }
+            if (gate) { busy = true; break; }
+          }
           if (error.code === 'ENOENT' && attempt < 7) continue;
           throw error;
         }
+      }
+      if (busy) {
+        // Complete incompatible records still block the namespace. A missing
+        // claim under an authenticated gate is busy, not evidence of schema v1.
+        if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot legado ou incompatível; novos starts bloqueados.', true); continue; }
+        if (claim && !validRecord(claim, moduleId)) { diagnose(moduleId, 'Claim legado ou incompatível; novos starts bloqueados.', true); continue; }
+        if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento legado ou inválido; conservado.', true);
+        diagnose(moduleId, 'Alteração de estado em andamento; nova observação necessária.', false, 'state-busy');
+        const terminal = readJson(loc.snapshot);
+        if (validRecord(terminal, moduleId) && ['error', 'failed', 'completed', 'cancelled'].includes(terminal.status) &&
+            terminal.finalSafe === true && !terminal.recoveryRequired &&
+            terminal.logPath === path.join(directory, `${moduleId}.${terminal.runId}.log`)) jobs[moduleId] = activity(terminal);
+        continue;
       }
       if (gate) diagnose(moduleId, 'Gate de alteração de lock presente; nenhuma recuperação por idade ou PID.');
       if (lock && !validRecord(claim, moduleId)) diagnose(moduleId, 'Lock legado, desconhecido ou claim inválido; conservado.', true);
