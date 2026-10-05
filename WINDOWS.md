@@ -1,19 +1,29 @@
 # Windows · PowerShell 5.1 e 7
 
+[Início](README.md) · [Uso](docs/USAGE.md) ·
+[Compatibilidade](docs/COMPATIBILITY.md) · [Diagnóstico](docs/TROUBLESHOOTING.md)
+
 Implementação destinada a **Windows 10/11** e **Windows Server 2019+**,
 com Windows PowerShell **5.1** ou PowerShell **7**. Claude Code requer **2.1.287+**
 e Mods permitido no ambiente. O coletor usa Node **14.0.0+** já instalado.
 Angular 9 e suas dependências permanecem como estão.
 
 **Estado de aceite:** scripts, código nativo e integração foram escritos e
-conferidos conforme [VERIFICATION](docs/VERIFICATION.md). Este host é Linux; não houve
-execução em Windows, PowerShell 5.1 ou app Angular 9 real. Compatibilidade por
+conferidos conforme [VERIFICATION](docs/VERIFICATION.md). A evidência registrada
+é de Linux; não comprova execução em Windows, PowerShell 5.1/7 ou app Angular 9 real. Compatibilidade por
 código/contrato ainda precisa do aceite operacional nessas plataformas.
 
 ## Abrir a partir de qualquer PowerShell
 
 Instale pelo marketplace conforme o [README](README.md), ou mantenha um clone
-completo em `C:\Tools\claude-test-progress` para usar os exemplos abaixo.
+completo em `C:\Tools\claude-test-progress` para usar os exemplos abaixo. Para
+criar esse clone (Git e acesso SSH GitHub já configurados):
+
+```powershell
+git clone git@github.com:fabiopbarbieri/claude-test-progress.git 'C:\Tools\claude-test-progress'
+claude plugin validate 'C:\Tools\claude-test-progress' --strict
+```
+
 No PowerShell 5.1 ou 7, entre no diretório do app/worktree e execute:
 
 ```powershell
@@ -34,11 +44,13 @@ claude --plugin-dir 'C:\Tools\claude-test-progress'
 No Claude:
 
 ```text
+/test-progress help
 /test-progress paths
 /test-progress demo
-/test-progress status
-/test-progress logs frontend
-/test-progress cancel frontend
+/test-progress status --text
+/test-progress logs frontend --text
+/test-progress cancel all --text
+/test-progress status --text
 ```
 
 Demo produz somente eventos sintéticos. `frontend`, `backend` e `all` iniciam
@@ -100,6 +112,14 @@ Use [config.windows.example.json](config.windows.example.json) como modelo de
 `<diretório da sessão>\.claude\test-progress.json`. O exemplo pressupõe Maven
 na raiz e Angular em `frontend`; ajuste cada `cwd`. Para Angular sozinho,
 configure somente frontend com `cwd: "."`.
+`all` requer as duas áreas; iniciar somente backend ignora frontend. Testes
+Python, RSpec e Rails (inclusive views/system) usam backend, porque frontend
+sempre prepara Node/.nvmrc.
+
+Cada argumento é uma string no JSON. Escape barras invertidas (`\\`) e use
+caminhos absolutos de `/test-progress paths` para os adaptadores; não escreva
+`$env:CLAUDE_PLUGIN_ROOT`, `${CLAUDE_PLUGIN_ROOT}`, `%CLAUDE_PLUGIN_ROOT%` ou `~`
+no argv esperando expansão. O JSON não é interpretado como PowerShell ou shell.
 
 Frontend usa `node` e o Angular CLI **local** em `node_modules`, sem resolução
 por npx. A `.nvmrc` deve indicar o runtime adequado ao app; a matriz histórica
@@ -147,6 +167,34 @@ e SYSTEM; não se confia apenas nos modos POSIX 0700/0600 no Windows.
 
 WSL mantém o caminho Linux quando Claude e toolchain rodam dentro dele. Não
 misture executáveis Windows com a recuperação Linux por `/proc`.
+
+## Atualizar e remover
+
+Na sessão responsável por cada job, consulte `/test-progress status --text`.
+Aguarde o término ou peça `/test-progress cancel all --text` e consulte de novo
+até confirmar o estado terminal, sem recuperação pendente. A demo também ocupa
+as áreas e deve terminar ou ser cancelada antes de trocar a instalação.
+
+No PowerShell, para o escopo `user`:
+
+```powershell
+claude plugin marketplace update test-progress-marketplace
+claude plugin update test-progress@test-progress-marketplace --scope user
+```
+
+Aplique `/reload-plugins` no Claude ou reabra a sessão. Consulte novamente
+`/test-progress paths` e ajuste os caminhos dos adaptadores na configuração do
+app, inclusive o reporter Karma. Para remover, após encerrar todos os jobs:
+
+```powershell
+claude plugin uninstall test-progress@test-progress-marketplace --scope user
+```
+
+Use o escopo instalado, caso seja `project` ou `local`. Uninstall, reload e fechar
+o painel não equivalem a encerrar a árvore detached. O estado/logs do coletor
+ficam em TEMP, fora do cache do plugin, e não têm limpeza comprovada por uninstall.
+Retire também as referências aos adaptadores no app quando deixar de usá-los.
+Veja o [procedimento completo](docs/USAGE.md#atualizar-com-jobs-encerrados).
 
 ## Fontes e evidências
 
