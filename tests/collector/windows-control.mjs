@@ -6,6 +6,7 @@ import { syncBuiltinESMExports } from 'module';
 async function main() {
   const originalExec = childProcess.execFileSync;
   const originalExists = fs.existsSync;
+  const originalStat = fs.statSync;
   const originalSystemRoot = process.env.SystemRoot;
   const originalOverride = process.env.TEST_PROGRESS_POWERSHELL;
   const originalTimeout = process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS;
@@ -93,7 +94,13 @@ async function main() {
     console.log('Windows batched queries, immutable self identity and unknown/invalid fail-closed control: OK');
 
     fail = false;
+    const pwsh = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+    const legacy = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
     assert.strictEqual(api.windowsControlTimeout({}), 7500, 'Default per-call limit is unchanged');
+    assert.strictEqual(api.windowsControlTimeout({}, legacy), 7500, 'PowerShell 5.1 keeps 7500 ms');
+    assert.strictEqual(api.windowsControlTimeout({}, pwsh), 15000, 'PowerShell 7 defaults to 15000 ms');
+    assert.strictEqual(api.windowsControlTimeout({}, 'D:\\Tools\\PWSH.EXE'), 15000, 'Engine detection ignores case');
+    assert.strictEqual(api.windowsControlTimeout({ TEST_PROGRESS_POWERSHELL_TIMEOUT_MS: '9000' }, pwsh), 9000, 'The variable overrides the PowerShell 7 default');
     for (const value of ['1000', '12000', '30000']) assert.strictEqual(api.windowsControlTimeout({ TEST_PROGRESS_POWERSHELL_TIMEOUT_MS: value }), Number(value));
     assert.strictEqual(api.windowsControlTimeout({ test_progress_powershell_timeout_ms: '9000' }), 9000, 'Windows environment names are case-insensitive');
     for (const value of ['999', '30001', '7.5', '7500ms', '-1', ' 8000', 'abc', '1e4']) {
@@ -109,6 +116,14 @@ async function main() {
     assert.throws(() => api.windowsSecureDirectory('C:\\state'), /TEST_PROGRESS_POWERSHELL_TIMEOUT_MS/);
     assert.strictEqual(calls.length, beforeRejected, 'An invalid limit never starts PowerShell');
     delete process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS;
+    fs.statSync = (file, ...args) => file === pwsh ? { isFile: () => true } : originalStat(file, ...args);
+    process.env.TEST_PROGRESS_POWERSHELL = pwsh;
+    expectedTimeout = 15000;
+    const beforePwsh = calls.length;
+    assert.deepStrictEqual(api.windowsIdentities([external.pid]), [external]);
+    assert.strictEqual(calls.length, beforePwsh + 1, 'A configured PowerShell 7 engine uses its own default limit');
+    delete process.env.TEST_PROGRESS_POWERSHELL;
+    fs.statSync = originalStat;
     expectedTimeout = 7500;
     secureTimeouts = 1;
     const beforeRetry = calls.length;
@@ -117,10 +132,11 @@ async function main() {
     secureTimeouts = 2;
     assert.throws(() => api.windowsSecureDirectory('C:\\state'), /ETIMEDOUT/);
     assert.strictEqual(calls.length, beforeRetry + 4, 'SecureDirectory retries at most once');
-    console.log('Windows configurable control timeout and bounded SecureDirectory retry: OK');
+    console.log('Windows per-engine and configurable control timeout, bounded SecureDirectory retry: OK');
   } finally {
     childProcess.execFileSync = originalExec;
     fs.existsSync = originalExists;
+    fs.statSync = originalStat;
     if (originalSystemRoot === undefined) delete process.env.SystemRoot; else process.env.SystemRoot = originalSystemRoot;
     if (originalOverride === undefined) delete process.env.TEST_PROGRESS_POWERSHELL; else process.env.TEST_PROGRESS_POWERSHELL = originalOverride;
     if (originalTimeout === undefined) delete process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS; else process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = originalTimeout;

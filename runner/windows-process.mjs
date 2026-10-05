@@ -23,13 +23,16 @@ export function windowsPowerShell(environment = process.env) {
   if (fs.existsSync(legacy)) return legacy;
   throw new Error('Windows PowerShell 5.1 ausente; configure TEST_PROGRESS_POWERSHELL com o caminho absoluto de pwsh.exe');
 }
-// Per-call limit for PowerShell control processes, for whichever engine runs them
-// (5.1 by default, 7 via TEST_PROGRESS_POWERSHELL). The ceiling is the batch
-// preparation deadline; an invalid value is an error, never a silent fallback.
-export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, min: 1000, max: 30000 });
-export function windowsControlTimeout(environment = process.env) {
+// Per-call limit for PowerShell control processes. PowerShell 7 starts slower than
+// 5.1 (each call compiles WindowsProcessHost.cs), so its default is higher. The
+// variable overrides either engine; the ceiling is the batch preparation deadline
+// and an invalid value is an error, never a silent fallback.
+export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, min: 1000, max: 30000 });
+export function windowsControlTimeout(environment = process.env, engine = null) {
   const value = variable(environment, 'TEST_PROGRESS_POWERSHELL_TIMEOUT_MS');
-  if (value === undefined || value === '') return CONTROL_TIMEOUT_MS.default;
+  if (value === undefined || value === '') {
+    return engine && path.win32.basename(engine).toLowerCase() === 'pwsh.exe' ? CONTROL_TIMEOUT_MS.pwsh : CONTROL_TIMEOUT_MS.default;
+  }
   const timeout = /^[0-9]{1,6}$/.test(value) ? Number(value) : NaN;
   if (!(timeout >= CONTROL_TIMEOUT_MS.min && timeout <= CONTROL_TIMEOUT_MS.max)) {
     throw new Error(`TEST_PROGRESS_POWERSHELL_TIMEOUT_MS deve ser um inteiro entre ${CONTROL_TIMEOUT_MS.min} e ${CONTROL_TIMEOUT_MS.max} (ms)`);
@@ -40,10 +43,11 @@ function argumentsFor(action, parameters) {
   return ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-Action', action, ...parameters];
 }
 function control(action, parameters, attempts = 1) {
-  const timeout = windowsControlTimeout();
+  const engine = windowsPowerShell();
+  const timeout = windowsControlTimeout(process.env, engine);
   for (let attempt = 1; ; attempt++) {
     try {
-      const output = execFileSync(windowsPowerShell(), argumentsFor(action, parameters), {
+      const output = execFileSync(engine, argumentsFor(action, parameters), {
         encoding: 'utf8', timeout, maxBuffer: 64 * 1024, windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });

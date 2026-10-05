@@ -81,12 +81,13 @@ $env:TEST_PROGRESS_POWERSHELL = (Get-Command pwsh.exe -CommandType Application).
 Essa variável fica no processo atual e seus filhos; não é gravada globalmente.
 
 Cada operação do coletor no Windows abre processos PowerShell curtos de
-controle (diretório privado, identidade e estado de processos), limitados por
-padrão a **7500 ms** cada. O engine 7 inicia mais devagar que o 5.1; se houver
-`ETIMEDOUT` nessas chamadas, ajuste o limite para o engine em uso:
+controle (diretório privado, identidade e estado de processos). Cada chamada é
+limitada por padrão a **7500 ms** no 5.1 e **15000 ms** no 7 (`pwsh.exe`), que
+inicia mais devagar. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
+limite para o engine em uso; a variável vale para os dois:
 
 ```powershell
-$env:TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = '12000'
+$env:TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = '20000'
 ```
 
 Aceita inteiros de 1000 a 30000; valor inválido gera erro, sem voltar ao
