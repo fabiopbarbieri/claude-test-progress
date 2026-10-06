@@ -234,6 +234,19 @@ export function stateIds(directory) {
   }
   return [...ids].sort();
 }
+// Windows: a running worker rewrites its snapshot heartbeat every 5 s. A fresh heartbeat
+// plus an existing worker PID answers "alive" for this read without starting PowerShell.
+// A stale heartbeat or a missing PID falls back to the authenticated query, and any
+// recovery still re-authenticates under the mutation gate; liveness never authorizes a kill.
+const HEARTBEAT_FRESH_MS = 15000;
+function workerBeating(snapshot, claim) {
+  const identity = claim?.workerIdentity;
+  if (!validRecord(claim, snapshot.moduleId, snapshot.runId) || !validProcessIdentity(identity) || snapshot.workerPid !== identity.pid) return false;
+  const age = Date.now() - Date.parse(snapshot.heartbeatAt);
+  if (!(age >= 0 && age < HEARTBEAT_FRESH_MS)) return false;
+  try { process.kill(identity.pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+}
 export function inspectState(directory, { recover = true } = {}) {
   securePath(directory, true);
   const jobs = Object.create(null);
@@ -242,6 +255,7 @@ export function inspectState(directory, { recover = true } = {}) {
   const diagnose = (id, message, global = false, code = 'state-unavailable') => { (stateDiagnostics[id] || (stateDiagnostics[id] = [])).push({ code, message, blocking: true }); if (global) blocked = true; };
   const ids = stateIds(directory);
   const queried = new Map();
+  const beating = new Set();
   if (recover && process.platform === 'win32') {
     for (const moduleId of ids) {
       try {
@@ -249,6 +263,7 @@ export function inspectState(directory, { recover = true } = {}) {
         const snapshot = readJson(loc.snapshot);
         if (!snapshot || (!ACTIVE.has(snapshot.status) && !snapshot.recoveryRequired)) continue;
         const claim = readJson(loc.claim);
+        if (workerBeating(snapshot, claim)) { beating.add(moduleId); continue; }
         for (const identity of [claim?.workerIdentity, claim?.coordinatorIdentity, claim?.launchIdentity]) {
           if (validProcessIdentity(identity)) queried.set(JSON.stringify(identity), identity);
         }
@@ -340,7 +355,7 @@ export function inspectState(directory, { recover = true } = {}) {
       let current = snapshot;
       if (ACTIVE.has(snapshot.status) || snapshot.recoveryRequired) {
         if (!claim) { diagnose(moduleId, 'Execução ativa sem claim autenticado.'); }
-        else if (recover && !alive(claim.workerIdentity) && !alive(claim.coordinatorIdentity) && !alive(claim.launchIdentity)) {
+        else if (recover && !beating.has(moduleId) && !alive(claim.workerIdentity) && !alive(claim.coordinatorIdentity) && !alive(claim.launchIdentity)) {
           current = mutateLock(directory, moduleId, () => {
             // Liveness can take seconds on Windows. Read again under the same gate used by workers.
             const latest = readJson(loc.snapshot);
