@@ -5,6 +5,12 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+### Skill
+
+- `test-progress:configure`: o Claude cadastra suítes em `.claude/test-progress.json`
+  (adapter e runtime por stack, caminhos absolutos a partir do plugin) e diagnostica
+  os sintomas do painel, deixando o início dos testes com a pessoa.
+
 ### Painel
 
 - Erros quebram linha em vez de truncar e terminam numa próxima ação
