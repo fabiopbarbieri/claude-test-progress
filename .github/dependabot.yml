@@ -18,9 +18,15 @@ updates:
     directories:
       - "/adapters/junit"
       - "/tests/dependencies/junit"
-    # Built from this checkout, not a third-party Maven Central artifact.
     ignore:
+      # Built from this checkout, not a third-party Maven Central artifact.
       - dependency-name: "local.claude:test-progress-listener"
+      # JUnit 5 stays supported: JUnit 6 (Platform 6) needs Java 17 bytecode
+      # and would leave the JUnit 5 contract untested.
+      - dependency-name: "org.junit:junit-bom"
+        versions: ["[6,)"]
+      - dependency-name: "org.junit.platform:*"
+        versions: ["[6,)"]
     schedule:
       interval: weekly
       day: monday
@@ -33,9 +39,24 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
   - package-ecosystem: "pip"
-    directories:
-      - "/tests/dependencies/python38"
-      - "/tests/dependencies/python314"
+    directory: "/tests/dependencies/python38"
+    ignore:
+      # pytest 8.4+ dropped Python 3.8, the oldest supported lane.
+      - dependency-name: "pytest"
+        versions: [">= 8.4"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/tests/dependencies/python314"
     schedule:
       interval: weekly
       day: monday
@@ -48,11 +69,67 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
   - package-ecosystem: "bundler"
-    directories:
-      - "/tests/dependencies/rspec"
-      - "/tests/dependencies/rails72"
-      - "/tests/dependencies/rails80"
-      - "/tests/dependencies/rails81"
+    directory: "/tests/dependencies/rspec"
+    ignore:
+      # The adapter contract is RSpec Core 3.13.x.
+      - dependency-name: "rspec*"
+        versions: [">= 3.14"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "bundler"
+    directory: "/tests/dependencies/rails72"
+    ignore:
+      # Each Rails lane stays in its series; this one also pins the
+      # Minitest floor (5.20.0) declared as the minimum supported version.
+      - dependency-name: "rails"
+        versions: [">= 7.3"]
+      - dependency-name: "minitest"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "bundler"
+    directory: "/tests/dependencies/rails80"
+    ignore:
+      - dependency-name: "rails"
+        versions: [">= 8.1"]
+      # Supported range is Minitest >= 5.20 and < 6.
+      - dependency-name: "minitest"
+        versions: [">= 6"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "bundler"
+    directory: "/tests/dependencies/rails81"
+    ignore:
+      - dependency-name: "rails"
+        versions: [">= 8.2"]
+      - dependency-name: "minitest"
+        versions: [">= 6"]
     schedule:
       interval: weekly
       day: monday
@@ -65,9 +142,34 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
   - package-ecosystem: "npm"
-    directories:
-      - "/tests/dependencies/angular9"
-      - "/tests/dependencies/angular18"
+    directory: "/tests/dependencies/angular9"
+    ignore:
+      # The Angular 9 toolchain is frozen: it runs on Node 12 / npm 6 with a
+      # v1 lockfile, and any update here (even security fixes) pulls a newer
+      # Angular builder and rewrites the lock. This also blocks Dependabot
+      # security PRs for this directory; the alerts stay open for review.
+      - dependency-name: "*"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directory: "/tests/dependencies/angular18"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Angular 18 peer ranges: TypeScript >=5.4 <5.6, zone.js ~0.14.
+      - dependency-name: "typescript"
+        versions: [">= 5.6.0"]
+      - dependency-name: "zone.js"
+        versions: [">= 0.15.0"]
     schedule:
       interval: weekly
       day: monday
