@@ -36,7 +36,8 @@ async function main(){
       const initial=await waitFor(moduleId,job=>job?.status==='running'&&job.resolved===1);
       const claim=readJson(files(directory,moduleId).claim);fs.unlinkSync(configPath);
       const logs=collect('logs',moduleId);assert.strictEqual(logs.jobs[moduleId].runId,initial.runId);
-      assert(logs.jobs[moduleId].logTail.some(line=>line.includes('@@TEST_PROGRESS@@')));
+      assert(Array.isArray(logs.jobs[moduleId].logTail)&&!logs.stateDiagnostics[moduleId]?.length);
+      assert(!logs.jobs[moduleId].logTail.some(line=>line.includes('@@TEST_PROGRESS@@')));
       assert.strictEqual(collect('status').workspace.moduleConfig.status,'absent');
       collect('cancel',moduleId);await waitFor(moduleId,job=>job?.status==='cancelled');
       const deadline=Date.now()+5000;while(sameProcess(claim.workerIdentity)&&Date.now()<deadline)await sleep(50);

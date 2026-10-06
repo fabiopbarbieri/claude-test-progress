@@ -197,7 +197,8 @@ As fontes privadas são revalidadas antes da reserva e da liberação da barreir
 
 | Comando | Ação |
 | --- | --- |
-| `/test-progress` / `status [id\|all]` | Consulta estado e abre/atualiza painel |
+| `/test-progress` | Abre o painel ou, se aberto, fecha |
+| `/test-progress status [id\|all]` | Consulta estado e abre/atualiza painel |
 | `/test-progress help` / `paths` | Ajuda / arquivos instalados |
 | `/test-progress list` | Lista catálogo e diagnósticos |
 | `/test-progress start id` / `start all` | Inicia selecionados habilitados |

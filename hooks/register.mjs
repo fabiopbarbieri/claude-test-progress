@@ -1,6 +1,6 @@
 // Claude Code Mods 2.1.289+. No host Node APIs run inside the Mod sandbox.
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
-  sanitizeText, sanitizeTail, statusGlyph, progressBar, compactPercent, compactCounts, clock, configStatus } from '../runner/module-presentation.mjs';
+  sanitizeText, sanitizeTail, statusGlyph, progressBar, outcomeText, summaryLine, compactPercent, compactCounts, clock, configStatus } from '../runner/module-presentation.mjs';
 const PANE = 'claude-test-progress';
 let modules = {}, jobs = {}, stateDiagnostics = {}, workspace = null;
 let identity = '', generation = 0, sessionOwner = '';
@@ -168,7 +168,7 @@ async function performNow($, action, moduleId, expected) {
   finally { busy = false; $.ui.invalidate('ui.render'); }
 }
 const HELP = [
-  '/test-progress — consulta e abre o painel; não inicia testes.',
+  '/test-progress — abre ou fecha o painel; não inicia testes.',
   '/test-progress list — lista módulos ativados, IDs, linguagens e diagnósticos.',
   '/test-progress start <id|all> — inicia explicitamente os módulos ativados.',
   '/test-progress status [id|all] — consulta o estado.',
@@ -182,7 +182,7 @@ const HELP = [
   'Cobertura de código e estimativa de tempo não são calculadas.',
 ].join('\n');
 const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
-  '▶ iniciar  ■ cancelar  ≡ logs  ~ total parcial',
+  '▶ iniciar  ■ cancelar  ≡ logs  × fechar  ~ total parcial',
   '✓ passaram  ✗ falharam  ↷ ignorados',
   '/test-progress help lista os comandos.'];
 function textLogs(moduleId) {
@@ -252,6 +252,13 @@ export function register(on) {
       `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
       `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
+    // A bare /test-progress toggles: an open pane closes, a closed one refreshes and opens.
+    const bare = !String(e.args ?? '').trim();
+    if (bare) {
+      try {
+        if ((await $.ui.panes()).some(pane => pane.id === PANE)) { await $.ui.close({ id: PANE }); return {}; }
+      } catch { /* No pane record: open as usual. */ }
+    }
     await perform($, command.action, command.moduleId);
     if (command.text || command.action === 'list') return { text: textSummary() + (command.action === 'logs' ? `\n${textLogs(command.moduleId)}` : '') };
     try {
@@ -298,63 +305,92 @@ export function register(on) {
       const job = jobs[id];
       if (!job) return [text('—', { key: 'none', color: 'inactive' })];
       if (job.recoveryRequired) return [text('órfão: processo ainda vivo', { key: 'orphan', color: 'error' })];
-      const { color } = statusGlyph(job);
+      const counts = compactCounts(job).map(count => text(`${count.text} `, { key: count.text, color: count.color }));
+      if (!ACTIVE.has(job.status)) {
+        const outcome = outcomeText(job);
+        return [...counts, text(outcome.text, { key: 'outcome', color: outcome.color })];
+      }
       const stopping = job.phase === 'cancellation-requested';
+      const bar = progressBar(job, cells);
       return [
-        Box({ key: 'bar', width: cells + 1, children: [text(progressBar(job, cells), { color: stopping ? 'inactive' : color })] }),
-        Box({ key: 'pct', width: 11, children: [text(compactPercent(job), { dimColor: stopping })] }),
-        ...(stopping ? [text('parando…', { key: 'stopping', color: 'inactive' })] :
-          compactCounts(job).map(count => text(`${count.text} `, { key: count.text, color: count.color }))),
+        Box({ key: 'bar', flexDirection: 'row', width: cells + 1, children: [
+          ...(bar.done ? [text(bar.done, { key: 'done', color: stopping ? 'inactive' : 'suggestion' })] : []),
+          text(bar.rest, { key: 'rest', color: 'subtle' })] }),
+        Box({ key: 'pct', width: 7, children: [text(compactPercent(job), { dimColor: stopping })] }),
+        ...(stopping ? [text('parando…', { key: 'stopping', color: 'inactive' })] : counts),
       ];
     };
     const logBlock = id => {
       if (selectedLogs?.id !== id) return [];
       const changed = jobs[id]?.runId !== selectedLogs.runId;
       const lines = logTail.slice(-12);
+      const header = `log · run ${selectedLogs.runId.slice(0, 8)} · ${lines.length < logTail.length ? `últimas ${lines.length} de ${logTail.length}` : `${lines.length}`} ${lines.length === 1 ? 'linha' : 'linhas'}`;
       return [Box({ key: `log-${id}`, flexDirection: 'column', paddingLeft: 2, children: [
+        Box({ key: 'log-header', flexDirection: 'row', justifyContent: 'space-between', children: [
+          text(`│ ${header}`, { key: 'log-title', color: 'inactive', wrap: 'truncate-end' }),
+          local(`close-logs-${id}`, '×', () => { selectedLogs = null; logTail = []; })] }),
         ...(changed && jobs[id] ? [Box({ key: 'changed', flexDirection: 'row', gap: 1, children: [
           text('│ nova execução', { color: 'inactive' }), button('select-current-logs', '↻', 'logs', id)] })] : []),
-        ...(lines.length ? lines.map((line, i) => text(`│ ${line}`, { key: `log-${selectedLogs.runId}-${i}`, wrap: 'truncate',
+        ...(lines.length ? lines.map((line, i) => text(`│ ${line}`, { key: `log-${selectedLogs.runId}-${i}`, wrap: 'truncate-end',
           ...(/\b(ERROR|FAIL(ED|URE)?)\b/.test(line) ? { color: 'error' } : { dimColor: true }) })) :
           [text('│ sem saída ainda', { key: 'empty', color: 'inactive' })]),
+      ] })];
+    };
+    // Errors are the line the person most needs whole: they wrap, then point at the next step.
+    const problemBlock = id => {
+      const job = jobs[id];
+      const problems = [...diagnostics(id).map(diagnosticText), ...(job?.error ? [job.error] : [])];
+      if (!problems.length) return [];
+      const hint = job && selectedLogs?.id !== id ? '→ ≡ abre o log' + (job.phase === 'no-progress-observed' || /eventos de progresso/.test(job.error ?? '') ?
+        ' · confira o "adapter" do módulo' : '') : '';
+      return [Box({ key: 'problems', flexDirection: 'column', paddingLeft: 2, children: [
+        ...problems.slice(0, 2).map((item, i) => text(item, { key: `problem-${i}`, color: 'error', wrap: 'wrap' })),
+        ...(hint ? [text(hint, { key: 'hint', dimColor: true, wrap: 'wrap' })] : []),
       ] })];
     };
     const row = id => {
       const job = jobs[id], module = modules[id];
       const { glyph, color } = statusGlyph(job);
       const time = job ? clock(job.elapsedMs) : '';
-      const head = [Box({ key: 'glyph', width: 2, children: [text(glyph, { color })] }),
-        Box({ key: 'name', ...(narrow ? { flexGrow: 1 } : { width: nameWidth }),
-          children: [text(names[id], { wrap: 'truncate', ...(module?.enabled ? {} : { dimColor: true }) })] })];
-      const tail = Box({ key: 'tail', flexDirection: 'row', flexGrow: 1, justifyContent: 'flex-end', gap: 1, children: [
+      const live = job && ACTIVE.has(job.status);
+      const head = [Box({ key: 'glyph', width: 2, children: [text(glyph, { color, bold: true })] }),
+        Box({ key: 'name', ...(narrow ? { flexGrow: 1, flexShrink: 1 } : { width: nameWidth }),
+          children: [text(names[id], { wrap: 'truncate', bold: !!module?.enabled, ...(module?.enabled ? {} : { dimColor: true }) })] })];
+      const tail = Box({ key: 'tail', flexDirection: 'row', flexGrow: narrow ? 0 : 1, justifyContent: 'flex-end', gap: 1, children: [
         ...(time ? [text(time, { key: 'time', dimColor: true })] : []), ...actions(id)] });
-      const problems = [...diagnostics(id).map(diagnosticText), ...(job?.error ? [job.error] : [])];
+      // Narrow: a finished result fits the name line; only a live bar takes a second one.
+      const middle = Box({ key: 'middle', flexDirection: 'row', children: progress(id, narrow ? 10 : 12) });
       return Box({ key: `module-${id}`, flexDirection: 'column', children: [
-        ...(narrow ? [Box({ key: 'line', flexDirection: 'row', children: [...head, tail] }),
-          ...(job ? [Box({ key: 'progress', flexDirection: 'row', paddingLeft: 2, children: progress(id, 10) })] : [])] :
-          [Box({ key: 'line', flexDirection: 'row', children: [...head, ...progress(id, 12), tail] })]),
-        ...problems.slice(0, 2).map((item, i) => text(`  ${item}`, { key: `problem-${i}`, color: 'error', wrap: 'truncate' })),
+        ...(narrow ? [Box({ key: 'line', flexDirection: 'row', gap: 1, children: [...head, ...(live ? [] : [middle]), tail] }),
+          ...(live ? [Box({ key: 'progress', flexDirection: 'row', paddingLeft: 2, children: progress(id, 10) })] : [])] :
+          [Box({ key: 'line', flexDirection: 'row', children: [...head, middle, tail] })]),
+        ...problemBlock(id),
         ...logBlock(id),
       ] });
     };
     const ids = visible();
     const configured = ['absent', 'valid'].includes(workspace?.moduleConfig?.status ?? 'absent');
+    const summary = summaryLine(ids, jobs);
     return Box({ key: 'module-list', flexDirection: 'column', children: [
       Box({ key: 'toolbar', flexDirection: 'row', justifyContent: 'space-between', children: [
-        text(busy ? 'Test Progress …' : 'Test Progress', { key: 'title', dimColor: true }),
+        Box({ key: 'summary', flexDirection: 'row', children: [
+          ...summary.flatMap((part, i) => [...(i ? [text(' · ', { key: `summary-sep-${i}`, dimColor: true })] : []),
+            text(part.text, { key: `summary-${i}`, ...(part.color ? { color: part.color } : { dimColor: true }) })]),
+          ...(busy ? [text(' …', { key: 'busy', dimColor: true })] : [])] }),
         Box({ key: 'toolbar-actions', flexDirection: 'row', gap: 1, children: [
           ...(enabled().length >= 2 ? [button('start-all', '▶ todos', 'start', 'all', allAllowed())] : []),
-          local('help', '?', () => { showHelp = !showHelp; })] })] }),
+          local('help', '?', () => { showHelp = !showHelp; }),
+          Button({ key: 'close', label: '×', plain: true, role: 'dismiss', onPress: () => $.ui.close({ id: PANE }) })] })] }),
       ...ids.map(row),
       ...(!ids.length && configured && !workspace?.error ? [text('Nenhum módulo em .claude/test-progress.json', { key: 'empty', dimColor: true })] : []),
       ...(chooseLogs ? [text('Escolha ≡ em um módulo.', { key: 'choose-logs', dimColor: true })] : []),
       ...(selectedLogs && !ids.includes(selectedLogs.id) ? logBlock(selectedLogs.id) : []),
-      ...(workspace?.error ? [text(`Configuração: ${workspace.error}`, { key: 'config-error', color: 'error' })] : []),
-      ...(workspace?.moduleConfig?.diagnostics ?? []).map((item, i) => text(`Configuração: ${diagnosticText(item)}`, { key: `config-${i}`, color: 'error' })),
-      ...(stateDiagnostics['*'] ?? []).map((item, i) => text(`Estado: ${diagnosticText(item)}`, { key: `state-${i}`, color: 'error' })),
-      ...(lastError ? [text(lastError, { key: 'last-error', color: 'error' })] : []),
-      ...(registrationError ? [text(`Registro: ${registrationError}`, { key: 'registration', color: 'error' })] : []),
-      ...(showHelp ? LEGEND.map((line, i) => text(line, { key: `legend-${i}`, dimColor: true })) : []),
+      ...(workspace?.error ? [text(`Configuração: ${workspace.error}`, { key: 'config-error', color: 'error', wrap: 'wrap' })] : []),
+      ...(workspace?.moduleConfig?.diagnostics ?? []).map((item, i) => text(`Configuração: ${diagnosticText(item)}`, { key: `config-${i}`, color: 'error', wrap: 'wrap' })),
+      ...(stateDiagnostics['*'] ?? []).map((item, i) => text(`Estado: ${diagnosticText(item)}`, { key: `state-${i}`, color: 'error', wrap: 'wrap' })),
+      ...(lastError ? [text(lastError, { key: 'last-error', color: 'error', wrap: 'wrap' })] : []),
+      ...(registrationError ? [text(`Registro: ${registrationError}`, { key: 'registration', color: 'error', wrap: 'wrap' })] : []),
+      ...(showHelp ? LEGEND.map((line, i) => text(line, { key: `legend-${i}`, dimColor: true, wrap: 'wrap' })) : []),
     ] });
   });
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

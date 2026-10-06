@@ -10,11 +10,17 @@ independente da Anthropic. Versão **0.3.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal:
 
 ```text
-Test Progress                              ▶ todos ?
-● API        ██████████░░  83%  ✓4 ✗1        0:57 ≡ ■
-✓ Cobrança   ████████████ 100%  ✓12          0:08 ≡ ▶
-✗ Web        ███████░░░░░  58%  ✓6 ✗2 ↷1     1:40 ≡ ▶
+4 módulos · 1 rodando · 1 falha                 ▶ todos ? ×
+● API        ━━━━━━━━━━━━  ~83%  ✓4 ✗1       0:57 ≡ ■
+✓ Cobrança   ✓12 · 12 testes                 0:08 ≡ ▶
+✗ Web        erro                            1:40 ≡ ▶
+  O comando terminou sem eventos de progresso reconhecidos;
+  nenhum teste foi confirmado.
+  → ≡ abre o log · confira o "adapter" do módulo
 ○ Worker     —                                    ▶
+```
+
+`/test-progress` sem argumentos abre ou fecha o painel; `×`, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
 ```
 
 Acima do prompt, uma faixa de uma linha resume o que está rodando e as falhas

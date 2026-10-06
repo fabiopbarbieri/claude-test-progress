@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing';
 import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
-  statusGlyph, progressBar, compactPercent, compactCounts, clock } from '../runner/module-presentation.mjs';
+  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryLine, outcomeText } from '../runner/module-presentation.mjs';
 
 test('titles preserve labels and IDs even when modules share a language or label', () => {
   expect(moduleTitle('api', { label: 'Suíte', language: 'Python' })).toBe('Suíte · api');
@@ -44,8 +44,12 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(statusGlyph({ status: 'failed', failed: 2 })).toEqual({ glyph: '✗', color: 'error' });
   expect(statusGlyph({ status: 'cancelled' })).toEqual({ glyph: '■', color: 'inactive' });
   expect(statusGlyph({ status: 'error', recoveryRequired: true })).toEqual({ glyph: '!', color: 'error' });
-  expect(progressBar({ total: 4, percent: 50 }, 4)).toBe('██░░');
-  expect(progressBar({ total: null, percent: null }, 4)).toBe('····');
+  expect(progressBar({ total: 4, percent: 50 }, 4)).toEqual({ done: '━━', rest: '━━' });
+  expect(progressBar({ total: null, percent: null }, 4)).toEqual({ done: '', rest: '╌╌╌╌' });
+  expect(readableTail(['a', '@@TEST_PROGRESS@@{}', '', '', 'b', ''], '@@TEST_PROGRESS@@')).toEqual(['a', '', 'b']);
+  expect(summaryLine(['a', 'b'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 } }).map(part => part.text))
+    .toEqual(['2 módulos', '1 rodando', '1 falha']);
+  expect(outcomeText({ status: 'completed', total: 1 }).text).toBe('· 1 teste');
   expect(compactPercent({ total: 4, percent: 50, totalStable: true })).toBe('50%');
   expect(compactPercent({ status: 'running', total: 4, percent: 50, totalStable: false })).toBe('~50%');
   expect(compactPercent({ status: 'failed', total: 4, percent: 100, totalStable: false })).toBe('100%');
