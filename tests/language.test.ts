@@ -57,6 +57,6 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(compactPercent({ status: 'failed', total: 4, percent: 100, totalStable: false })).toBe('100%');
   expect(compactPercent({ total: null, percent: null })).toBe('—');
   expect(compactPercent({ total: 0, percent: null })).toBe('sem testes');
-  expect(compactCounts({ passed: 4, failed: 0, skipped: 1 }).map(count => count.text)).toEqual(['✓4', '↷1']);
+  expect(compactCounts({ passed: 4, failed: 0, skipped: 1 }).map(count => count.text)).toEqual(['✓4', '⊘1']);
   expect([clock(57000), clock(7200000), clock(undefined)]).toEqual(['0:57', '2:00:00', '']);
 });

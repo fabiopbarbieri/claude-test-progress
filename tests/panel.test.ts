@@ -64,7 +64,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
     await $.command.run({ command: 'test-progress', args: '--text' });
     const ui = await $.ui.mount(pane(surface));
-    for (const value of ['✓2 ', '✗1 ', '↷1 ', '~100%', '—', '╌╌╌╌╌╌╌╌╌╌╌╌']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
+    for (const value of ['✓2 ', '✗1 ', '⊘1 ', '~100%', '—', '╌╌╌╌╌╌╌╌╌╌╌╌']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: /executing-tests/ })).toBeUndefined();
     expect(await ui.find({ key: 'cancel-api' })).toMatchObject({ props: { label: '■' } });
     await ui.press({ key: 'start-all' });
@@ -248,7 +248,7 @@ test('wide panes keep one line per module; narrow panes move progress to a secon
   expect(await wide.find({ key: 'progress' })).toBeUndefined();
   for (const value of ['API', 'Web', '83.3%', '✓4 ', '✗1 ', '0:57', '━━━━━━━━━━']) expect(await wide.find({ type: 'Text', text: value })).toBeDefined();
   expect(await wide.find({ type: 'Text', text: '✗1 ' })).toMatchObject({ props: { color: 'error' } });
-  expect(await wide.find({ type: 'Text', text: /^↷/ })).toBeUndefined();
+  expect(await wide.find({ type: 'Text', text: /^⊘/ })).toBeUndefined();
   await wide.unmount();
   const narrow = await $.ui.mount(pane('terminal', 50));
   expect(await narrow.find({ key: 'progress' })).toBeDefined();

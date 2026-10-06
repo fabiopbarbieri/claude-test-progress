@@ -9,6 +9,7 @@ import { windowsSpawnSpec } from './windows-process.mjs';
 import { windowsProof, windowsCompletion } from './windows-proof.mjs';
 import { readBatch, requestCompensation, publishFinalSafe, pause } from './module-batch.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
+import { createLineDecoder, windowsAnsiEncoding } from './output-decoder.mjs';
 
 async function main() {
 
@@ -60,6 +61,9 @@ const progressIntervalMs = 250;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
 const buffers = { stdout: '', stderr: '' };
+// Non-UTF-8 lines fall back to the ANSI code page on Windows only.
+const fallbackEncoding = windows ? windowsAnsiEncoding : null;
+const decoders = { stdout: createLineDecoder(fallbackEncoding), stderr: createLineDecoder(fallbackEncoding) };
 const now = timestamp();
 snapshot = { ...snapshot, workerPid: process.pid, workerIdentity, updatedAt: now };
 fs.writeFileSync(snapshot.logPath, '', { mode: 0o600, flag: 'wx' });
@@ -85,9 +89,11 @@ function log(text) {
   }
 }
 function consume(stream, chunk) {
-  const text = chunk.toString('utf8');
-  log(text);
   snapshot.lastOutputAt = timestamp();
+  // An unfinished line waits for its end, so it is decoded as a whole.
+  const text = decoders[stream].push(chunk);
+  if (!text) return;
+  log(text);
   buffers[stream] += text;
   // Treat carriage-return progress redraws as records, too.
   const lines = buffers[stream].split(/\r?\n|\r/);
@@ -177,6 +183,11 @@ async function finish(code, signal) {
   clearTimeout(killTimer);
   try {
     for (const stream of Object.keys(buffers)) {
+      const rest = decoders[stream].flush();
+      if (rest) {
+        try { log(rest); } catch { /* The final state must not depend on a writable log. */ }
+        buffers[stream] += rest;
+      }
       if (buffers[stream] && progress.line(buffers[stream])) snapshot.lastProgressAt = timestamp();
     }
     const proof = refreshWindowsProof();
@@ -297,8 +308,6 @@ if (cancelling) {
       compensate(fatalError);
       try { log(`\nRunner: ${fatalError}\n`); } catch { /* Keep close handling independent of logs. */ }
     });
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => consume('stdout', chunk));
     child.stderr.on('data', (chunk) => consume('stderr', chunk));
     // Persist identity immediately after spawn, before accepting stream events.

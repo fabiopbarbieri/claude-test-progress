@@ -72,14 +72,20 @@ $env:TEST_PROGRESS_POWERSHELL = (Get-Command pwsh.exe -CommandType Application).
 
 Essa variável fica no processo atual e seus filhos; não é gravada globalmente.
 
-Cada operação do coletor no Windows abre processos PowerShell curtos de
-controle (diretório privado, identidade e estado de processos). A primeira
-chamada compila `WindowsProcessHost.cs` e guarda a DLL na raiz privada do
-estado, em TEMP, com hash do código e versão do runtime no nome. As seguintes
-carregam essa DLL se o dono for o usuário, Administrators ou SYSTEM; qualquer
-dúvida volta a compilar. Enquanto há jobs ativos, worker e coordenador conferem
-se o outro continua vivo; no Windows, uma resposta positiva vale por 2 s antes
-de nova consulta, e uma negativa é sempre reconsultada. Cada chamada é
+As operações do coletor no Windows usam chamadas curtas de controle (diretório
+privado, identidade e estado de processos) e um broker por job. Depois da
+primeira verificação da raiz privada do estado, em TEMP, o Windows PowerShell
+5.1 compila uma vez `WindowsProcessHost.cs` e `WindowsHelper.cs` em
+`helper-<hash>.exe` nessa raiz; o hash vem do código-fonte. O helper executa as
+mesmas ações e validações de `runtime/windows-process.ps1` em dezenas de
+milissegundos e ~15 MB, e também é o broker de cada job. Ele só é usado como
+arquivo comum, sem link, dentro da raiz com DACL privada verificada, a mesma
+confiança dada aos arquivos de job que definem os comandos. Se não puder ser
+compilado (nova tentativa após 1 h) ou iniciado, por exemplo por AppLocker ou
+WDAC, o plugin usa o PowerShell como antes; `TEST_PROGRESS_WINDOWS_HELPER=0`
+força esse caminho. No caminho PowerShell, a DLL compilada de
+`WindowsProcessHost.cs` fica em cache na mesma raiz e só é carregada se o dono
+for o usuário, Administrators ou SYSTEM. Cada chamada é
 limitada por padrão a **7500 ms** no 5.1 e **15000 ms** no 7 (`pwsh.exe`), que
 inicia mais devagar a frio. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
 limite para o engine em uso; a variável vale para os dois:
@@ -101,6 +107,12 @@ para leitura correta em 5.1. Cada PowerShell que o plugin abre recebe
 padrão `Restricted` do Windows cliente sem gravar política. O plugin não muda
 `ExecutionPolicy` persistente, assinatura ou políticas da organização; política
 definida por Group Policy continua prevalecendo e pode bloquear os scripts.
+
+Os logs são gravados em UTF-8. Cada linha da saída dos testes é lida como
+UTF-8 e, quando não é UTF-8 válido, na code page ANSI do sistema (`ACP` em
+`HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage`), que é a usada por
+Python e Java com a saída redirecionada. Ferramentas que escrevem na code page
+OEM do console (como 850) ainda podem mostrar acentos trocados.
 
 ## Descoberta de Node e nvm-windows
 
