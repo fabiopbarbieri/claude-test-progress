@@ -219,7 +219,7 @@ const HELP = [
 ].join('\n');
 const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
   '▶ iniciar  ■ cancelar  ≡ logs  × fechar  ~ total parcial',
-  '✓ passaram  ✗ falharam  ↷ ignorados',
+  '✓ passaram  ✗ falharam  ⊘ ignorados',
   '/test-progress help lista os comandos.'];
 function textLogs(moduleId: string) {
   const ids = moduleId === 'all' ? Object.keys(p.jobs).sort() : [moduleId];
@@ -332,7 +332,6 @@ export const register: Register = on => {
         onPress={guarded(async () => { if (allowed) await perform($, action, id, expected); })} />;
     const local = (key: string, label: string, fn: () => void) => <Button key={key} label={label} plain onPress={guarded(fn)} />;
     const names = displayNames();
-    const nameWidth = Math.min(18, Math.max(6, ...visible().map(id => (names[id] ?? id).length))) + 1;
     const actions = (id: string) => {
       const module = p.modules[id], job = p.jobs[id];
       const open = p.selectedLogs?.id === id;
@@ -410,19 +409,17 @@ export const register: Register = on => {
       const live = !!job && ACTIVE.has(job.status);
       const head = [
         <Box key="glyph" width={2}><Text color={color} bold>{glyph}</Text></Box>,
-        narrow ?
-          <Box key="name" flexGrow={1} flexShrink={1}><Text wrap="truncate" bold={!!module?.enabled} dimColor={!module?.enabled}>{names[id] ?? id}</Text></Box> :
-          <Box key="name" width={nameWidth}><Text wrap="truncate" bold={!!module?.enabled} dimColor={!module?.enabled}>{names[id] ?? id}</Text></Box>,
+        <Box key="name" flexGrow={1} flexShrink={1}><Text wrap="truncate" bold={!!module?.enabled} dimColor={!module?.enabled}>{names[id] ?? id}</Text></Box>,
       ];
-      const tail = <Box key="tail" flexDirection="row" flexGrow={narrow ? 0 : 1} justifyContent="flex-end" gap={1}>
+      const tail = <Box key="tail" flexDirection="row" flexShrink={0} gap={1}>
         {time ? <Text key="time" dimColor>{time}</Text> : null}
         {actions(id)}
       </Box>;
+      // The name takes the free space, so results and actions stay right-aligned at any width.
       // Narrow: a finished result fits the name line; only a live bar takes a second one.
-      const middle = <Box key="middle" flexDirection="row">{progress(id, narrow ? 10 : 12)}</Box>;
+      const middle = <Box key="middle" flexDirection="row" flexShrink={0}>{progress(id, narrow ? 10 : 12)}</Box>;
       return <Box key={`module-${id}`} flexDirection="column">
-        {narrow ? <Box key="line" flexDirection="row" gap={1}>{head}{live ? null : middle}{tail}</Box> :
-          <Box key="line" flexDirection="row">{head}{middle}{tail}</Box>}
+        <Box key="line" flexDirection="row" gap={1}>{head}{narrow && live ? null : middle}{tail}</Box>
         {narrow && live ? <Box key="progress" flexDirection="row" paddingLeft={2}>{progress(id, 10)}</Box> : null}
         {problemBlock(id)}
         {logBlock(id)}

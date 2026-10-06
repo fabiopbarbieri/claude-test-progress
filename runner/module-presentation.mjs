@@ -128,7 +128,7 @@ export function compactPercent(job) {
   return `${ACTIVE.has(job.status) && !job.totalStable ? '~' : ''}${percentage(job)}`;
 }
 export function compactCounts(job) {
-  return [['passed', '✓', 'success'], ['failed', '✗', 'error'], ['skipped', '↷', 'inactive']]
+  return [['passed', '✓', 'success'], ['failed', '✗', 'error'], ['skipped', '⊘', 'inactive']]
     .filter(([key]) => (job?.[key] ?? 0) > 0).map(([key, glyph, color]) => ({ text: `${glyph}${job[key]}`, color }));
 }
 export function clock(ms) {

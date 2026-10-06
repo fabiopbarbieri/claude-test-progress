@@ -47,6 +47,7 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - Resultado, tempo e ações de cada módulo ficam sempre alinhados à direita; o
   nome ocupa o espaço livre e é cortado só quando falta largura. Antes, com o
   painel largo, o resultado colava no nome.
+- Testes ignorados usam `⊘` (antes `↷`, pouco legível em algumas fontes).
 
 ## [0.4.0] - 2026-10-06
 
