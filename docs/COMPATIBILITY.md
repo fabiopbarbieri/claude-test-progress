@@ -25,7 +25,7 @@ ilegível no namespace bloqueia novos starts até ser resolvido.
 | Coletor | Node >=14.0.0, sem dependências npm | CI com Node 14.0.0 e 24 | O Node do app é independente |
 | Linux | Bash; GNU `sort -V` para descoberta nvm; recuperação por `/proc` | Todos os workflows em `ubuntu-24.04` | Não é uma matriz de distribuições |
 | WSL | Caminho Linux quando Claude e toolchain rodam dentro do WSL | Roteamento em [hooks/register.tsx](../hooks/register.tsx) | Sem aceite próprio; não misture executáveis Windows com a recuperação Linux |
-| Windows | Windows 10/11 ou Server 2019+; PowerShell 5.1/7; Job Objects | [Matriz](../.github/workflows/windows.yml) PowerShell 5.1/7 × coletor Node 14.0.0/24, app Node 12.22.12, na CI hospedada | Sem aceite registrado numa máquina Windows real; veja [WINDOWS](../WINDOWS.md) |
+| Windows | Windows 10/11 ou Server 2019+; PowerShell 5.1/7; Job Objects | [Matriz](../.github/workflows/windows.yml) PowerShell 5.1/7 × coletor Node 14.0.0/24, app Node 12.22.12, na CI hospedada | Aceite em VM Windows 11 (gates 5.1/7 e Mod no Claude Code); sem aceite em máquina física; veja [WINDOWS](../WINDOWS.md#aceite-em-windows-11) |
 | macOS | Sem suporte operacional declarado | — | Descoberta usa ferramentas GNU; recuperação depende de evidência Linux |
 
 O sidecar de prova Windows tem formato próprio (`schema: 1`), independente do

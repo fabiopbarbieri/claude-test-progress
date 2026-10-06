@@ -48,7 +48,7 @@ O plugin não instala runners, browsers ou runtimes.
 | Base ou integração | Alcance e limite |
 | --- | --- |
 | Claude Code / coletor | Claude **2.1.289+**, Node **14+** para o coletor |
-| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio, ainda sem aceite registrado |
+| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio e aceite em VM Windows 11, ainda sem máquina física |
 | Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
 | Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
 | Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |

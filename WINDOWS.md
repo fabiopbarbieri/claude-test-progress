@@ -9,8 +9,10 @@ e Mods permitido no ambiente. O coletor usa Node **14.0.0+** já instalado.
 Angular 9 e suas dependências permanecem como estão.
 
 **Estado de aceite:** implementação e gate nativo estão presentes, e a matriz
-[Windows modules](.github/workflows/windows.yml) roda na CI hospedada. Ainda não
-há aceite registrado em uma máquina Windows real nem com um app Angular 9 real.
+[Windows modules](.github/workflows/windows.yml) roda na CI hospedada. Há um
+aceite registrado no Windows 11 nativo, numa VM (detalhes em
+[Aceite em Windows 11](#aceite-em-windows-11)). Faltam aceite numa máquina
+física, com um app Angular 9 real e no Claude Desktop.
 
 O cadastro usa `schemaVersion: 1` com `modules` e IDs seguros; o início é sempre
 explícito, por ID ou `all`. Templates pessoais opcionais também usam schemaVersion 1; somente workspace
@@ -290,6 +292,23 @@ encerramento de pai/filho/neto, perda autenticada do broker, compensação,
 configuração removida e runtimes separados, e roda na CI hospedada. Parsing ou
 testes Linux não substituem as chamadas reais de DACL/Job Objects/prova de árvore
 vazia, e a CI hospedada não substitui o aceite numa máquina Windows real.
+
+## Aceite em Windows 11
+
+Em 06/10/2026, numa VM Windows 11 (build 26200, QEMU com 4 núcleos e 4 GB,
+política de execução no padrão `Restricted`), com o `main` em `c65c868`:
+
+- `scripts/check-windows.ps1` passou em Windows PowerShell 5.1 e PowerShell
+  7.6.6, com e sem o helper nativo.
+- Aceite visual do Mod no Claude Code 2.1.291 (Windows Terminal, coletor em
+  Node 24.21.0), com um app de teste de seis módulos: pytest 9.1.1 e unittest
+  pelo [adaptador Python](adapters/python/README.md) (Python 3.12.10, inclusive
+  skip, xfail, subtests, falhas e erro de coleta) e `node --test` com o adapter
+  `exit`. Conferidos `list`, `start all` com o painel aberto, contagens e
+  resultado final, logs com falhas e acentos, `cancel` individual sem processos
+  restantes e o layout largo e estreito.
+
+O aceite não cobre máquina física, Angular 9 nem o Claude Desktop.
 
 ## Fontes e evidências
 
