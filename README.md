@@ -10,17 +10,19 @@ independente da Anthropic. Versão **0.5.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal:
 
 ```text
-4 módulos · 1 rodando · 1 falha                 ▶ todos ? ×
-● API        ━━━━━━━━━━━━  ~83%  ✓4 ✗1       0:57 ≡ ■
-✓ Cobrança   ✓12 · 12 testes                 0:08 ≡ ▶
-✗ Web        erro                            1:40 ≡ ▶
-  O comando terminou sem eventos de progresso reconhecidos;
-  nenhum teste foi confirmado.
-  → ≡ abre o log · confira o "adapter" do módulo
-○ Worker     —                                    ▶
+1/1/4  ▶ Todos  ↻ Apenas com erro                    ?
+● ■ API       ━━━━━━━━━━━━  ~83%  ✓4 ✗1       0:57
+✓ ▶ Cobrança  ✓12 · 12 testes                 0:08
+✗ ▶ Web       erro                            1:40
+    O comando terminou sem eventos de progresso reconhecidos;
+    nenhum teste foi confirmado.
+    → clique no nome para abrir o log · confira o "adapter" do módulo
+○ ▶ Worker    —
 ```
 
-`/test-progress` sem argumentos abre ou fecha o painel; `×`, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
+O topo conta módulos com sucesso / com erro / total (S/E/T). `↻ Apenas com erro` reinicia só os módulos que falharam, e clicar no nome do módulo abre ou fecha o log.
+
+`/test-progress` sem argumentos abre ou fecha o painel; o `×` do próprio Claude Code, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
 ```
 
 A skill `test-progress:configure` permite pedir ao Claude que cadastre as suítes
@@ -120,7 +122,7 @@ Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
 | `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
 
 Acrescente `--text`, por exemplo `/test-progress status all --text`.
-No painel: `▶` inicia, `■` cancela, `≡` abre os logs sob o módulo e `?` mostra a legenda.
+No painel: `▶` inicia, `■` cancela, clicar no nome do módulo abre os logs sob ele e `?` mostra a legenda.
 [Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
 
 ## Atualizar ou remover
