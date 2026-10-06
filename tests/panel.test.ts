@@ -191,8 +191,7 @@ test('toolbar counts S/E/T and reruns only the failed modules, one start each', 
     { props: { color: 'success' }, children: ['1'] }, { children: ['/'] }, { props: { color: 'error' }, children: ['2'] },
     { children: ['/'] }, { props: { dimColor: true }, children: ['4'] }] });
   expect(await ui.find({ key: 'start-all' })).toMatchObject({ props: { label: '▶ Todos' } });
-  expect(await ui.find({ key: 'start-failed' })).toMatchObject({ props: { label: '↻' } });
-  expect(await ui.find({ type: 'Text', text: 'Apenas com erro' })).toMatchObject({ props: { color: 'error' } });
+  expect(await ui.find({ key: 'start-failed' })).toMatchObject({ props: { label: '↻ Apenas com erro' } });
   calls.length = 0;
   await ui.press({ key: 'start-failed' });
   expect(calls.map(argv => argv[0])).toEqual(['status', 'start', 'start']);
@@ -200,7 +199,6 @@ test('toolbar counts S/E/T and reruns only the failed modules, one start each', 
   current.jobs.api = job('api', { status: 'completed', failed: 0 }); current.jobs.web = job('web', { status: 'completed', failed: 0 });
   await $.command.run({ command: 'test-progress', args: 'status --text' });
   expect(await ui.find({ key: 'start-failed' })).toBeUndefined();
-  expect(await ui.find({ type: 'Text', text: 'Apenas com erro' })).toBeUndefined();
   await ui.unmount();
 });
 

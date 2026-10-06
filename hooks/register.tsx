@@ -461,12 +461,9 @@ export const register: Register = on => {
             <Text key="total" dimColor>{`${counts.total}`}</Text>
           </Box>
           {enabled().length >= 2 ? button('start-all', '▶ Todos', 'start', 'all', allAllowed()) : null}
-          {/* Button takes no color, so the red label is a Text beside the ↻ it names; hidden while nothing failed. */}
-          {failedIds().length ? <Box key="failed-action" flexDirection="row" gap={1}>
-            <Button key="start-failed" label="↻" plain dimColor={p.busy || !failedAllowed()}
-              onPress={guarded(async () => { if (failedAllowed()) await startFailed($, expected); })} />
-            <Text key="start-failed-label" color="error" dimColor={p.busy || !failedAllowed()}>Apenas com erro</Text>
-          </Box> : null}
+          {/* Button takes no color at rest; the whole label is the target and turns red under the pointer. Hidden while nothing failed. */}
+          {failedIds().length ? <Box key="failed-action"><Button key="start-failed" label="↻ Apenas com erro" plain hover={{ color: 'error' }}
+            dimColor={p.busy || !failedAllowed()} onPress={guarded(async () => { if (failedAllowed()) await startFailed($, expected); })} /></Box> : null}
           {p.busy ? <Text key="busy" dimColor>…</Text> : null}
         </Box>
         <Box key="toolbar-actions" flexDirection="row" gap={1}>
