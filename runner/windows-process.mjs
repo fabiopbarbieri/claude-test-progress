@@ -2,22 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
+import { environmentValue } from './runtime.mjs';
 
 const script = fileURLToPath(new URL('../runtime/windows-process.ps1', import.meta.url));
 let selfIdentity = null;
-function variable(environment, name) {
-  const key = Object.keys(environment).find((entry) => entry.toUpperCase() === name);
-  return key === undefined ? undefined : environment[key];
-}
 export function windowsPowerShell(environment = process.env) {
-  const override = variable(environment, 'TEST_PROGRESS_POWERSHELL');
+  const override = environmentValue(environment, 'TEST_PROGRESS_POWERSHELL');
   if (override) {
     if (!path.win32.isAbsolute(override) || !fs.statSync(override).isFile()) {
       throw new Error('TEST_PROGRESS_POWERSHELL deve apontar para um executável absoluto');
     }
     return override;
   }
-  const systemRoot = variable(environment, 'SYSTEMROOT') || variable(environment, 'WINDIR');
+  const systemRoot = environmentValue(environment, 'SYSTEMROOT') || environmentValue(environment, 'WINDIR');
   if (!systemRoot) throw new Error('SystemRoot ausente: PowerShell não localizado');
   const legacy = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   if (fs.existsSync(legacy)) return legacy;
@@ -29,7 +26,7 @@ export function windowsPowerShell(environment = process.env) {
 // and an invalid value is an error, never a silent fallback.
 export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, min: 1000, max: 30000 });
 export function windowsControlTimeout(environment = process.env, engine = null) {
-  const value = variable(environment, 'TEST_PROGRESS_POWERSHELL_TIMEOUT_MS');
+  const value = environmentValue(environment, 'TEST_PROGRESS_POWERSHELL_TIMEOUT_MS');
   if (value === undefined || value === '') {
     return engine && path.win32.basename(engine).toLowerCase() === 'pwsh.exe' ? CONTROL_TIMEOUT_MS.pwsh : CONTROL_TIMEOUT_MS.default;
   }
@@ -82,7 +79,7 @@ function matchesSelf(identity) {
 function identityArguments(identity) {
   return ['-ProcessId', String(identity.pid), '-StartTime', identity.startTime, '-Owner', identity.owner];
 }
-function managed(identity) {
+export function managed(identity) {
   return valid(identity) && identity.managedBroker === true && identity.contained === true &&
     typeof identity.jobName === 'string' && /^Local\\claude-test-progress-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(identity.jobName) &&
     Number.isInteger(identity.sessionId) && identity.sessionId >= 0;

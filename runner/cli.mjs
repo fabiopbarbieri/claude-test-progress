@@ -7,6 +7,7 @@ import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLoc
 import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
 import { randomUUID, removePath } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
+import { sanitizeText } from './module-presentation.mjs';
 import { discoverModules, prepareSelection, assertSourcesUnchanged } from './module-config.mjs';
 import { batchFiles, readBatch, changeBatch, PREPARE_MS, ABORT_MS, pause } from './module-batch.mjs';
 import { windowsLaunchCoordinator } from './windows-process.mjs';
@@ -175,8 +176,7 @@ function logs(target, state) {
       if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
       // The tail keeps 40 lines of at most 4096 characters; 256 KiB of bytes covers them.
       const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
-      const clean = contents.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
-        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+      const clean = sanitizeText(contents);
       state.jobs[moduleId] = { ...snapshot, logTail: clean ? clean.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096)) : [] };
     } catch (error) { (state.stateDiagnostics[moduleId] || (state.stateDiagnostics[moduleId] = [])).push({ code: 'unsafe-log', message: error.message, blocking: true }); }
   }
