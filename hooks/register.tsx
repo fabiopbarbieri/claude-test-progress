@@ -1,4 +1,4 @@
-// Claude Code Mods 2.1.291+. No host Node APIs run inside the Mod sandbox.
+// Claude Code Mods 2.1.289+. No host Node APIs run inside the Mod sandbox.
 import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';

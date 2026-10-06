@@ -4,7 +4,7 @@
 [Compatibilidade](docs/COMPATIBILITY.md) · [Diagnóstico](docs/TROUBLESHOOTING.md)
 
 Implementação destinada a **Windows 10/11** e **Windows Server 2019+**,
-com Windows PowerShell **5.1** ou PowerShell **7**. Claude Code requer **2.1.287+**
+com Windows PowerShell **5.1** ou PowerShell **7**. Claude Code requer **2.1.289+**
 e Mods permitido no ambiente. O coletor usa Node **14.0.0+** já instalado.
 Angular 9 e suas dependências permanecem como estão.
 
