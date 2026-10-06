@@ -48,7 +48,7 @@ Prioridades sugeridas, usando fixtures próprias e sem credenciais:
 2. **Python:** descoberta/setup/teardown com falha, subtests, xfail/XPASS,
    failfast e zero testes; comparar exit code com execução nativa. Acrescentar
    pytest 7 para cobrir o mínimo declarado.
-3. **JUnit/Karma:** compilar o [listener](../adapters/junit/pom.xml) em Java 11
+3. **JUnit/Karma:** compilar o [listener](../adapters/junit/pom.xml) em Java 17
    e executar testes dinâmicos, contêiner ignorado e paralelismo. Rodar fixture
    Karma com o [reporter](../adapters/karma/reporter.cjs), incluindo ciclos e
    desconexão. Preservar uma combinação compatível com Angular 9.

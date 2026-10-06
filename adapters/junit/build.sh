@@ -22,7 +22,7 @@ done
 fetch_jar "org/opentest4j/opentest4j/1.3.0/opentest4j-1.3.0.jar"
 fetch_jar "org/apiguardian/apiguardian-api/1.1.2/apiguardian-api-1.1.2.jar"
 
-javac --release 11 -encoding UTF-8 -cp "$build_dir/deps/*" \
+javac --release 17 -encoding UTF-8 -cp "$build_dir/deps/*" \
   -d "$build_dir/classes" \
   "$adapter_dir/src/main/java/local/claude/progress/TestProgressListener.java"
 cp -R "$adapter_dir/src/main/resources/." "$build_dir/classes/"

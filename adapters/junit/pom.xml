@@ -7,7 +7,7 @@
   <artifactId>test-progress-listener</artifactId>
   <version>0.1.0</version>
   <properties>
-    <maven.compiler.release>11</maven.compiler.release>
+    <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <junit.platform.version>1.11.3</junit.platform.version>
   </properties>
