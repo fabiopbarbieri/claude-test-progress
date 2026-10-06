@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing';
 import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
-  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryLine, outcomeText } from '../runner/module-presentation.mjs';
+  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryCounts, outcomeText } from '../runner/module-presentation.mjs';
 
 test('titles preserve labels and IDs even when modules share a language or label', () => {
   expect(moduleTitle('api', { label: 'Suíte', language: 'Python' })).toBe('Suíte · api');
@@ -47,8 +47,8 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(progressBar({ total: 4, percent: 50 }, 4)).toEqual({ done: '━━', rest: '━━' });
   expect(progressBar({ total: null, percent: null }, 4)).toEqual({ done: '', rest: '╌╌╌╌' });
   expect(readableTail(['a', '@@TEST_PROGRESS@@{}', '', '', 'b', ''], '@@TEST_PROGRESS@@')).toEqual(['a', '', 'b']);
-  expect(summaryLine(['a', 'b'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 } }).map(part => part.text))
-    .toEqual(['2 módulos', '1 rodando', '1 falha']);
+  expect(summaryCounts(['a', 'b', 'c', 'd'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 },
+    c: { status: 'completed', failed: 0 }, d: { status: 'completed', failed: 2 } })).toEqual({ passed: 1, failed: 2, total: 4 });
   expect(outcomeText({ status: 'completed', total: 1 }).text).toBe('· 1 teste');
   expect(outcomeText({ status: 'completed', total: null, adapter: 'exit', exitCode: 0 }).text).toBe('exit 0');
   expect(outcomeText({ status: 'completed', total: null }).text).toBe('total desconhecido');

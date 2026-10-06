@@ -97,7 +97,7 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(answer.text).toContain('LOGS · api · run-api\nfirst');
   expect(answer.text).toContain('LOGS · web · run-web\nsecond');
   const ui = await $.ui.mount(pane('terminal'));
-  expect(await ui.find({ type: 'Text', text: 'Escolha ≡ em um módulo.' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'Clique no nome de um módulo para ver o log.' })).toBeDefined();
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ first' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: /LOGS/ })).toBeUndefined();
@@ -108,7 +108,7 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(await ui.find({ key: 'select-current-logs' })).toMatchObject({ props: { label: '↻' } });
   await ui.press({ key: 'select-current-logs' });
   expect(await ui.find({ type: 'Text', text: '│ new output' })).toBeDefined();
-  // The same ≡ closes the tail without another collector call.
+  // The same name closes the tail without another collector call.
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ new output' })).toBeUndefined();
   await ui.unmount();
@@ -171,11 +171,35 @@ test('fallback text preserves jobs even when action result fails; closing never 
   expect(answer.text).toContain('runId=run-api'); expect(answer.text).toContain('Configuração inválida.');
   expect(answer.text).toContain('no room');
   const ui = await $.ui.mount(pane('desktop'));
-  // The × closes the pane only; it never cancels a run.
-  expect(await ui.find({ key: 'close' })).toMatchObject({ props: { label: '×', role: 'dismiss' } });
-  await ui.press({ key: 'close' });
+  // The host's own frame closes the pane; the panel draws no × of its own.
+  expect(await ui.find({ key: 'close' })).toBeUndefined();
   await ui.unmount();
-  expect(actions).toEqual(['status']); expect(closed).toEqual(['claude-test-progress']);
+  expect(actions).toEqual(['status']); expect(closed).toEqual([]);
+});
+
+test('toolbar counts S/E/T and reruns only the failed modules, one start each', async ($, on) => {
+  const current = data({ api: module('api', 0), web: module('web', 1), cli: module('cli', 2), docs: module('docs', 3) }, {
+    api: job('api', { status: 'failed', failed: 2 }), web: job('web', { status: 'error', failed: 0 }),
+    cli: job('cli', { status: 'completed', failed: 0 }) });
+  const calls: string[][] = [];
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { calls.push(e.argv.slice(2)); return response(current); });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/2/4', children: [
+    { props: { color: 'success' }, children: ['1'] }, { children: ['/'] }, { props: { color: 'error' }, children: ['2'] },
+    { children: ['/'] }, { props: { dimColor: true }, children: ['4'] }] });
+  expect(await ui.find({ key: 'start-all' })).toMatchObject({ props: { label: '▶ Todos' } });
+  expect(await ui.find({ key: 'start-failed' })).toMatchObject({ props: { label: '↻ Apenas com erro' } });
+  calls.length = 0;
+  await ui.press({ key: 'start-failed' });
+  expect(calls.map(argv => argv[0])).toEqual(['status', 'start', 'start']);
+  expect(calls.slice(1).map(argv => argv.slice(-1)[0])).toEqual(['api', 'web']);
+  current.jobs.api = job('api', { status: 'completed', failed: 0 }); current.jobs.web = job('web', { status: 'completed', failed: 0 });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(await ui.find({ key: 'start-failed' })).toBeUndefined();
+  await ui.unmount();
 });
 
 test('native start performs preflight then starts exactly the ID; cancelled callback refuses replacement run', async ($, on) => {
@@ -246,7 +270,8 @@ test('wide panes keep one line per module; narrow panes move progress to a secon
   await $.command.run({ command: 'test-progress', args: 'status --text' });
   const wide = await $.ui.mount(pane('terminal', 120));
   expect(await wide.find({ key: 'progress' })).toBeUndefined();
-  for (const value of ['API', 'Web', '83.3%', '✓4 ', '✗1 ', '0:57', '━━━━━━━━━━']) expect(await wide.find({ type: 'Text', text: value })).toBeDefined();
+  expect(await wide.find({ key: 'logs-api' })).toMatchObject({ props: { label: 'API' } });
+  for (const value of ['Web', '83.3%', '✓4 ', '✗1 ', '0:57', '━━━━━━━━━━']) expect(await wide.find({ type: 'Text', text: value })).toBeDefined();
   expect(await wide.find({ type: 'Text', text: '✗1 ' })).toMatchObject({ props: { color: 'error' } });
   expect(await wide.find({ type: 'Text', text: /^⊘/ })).toBeUndefined();
   await wide.unmount();
@@ -286,8 +311,9 @@ test('finished runs read as a result, errors wrap with a next step, and the log 
   expect(await ui.find({ key: 'bar' })).toBeUndefined();
   expect(await ui.find({ type: 'Text', text: '· 19 testes' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: /sem eventos de progresso/ })).toMatchObject({ props: { color: 'error', wrap: 'wrap' } });
-  expect(await ui.find({ type: 'Text', text: /abre o log · confira o "adapter"/ })).toBeDefined();
-  expect(await ui.find({ type: 'Text', text: '1 falha' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /clique no nome para abrir o log · confira o "adapter"/ })).toBeDefined();
+  expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/1/2' });
+  expect(await ui.find({ key: 'start-failed' })).toBeDefined();
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: /│ log · run run-api · 4 linhas/ })).toBeDefined();
   await ui.press({ key: 'close-logs-api' });

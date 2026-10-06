@@ -101,14 +101,16 @@ export function outcomeText(job) {
   if (job.total == null) return { text: 'total desconhecido', color: 'inactive' };
   return { text: `· ${job.total} ${job.total === 1 ? 'teste' : 'testes'}`, color: 'inactive' };
 }
-// Toolbar summary: how many modules, and only the states worth a glance.
-export function summaryLine(ids, jobs) {
-  const live = ids.filter(id => jobs[id] && (ACTIVE.has(jobs[id].status) || jobs[id].recoveryRequired)).length;
-  const failed = ids.filter(id => jobs[id] && !ACTIVE.has(jobs[id].status) &&
-    (['failed', 'error'].includes(jobs[id].status) || (jobs[id].failed ?? 0) > 0)).length;
-  return [{ text: `${ids.length} ${ids.length === 1 ? 'módulo' : 'módulos'}` },
-    ...(live ? [{ text: `${live} rodando`, color: 'warning' }] : []),
-    ...(failed ? [{ text: `${failed} ${failed === 1 ? 'falha' : 'falhas'}`, color: 'error' }] : [])];
+// A finished run that failed: a failed or errored status, or any failed test.
+export function finishedWithFailure(job) {
+  return !!job && !ACTIVE.has(job.status) && !job.recoveryRequired &&
+    (['failed', 'error'].includes(job.status) || (job.failed ?? 0) > 0);
+}
+// Toolbar summary S/E/T: modules that passed, modules that failed, all modules.
+export function summaryCounts(ids, jobs) {
+  const failed = ids.filter(id => finishedWithFailure(jobs[id])).length;
+  const passed = ids.filter(id => jobs[id]?.status === 'completed' && !finishedWithFailure(jobs[id])).length;
+  return { passed, failed, total: ids.length };
 }
 // Protocol lines are the collector's input, not the person's log; runs of blank lines collapse to one.
 export function readableTail(lines, prefix) {
