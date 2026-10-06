@@ -1,144 +1,14 @@
-# Validação do contrato v2
+# Validação
 
-## Correções após a primeira publicação do PR
-
-O commit inicial `ee181b6` passou nos grupos de coletor, Mods, Ruby, JUnit,
-Angular e segredos da CI. A CI também expôs duas lacunas de ambiente:
-
-- Rails usava checkout shallow, sem o commit publicado anterior exigido pelo
-  gate de rollback. O workflow agora traz o histórico completo. O erro foi
-  reproduzido em clone shallow sem remotes; clone completo sem remotes passou
-  o rollback e `python3 scripts/check.py`.
-- Windows elevado criava estado com o proprietário padrão Administrators;
-  PowerShell também podia exceder o limite de dois segundos. A criação Win32
-  agora atribui atomicamente o SID do usuário e DACL privada; diretórios
-  existentes inseguros e junctions são recusados sem alteração. O controle
-  PowerShell admite até 7,5 segundos para inicializar: a CI observou 5,2–5,4
-  segundos na primeira chamada de PowerShell 7.
-
-A matriz nativa seguinte comprovou a criação privada, reabertura e recusa de
-junctions nas quatro combinações. Ela também revelou que PowerShell converte
-`$null` em string vazia no argumento de backup de `File.Replace`, impedindo
-atualizar a prova do broker. A função real foi reproduzida por AST no PowerShell
-7.4.7 Linux; usar `[NullString]::Value` corrigiu o erro. A regressão persistida
-em `tests/windows/atomic-write.ps1` cobre três gravações da mesma prova sem
-backup nem temporários e roda também no gate nativo PS5.1/7. O gate mede o
-bootstrap real do namespace sem executar previamente o helper Windows.
-
-O runtime `396aa0f` passou nos cinco workflows de Quality/Mods/Ruby/Rails/Java e
-Angular. Algumas execuções PowerShell 7 completaram o gate Windows, mas a matriz
-ainda revelou timeout do wrapper PS5.1 durante uma suíte ativa e colisão `EPERM`
-no cancelamento: o broker usava a leitura .NET padrão que bloqueia substituição
-do arquivo aberto. O lançamento Windows do coordenador passa a usar uma lista
-explícita de três handles `NUL`, sem herdar pipes do chamador; leituras privadas
-do broker usam `FileShare.ReadWrite | Delete`. O gate exercita o leitor real em
-paralelo com substituições atômicas Node e exige JSON completo e ausência de
-erros de compartilhamento. A compilação C# 5 e os checks Linux passaram após
-essa alteração; a matriz nativa seguinte determina seu resultado Windows.
-
-O stress nativo de `0c7edd8` reproduziu `EPERM` nas substituições mesmo com
-compartilhamento de exclusão. A correção inicial de `atomicJson` repetia somente
-erros transitórios de compartilhamento Windows por até 300 ms, autenticava
-pai/leaf a cada tentativa
-e mantém o registro anterior inteiro se o bloqueio persistir. A regressão no
-Node 14 cobre sucesso posterior, falha limitada, limpeza do temporário e recusa
-de destino substituído por link durante a repetição; os cenários simulados não
-substituem o stress Windows real.
-
-Em `d70ef3f`, o stress de compartilhamento passou nas quatro combinações nativas,
-e PS5.1/Node14 completou o gate inteiro. As demais combinações expuseram dois
-problemas de teste: consultar somente o PID podia encontrar um processo novo
-com o mesmo número, e a espera interrompia a compensação ao observar o erro de
-infraestrutura esperado no módulo cujo broker foi encerrado. O gate agora captura
-as identidades dos três descendentes ainda vivos, exige `State=empty` após
-cancelamento e continua aguardando o irmão quando o erro é esperado.
-
-A CI Quality também expôs uma corrida na remoção de claim/lock/gate. Leituras
-opcionais reautenticam o caminho quando ele desaparece após `lstat`; a inspeção
-repete conjuntos inconsistentes antes de publicar diagnósticos. Aquisição de
-gate individual e de lote repete quando o dono anterior o remove após `EEXIST`,
-mantendo os prazos e a recusa de links. Regressões determinísticas cobrem seis
-remoções durante leitura, gates liberados/persistentes/inseguros e o gate de lote.
-O isolamento Node14 passou em 30 execuções consecutivas; o gate de troca de
-ownership usa uma barreira explícita, sem depender de uma janela de 1,2 segundos.
-
-A matriz `dd5cb7b` confirmou que chamadas PowerShell repetidas podiam consumir o
-prazo de preparação, inclusive enquanto o coordenador liberava a barreira. As
-consultas Windows agora agrupam até 64 identidades por chamada e reutilizam
-somente a identidade imutável do próprio processo. Inspeções de status e
-supervisão usam consultas em lote; o coordenador valida o namespace sem repetir
-recuperação, e revalida fontes, claims e prazo após a consulta, antes de liberar.
-O CLI relê a barreira depois de consultas lentas e confirma release sob gate
-antes de decidir abortar. Os prazos de preparação/ACK/aborto permanecem 30/10/10
-segundos. Regressões reais cobrem release durante uma consulta que atravessa o
-prazo e expiração na confirmação final com zero execução de comandos. A API de
-controle simulado cobre cache próprio, consultas externas novas, identidades
-divergentes, respostas desconhecidas, limites e uma chamada por lista.
-O host nativo também espera até 1,5 segundo pelo handle do líder após o Job
-ficar vazio e reconfirma a árvore antes de obter o código de saída.
-
-O runtime `b2d8ce7` completou as quatro combinações nativas Windows PS5.1/7 e
-coletor Node14/24 no workflow de push `37308208288`. Quality passou no push,
-mas a execução PR revelou que a injeção de ownership observava `readyAt` antes
-da gravação final do snapshot `ready`. O teste agora aguarda também essa fase e
-a liberação do gate de mutação, enquanto mantém o outro worker retido; a troca
-não compete com uma gravação normal de preparação.
-
-Em `9b12b3c`, os seis workflows do evento PR passaram, incluindo as quatro
-combinações Windows (`37309171936`). Os cinco workflows não Windows do push
-também passaram; a combinação PowerShell 7/Node14 do push `37308999754` falhou
-no stress de leitura concorrente com `EPERM` após esgotar os 300 ms. As outras
-sete combinações Windows desses dois eventos passaram. O log não identifica
-qual handle bloqueou a substituição.
-
-O limite de repetição de gravação Windows passa a 750 ms, abaixo da espera de
-1000 ms pelo gate de mutação. Um relógio monotônico evita estender esse limite
-com ajustes no relógio civil; as pausas crescem de 5 até 20 ms e respeitam o
-tempo restante. Apenas `EPERM`, `EACCES` e `EBUSY` de rename são repetidos.
-A autenticação do pai/destino acontece a cada tentativa, sem remover previamente
-o registro anterior. A regressão simulada de bloqueio por 450 ms falhou com o
-limite antigo e passou com o novo; falha persistente mantém o JSON anterior,
-limpa somente o temporário próprio e termina mesmo com o relógio civil parado.
-O gate nativo também inclui um holder real sem compartilhamento de exclusão,
-com bloqueios de 450 e 1500 ms, para verificar sucesso e falha limitada.
-
-O [código de rename do Node14](https://github.com/nodejs/node/blob/v14.0.0/deps/uv/src/win/fs.c)
-usa `MoveFileExW(REPLACE_EXISTING)`. A [documentação Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)
-distingue essa substituição da opção POSIX que admite handles abertos. Isso
-sustenta a possibilidade de contenção mesmo com `FileShare.Delete`; não prova
-a identidade do bloqueador observado na CI.
-
-Na revisão do limite de gravação, `python3 scripts/check.py` completo passou
-com Node14. A regressão de estado também passou no Node26; actionlint, sintaxe,
-parsing PowerShell 7.4.7 e Gitleaks da árvore/histórico passaram. As APIs Windows
-são comprovadas pelos runs nativos citados, separadamente do parsing Linux.
-Os aceites locais abaixo
-permanecem vinculados aos digests e revisões de cada evidência, anteriores às
-correções específicas de Windows. A revisão de gravação passou na matriz nativa
-da CI em `f7af854`.
-
-No push de `f7af854`, Rails 8.0 falhou intermitentemente em
-`tests/collector/module-batch.mjs`: durante o teardown do cancelamento, o claim
-já removido com lock e gate ainda presentes era diagnosticado como legado, e o
-job sumia do status. Em `37b80b7`, a inspeção aguarda o gate autenticado com
-backoff limitado de 1–10 ms por até 100 ms monotônicos; se ele persistir, emite
-o diagnóstico local `state-busy`, sem bloqueio global, e mantém visível o
-resultado terminal autenticado. Claims legados estáveis e gates inseguros
-continuam bloqueando. `tests/collector/state-inspection.mjs` cobre esses casos
-de forma determinística, e o teste de lote espera módulos sem lock, gate ou
-diagnóstico. Os seis workflows passaram em push e PR nesse commit.
-
-Este documento registra os gates da implementação de
-[MODULES-PLAN.md](MODULES-PLAN.md). Configuração, cadastro, respostas CLI e estado
-persistido usam somente `schemaVersion: 2`. `backend` e `frontend` são IDs comuns;
-não há lanes nem demo no produto. O coletor requer Node 14.0.0 ou superior.
-Python, Ruby, Java, Maven, Karma e Rails são ferramentas das suítes selecionadas.
-O runtime do aplicativo é independente do Node do coletor.
+Como validar o Test Progress e o que cada gate cobre. O resultado de cada
+commit é o estado da CI no GitHub Actions; a presença de um workflow não
+significa que uma execução passou. Para a matriz de versões, veja
+[COMPATIBILITY](COMPATIBILITY.md).
 
 ## Gates reproduzíveis
 
 ```bash
-# Fontes, contratos, concorrência, supervisor, árvores e rollback:
+# Fontes, contratos, concorrência, supervisor e árvores:
 python3 scripts/check.py
 
 # Adaptador Python com unittest e pytest no ambiente selecionado:
@@ -183,9 +53,9 @@ preservam os transportes padrão. Rails valida views e system tests com
 
 | Área | Evidência |
 | --- | --- |
-| Cadastro v2, IDs, herança e diagnóstico sanitizado | `tests/collector/module-config.mjs` |
+| Cadastro, IDs, herança e diagnóstico sanitizado | `tests/collector/module-config.mjs` |
 | Seleção explícita, ferramentas ausentes e runtimes independentes | `tests/collector/isolation.mjs`, `workspace.mjs` e gates dos adaptadores |
-| Claims, snapshots, legado, corrupção por ID e recuperação | `tests/collector/module-state.mjs`, `lock-race.mjs` |
+| Claims, snapshots, estado incompatível, corrupção por ID e recuperação | `tests/collector/module-state.mjs`, `lock-race.mjs` |
 | Troca atômica normal e ancestral substituído por link | `tests/collector/module-state.mjs`; arquivo aberto vinculado ao pathname atual antes dos bytes |
 | Preflight sem efeitos e barreira antes dos comandos | `tests/collector/module-batch.mjs` |
 | Perda do CLI/worker, compensação e falhas comuns de suíte | `tests/collector/module-batch-faults.mjs` |
@@ -193,8 +63,8 @@ preservam os transportes padrão. Rails valida views e system tests com
 | Doze workers silenciosos sob gravações e polling concorrentes | `tests/collector/module-batch-races.mjs`; exige ausência de compensação espúria |
 | Cancelamento de filhos e netos no Linux | `tests/collector/module-tree.mjs` |
 | Classificação da prova Windows e falha de infraestrutura | `tests/collector/module-windows-proof.mjs`, com provas sintéticas |
-| Atualização e rollback com a versão publicada anterior | `tests/collector/module-rollout.mjs` |
-| Painel terminal/desktop, 0/1/2/12 módulos e callbacks obsoletos | `tests/panel.test.ts`, `activity.test.ts`, `language.test.ts` |
+| Painel terminal/desktop: 0/1/2/12 módulos, layout largo e estreito, logs, legenda e callbacks obsoletos | `tests/panel.test.ts`, `language.test.ts` |
+| Faixa acima do prompt, polling e propriedade do comando | `tests/activity.test.ts` |
 
 `start all` prepara toda a seleção e não libera um subconjunto quando outro ID
 falha. A preparação tem orçamento de 30 segundos, seguido de até 10 segundos
@@ -206,136 +76,25 @@ não desfaz efeitos externos já produzidos pelos comandos.
 
 Snapshots e claims são relidos sob o mesmo mutation gate utilizado pelas
 gravações do worker. Um gate abandonado bloqueia a operação até recuperação
-manual; não expira por idade. Estado legado ou entrada insegura bloqueia novos
-inícios. Corrupção segura associada a um ID bloqueia esse ID; consultas e
+manual; não expira por idade. Estado incompatível ou entrada insegura bloqueia
+novos inícios. Corrupção segura associada a um ID bloqueia esse ID; consultas e
 cancelamentos autenticados dos demais permanecem disponíveis. Veja o protocolo
 em [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
-O rollout arquiva o commit publicado `3111299bbd5322221256825ee4237f25874feb9b`,
-inicia uma suíte v1, cancela e comprova a quiescência de processos e locks. A v2
-recusa o namespace legado, que é retirado somente após essa comprovação. O teste
-inicia/cancela um módulo v2, comprova novamente a quiescência e retorna à versão
-anterior. O namespace pertence exclusivamente à fixture. Nunca misture clientes
-v1 e v2 ativos na mesma sessão. O gate precisa do histórico Git; o workflow
-Quality usa checkout completo.
+## Painel em sessão real
 
-## Evidência local de 05/10/2026
+A versão 0.3.0 foi conferida numa sessão real do Claude Code 2.1.290 no Linux,
+com o plugin carregado por `--plugin-dir` e quatro módulos sintéticos
+(`tests/collector/fixtures/panel-suite.mjs`): estados ocioso, rodando, total
+desconhecido, concluído com falha e cancelado; logs sob o módulo; faixa de uma
+linha acima do prompt, que some depois que as falhas são vistas. O painel
+acoplado é estreito e usa o layout de duas linhas por módulo.
 
-A branch incorporou `main` no merge
-`921b953741b10c3e0bec185013a7434a46495b77`. As evidências abaixo foram obtidas com
-as alterações de implementação ainda no working tree; o SHA identifica a base,
-não um commit da implementação. Registro histórico, anterior ao commit `ee181b6`,
-ao push e à execução remota dos workflows descrita acima.
+## Windows
 
-| Gate | Resultado observado |
-| --- | --- |
-| `check.py --smoke --pytest` | Passou com Node 14.0.0 e 24.20.0; Python 3.14.8 / pytest 9.1.1 |
-| Long running Linux | Cinco cenários passaram, incluindo supervisão e recuperação manual |
-| Concorrência de 12 módulos | Stress de 120 segundos no Node 14: 1.308 consultas e 51.276 trocas atômicas; zero compensação ou cancelamento espontâneo e 12 locks liberados após cancelamento explícito |
-| RSpec | 18 grupos passaram com Ruby 3.4.10 / RSpec 3.13 |
-| Rails | Passou com Ruby 3.4.10, Rails 8.1.4 e Minitest 5.25.4 |
-| JUnit | Passou com Java 27, Maven 3.9.9, JUnit 5.11.3 e Surefire 3.5.4 |
-| Angular 9 e 18 | Seis grupos por versão passaram; app Node 12.22.12 e 22.23.1, coletor Node 24.20.0, Chrome 154.0.8037.57 |
-| Claude Mod | Diretório e manifesto válidos; 28 testes passaram no Claude Code 2.1.289 |
-| Instalação local por marketplace | Exportação das fontes deste checkout, config Claude temporária e cache instalado com digest idêntico; list/start/status/cancel e limpeza autenticada passaram sem `--plugin-dir` |
-| Rollout/rollback | Passou com Node 14.0.0 e 26.7.0 |
-| PowerShell/C# | AST dos scripts e compilação do host passaram em PowerShell 7.4.7 no Linux; sem execução Win32 |
-| Workflows | `actionlint` passou para Quality, Mod integration e Windows |
-| Segredos | Gitleaks 8.30.1 passou na árvore e no histórico de 52 commits |
-| Revisões | Achados de estado final, prova Windows, fontes serializadas, controles de lote e ownership corrigidos e conferidos |
-
-### Soak com o runtime final
-
-`node scripts/check-soak.mjs 900` passou com Node 26.7.0 e Claude Code 2.1.289:
-
-```json
-{
-  "startedAt": "2026-10-05T10:28:28.732Z",
-  "endedAt": "2026-10-05T10:43:32.832Z",
-  "durationSeconds": 904.1,
-  "queries": 32,
-  "maxQueryMs": 1090,
-  "sha": "921b953741b10c3e0bec185013a7434a46495b77",
-  "dirty": true,
-  "runtimeDigest": "71d3c46ca615b801c8f3419e963f9c44a32b0efa9f0ecc5ed236d72f063ade4e",
-  "status": "completed",
-  "resolved": 2,
-  "exitCode": 0,
-  "lockReleased": true,
-  "workerGone": true,
-  "commandGone": true
-}
-```
-
-Cada consulta executa um novo `claude -p` com o mesmo owner, sem persistência de
-conversa, configurações pessoais ou requisição ao modelo. A fixture permanece
-em 1/2 sem saída até liberação, enquanto o heartbeat avança. O script confere
-runId e timestamps, libera após 900 segundos, exige 2/2, exit 0 e duração final
-fixa, e só remove seu namespace após comprovar a limpeza. O digest cobre
-`runner`, `runtime`, `hooks`, bootstraps e manifesto e deve permanecer igual do
-início ao fim. Uma execução anterior com fontes alteradas durante o teste foi
-rejeitada por esse gate e não conta como aceite do runtime final.
-
-Consultas do Mod têm limite de 5 segundos no Linux e 15 no Windows; início tem
-60 segundos. O cliente de soak usa 10 segundos por consulta e 65 para início.
-Nenhum desses limites interrompe automaticamente uma suíte longa.
-
-## Painel real e limites do aceite
-
-O Claude CLI 2.1.289 foi aberto em uma janela Ghostty dedicada, com renderer
-fullscreen, tmux e um projeto público sintético. O plugin foi carregado por
-`--plugin-dir`; a configuração e o owner eram exclusivos da fixture. Foram
-observados cadastro atualizado por polling, execução explícita, persistência
-dos jobs após reiniciar o cliente, ajuda por teclado e cancelamento individual
-sem interromper o módulo irmão.
-
-Na repetição com o runtime final, os 12 módulos permaneceram ativos por 687
-segundos, com os mesmos runIds, inclusive após encerrar o cliente. Um cliente
-com outro owner viu somente o catálogo, sem herdar jobs. `/clear` mudou esse
-owner e manteve intactas as execuções do owner anterior. O cancelamento
-explícito final comprovou as 12 árvores vazias, workers ausentes e locks
-liberados antes de retirar somente os namespaces da fixture.
-
-Uma execução inicial de 12 módulos revelou cancelamento espúrio após uma troca
-atômica normal de snapshot entre stat e open. A regressão determinística
-reproduziu a mesma mensagem e a correção vincula o descritor ao arquivo atual
-antes de ler os bytes, repetindo a leitura em trocas legítimas. A regressão de
-substituição transitória de um ancestral por link também passou. O stress
-concorrente da tabela acima foi repetido na fonte corrigida.
-
-As capturas abaixo vieram diretamente do compositor Wayland, restritas ao painel
-e inspecionadas para não publicar caminhos pessoais, histórico ou credenciais:
-
-| Estado real | Captura |
-| --- | --- |
-| Nenhum módulo ativado | [modules-v2-empty.png](assets/modules-v2-empty.png) |
-| Um módulo, com ID e linguagem | [modules-v2-one.png](assets/modules-v2-one.png) |
-| Dois módulos da mesma linguagem e ação Todos | [modules-v2-two.png](assets/modules-v2-two.png) |
-| Scroll até o último de 12 módulos | [modules-v2-twelve.png](assets/modules-v2-twelve.png) |
-| AbovePrompt limitado a três módulos e nove restantes | [modules-v2-summary.png](assets/modules-v2-summary.png) |
-| 4/4, pass/fail/skip, 100% e processo ainda ativo | [modules-v2-progress.png](assets/modules-v2-progress.png) |
-| Total desconhecido, sem percentual inventado | [modules-v2-unknown.png](assets/modules-v2-unknown.png) |
-| Zero testes, distinto de total desconhecido | [modules-v2-zero.png](assets/modules-v2-zero.png) |
-
-Tab selecionou Buttons nativos e Enter acionou ajuda/cancelamento. Ctrl+X seguido
-de Tab cicla o foco entre composer e painel no host; com uma única pane já
-focada, retorna ao composer. Escape fechou o painel sem cancelar jobs. Captura
-não é substituto de teste funcional, e árvore do test kit não é captura real.
-
-O harness cobre as superfícies terminal e desktop, polling, callbacks antigos,
-logs fixados por ID/runId, colisão de comando e resumo limitado a três módulos.
-Ele não comprova pixels nem navegação real no Claude Desktop. `/clear` foi
-observado no CLI; `/resume` de conversa, branch e hot reload completo ainda
-precisam de aceite próprio. A recarga automática do hook de duração foi
-observada, mas não equivale a toda a matriz de hot reload. Reiniciar um cliente
-com o mesmo owner não comprova `/resume` de uma conversa persistida.
-
-## Windows e CI posteriores
-
-O usuário informou que Windows será disponibilizado posteriormente. O gate
-[check-windows.ps1](../scripts/check-windows.ps1) e o workflow
-[Windows](../.github/workflows/windows.yml) estão preparados para PowerShell
-5.1/7 e Node 14/24, com Node 12 separado para o aplicativo. No ambiente nativo:
+O gate [check-windows.ps1](../scripts/check-windows.ps1) roda na CI hospedada
+pelo workflow [Windows](../.github/workflows/windows.yml), com PowerShell 5.1/7 e
+Node 14/24, e Node 12 separado para o aplicativo. Numa máquina Windows:
 
 ```powershell
 # Execute uma vez em Windows PowerShell 5.1 e outra em PowerShell 7:
@@ -345,10 +104,5 @@ O usuário informou que Windows será disponibilizado posteriormente. O gate
 O gate recusa sistemas não Windows e verifica argv literal, DACL privada,
 contenção por Job Object, filhos/netos, cancelamento, compensação por perda do
 broker, `.cmd` e runtimes separados. Sintaxe e provas sintéticas no Linux não
-comprovam esses comportamentos nativos. O aceite Windows e o aceite real do
-Claude Desktop permanecem pendentes. Os workflows foram verificados localmente;
-resultados de CI só podem ser registrados após execução remota.
-
-Os registros [VERIFICATION.md](../VERIFICATION.md) e
-[docs/VERIFICATION.md](VERIFICATION.md) preservam evidências históricas da v1,
-identificadas por seus próprios SHAs. Não são instruções nem aceites da v2.
+comprovam esses comportamentos nativos. O aceite numa máquina Windows real e o
+aceite do Claude Desktop permanecem pendentes.

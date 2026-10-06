@@ -35,18 +35,18 @@ Node 12. A integração real com um app permanece sem aceite.
 
 A versão de Angular sozinha não define o runner instalado. Não atualizar Karma,
 Angular, TypeScript ou lockfile para usar o reporter. Não há adaptador Jest ou
-Vitest nesta entrega. A configuração do app é uma etapa explícita, feita por quem o mantém.
+Vitest. A configuração do app é uma etapa explícita, feita por quem o mantém.
 
 Para separar o Node do coletor e do Angular 9, consulte o
 [guia Angular 9](../../ANGULAR9.md) e a configuração específica.
 
-## Módulo no coletor v2
+## Módulo no coletor
 
 Depois de registrar o reporter no app, configure um módulo no workspace:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "web": {
       "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false"],
@@ -63,7 +63,7 @@ Use `/test-progress start web`, `status web`, `logs web` e `cancel web`.
 linguagem; a descoberta não executa o resolvedor. Sem reporter, `adapter: "karma"`
 usa fallback de logs. Mais de um módulo Karma pode ter ID próprio; `start all`
 seleciona os habilitados. O registry é opcional e não ativa módulos sozinho.
-Aceite nativo Windows v2 e execução em browser real exigem gates próprios.
+Aceite nativo Windows e execução em browser real exigem gates próprios.
 
 ## Eventos e limites
 
@@ -87,8 +87,7 @@ precisa preservar logs e exit code. JSON.stringify escapa nomes e cada evento é
 escrito em uma única chamada a stdout.
 
 Um CI precisaria coletar o stdout do processo Karma; o reporter não cria essa
-integração. A documentação inicial do protótipo registrava apenas checagem de
-sintaxe. Os gates atuais estão em [VERIFICATION](../../docs/VERIFICATION.md).
+integração. Os gates estão em [VALIDATION](../../docs/VALIDATION.md).
 Aceite em app Angular real, browser e reconexão continua separado desses gates.
 
 ## Fontes primárias

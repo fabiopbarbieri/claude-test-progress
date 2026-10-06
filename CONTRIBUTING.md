@@ -102,10 +102,10 @@ Claude; `tsconfig.json` não é um gate independente antes dessa geração.
 Ao alterar contagem, observe seleção, falhas de preparação/finalização,
 interrupção, total desconhecido e zero testes. Preserve o
 [contrato de eventos](adapters/README.md) e o código de saída nativo.
-O cadastro e o estado usam somente schemaVersion 2. IDs não escolhem runtime:
+O cadastro e o estado usam `schemaVersion: 1`. IDs não escolhem runtime:
 `inherit` conserva o ambiente e `node-project` resolve Node/.nvmrc explicitamente.
 Teste seleção individual e `all`, barreira, compensação de infraestrutura e
-recuperação de estado. Consulte o [plano integrado](docs/MODULES-PLAN.md).
+recuperação de estado.
 
 ## Antes de enviar
 
@@ -165,7 +165,7 @@ não precisa instalar todas essas linguagens localmente para contribuir.
 Mudanças de interface precisam de observação em sessão real: aparência, teclado
 e ações afetadas. Checagem estática ou execução Linux não comprova Windows nativo,
 cujo aceite continua pendente. Registre plataformas e cenários que você não
-testou; consulte os limites em [VERIFICATION](docs/VERIFICATION.md).
+testou; consulte os limites em [VALIDATION](docs/VALIDATION.md).
 
 A integração exige PR, checks obrigatórios aprovados, branch atualizada com
 `main` e conversas resolvidas. Somente o proprietário mantenedor integra.

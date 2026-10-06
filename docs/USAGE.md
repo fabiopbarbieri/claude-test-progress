@@ -6,25 +6,24 @@
 O plugin executa comandos somente quando você solicita. Cada workspace declara
 zero ou vários módulos de testes com ID estável. Nenhum runner é dependência
 global do Mod; dependências, ambientes e comandos reais pertencem ao seu app.
-O produto aceita somente v2, sem converter configurações ou jobs antigos.
 
 ## Instalar pelo marketplace próprio
 
-O refactor v2 desta entrega ainda não foi publicado. Use o checkout que contém
-essas alterações com `--plugin-dir`; clone e marketplace remotos podem conter
-o artefato anterior. Os comandos seguintes descrevem a instalação publicada.
-
-No Claude Code, com acesso SSH GitHub configurado:
+No Claude Code, com acesso SSH GitHub configurado, rode um comando por vez:
 
 ```text
 /plugin marketplace add git@github.com:fabiopbarbieri/claude-test-progress.git
-/plugin install test-progress@test-progress-marketplace
-/reload-plugins
-/test-progress help
-/test-progress paths
-/test-progress list
-/test-progress status
 ```
+
+```text
+/plugin install test-progress@test-progress-marketplace
+```
+
+```text
+/reload-plugins
+```
+
+Depois confira `/test-progress help`, `paths`, `list` e `status`.
 
 O marketplace `test-progress-marketplace` é mantido por este projeto,
 independente do catálogo oficial da Anthropic. Pelo terminal:
@@ -55,7 +54,7 @@ bash /caminho/absoluto/claude-test-progress/launch.sh
 
 O launcher confere o Claude e carrega o plugin com `--plugin-dir`. Também pode
 usar `claude --plugin-dir /caminho/absoluto/claude-test-progress`.
-PowerShell 5.1/7: [WINDOWS.md](../WINDOWS.md); aceite nativo v2 requer os gates
+PowerShell 5.1/7: [WINDOWS.md](../WINDOWS.md); aceite nativo requer os gates
 Windows, separado da validação Linux e dos checks estáticos.
 
 ## Configurar seu projeto
@@ -67,7 +66,7 @@ Exemplo de dois módulos independentes:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "api": {
       "label": "API principal",
@@ -115,7 +114,7 @@ configuração, estado, locks e ações. Linguagem é apenas uma dica visual.
 IDs reservados: `all`, `constructor`, `prototype`, `con`, `prn`, `aux`, `nul`,
 `com1`..`com9` e `lpt1`..`lpt9`. Não há normalização de caixa ou pontuação.
 `null` não apaga campos: é inválido. Campos desconhecidos geram diagnóstico.
-Cada fonte JSON tem limite de **1 MiB**. Schema v1, estruturas mistas, JSON/root
+Cada fonte JSON tem limite de **1 MiB**. `schemaVersion` diferente de 1, estruturas mistas, JSON/root
 inválido ou ID inseguro no workspace bloqueiam todo novo início. Erros de um
 módulo não impedem iniciar outro válido; `all` também seleciona declarações
 malformadas habilitadas e falha antes de executar qualquer comando.
@@ -167,7 +166,7 @@ arquivos pessoais do Claude.
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "templates": {
     "jvm-tests": {
       "command": ["mvn", "test"],
@@ -206,7 +205,7 @@ As fontes privadas são revalidadas antes da reserva e da liberação da barreir
 | `/test-progress cancel id` / `cancel all` | Solicita cancelamento da sessão |
 | `--text` | Alternativa textual no Mod |
 
-Não há atalho `/test-progress id`, `demo` ou `--lane`. Status/logs/cancel consultam
+Não há atalho `/test-progress id`: o início é sempre explícito. Status/logs/cancel consultam
 jobs autenticados mesmo se o módulo tiver sido removido ou a configuração estiver
 inválida. Um job removido do cadastro continua visível como órfão do cadastro;
 isso não significa perda do worker. Listar e consultar não inicia testes.
@@ -262,24 +261,6 @@ promessa de retomada após reboot/limpeza. Contadores persistem separados da cau
 do log, limitada a aproximadamente 1 MiB por execução; relatórios completos
 pertencem ao runner. Perda de worker preserva resultados parciais e pode exigir
 cancelamento/recuperação no owner original. Não apague locks para liberar jobs.
-
-## Adotar v2 com estado legado
-
-Antes da troca, mantenha disponível o **artefato antigo que iniciou os jobs**.
-Com ele e o cwd/owner originais, consulte, conclua ou cancele cada execução e
-confirme estado terminal sem recuperação pendente. V2 não consulta/cancela jobs
-v1 nem demos antigas, não converte seu estado e não interpreta config v1.
-
-Arquivos legados detectados no namespace bloqueiam **todos os novos starts**,
-mesmo quando o ID solicitado é outro. Encerrar processos não remove por si só
-toda evidência legada. Preserve os arquivos para diagnóstico; depois de provar
-quiescência com o artefato antigo, faça a limpeza específica documentada para essa
-instalação, sem apagar locks ativos ou misturar namespaces. Se a quiescência não
-puder ser comprovada, mantenha a instalação antiga e resolva a recuperação antes
-de adotar v2. Não há fallback automático ou gerenciador v1 embutido no v2.
-
-Crie um cadastro v2 revisado, reconsulte paths e só então carregue o novo artefato.
-Esta adoção é uma troca deliberada, não um reload durante uma execução antiga.
 
 ## Atualizar com jobs encerrados
 

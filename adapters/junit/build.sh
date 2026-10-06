@@ -26,5 +26,5 @@ javac --release 17 -encoding UTF-8 -cp "$build_dir/deps/*" \
   -d "$build_dir/classes" \
   "$adapter_dir/src/main/java/local/claude/progress/TestProgressListener.java"
 cp -R "$adapter_dir/src/main/resources/." "$build_dir/classes/"
-jar --create --file "$build_dir/test-progress-listener-0.1.0.jar" -C "$build_dir/classes" .
-printf 'JAR compilado: %s\n' "$build_dir/test-progress-listener-0.1.0.jar"
+jar --create --file "$build_dir/test-progress-listener-0.3.0.jar" -C "$build_dir/classes" .
+printf 'JAR compilado: %s\n' "$build_dir/test-progress-listener-0.3.0.jar"

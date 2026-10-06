@@ -83,8 +83,8 @@ async function main() {
     assert.strictEqual(cancelled.ok, false, 'cancel all reports incompatible entry');
     assert.strictEqual(cancelled.actionResults.ui.ok, true, 'cancel all still processes healthy sibling');
     await waitFor(result => settled(result, 'ui', 'cancelled'));
-    const shortcuts = spawnSync(process.execPath, [cli, 'demo', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
-    assert.strictEqual(shortcuts.status, 1);
+    const unknown = spawnSync(process.execPath, [cli, 'unknown', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
+    assert.strictEqual(unknown.status, 1);
     console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation and incompatible-state blocking: OK');
   } finally {
     try { collect('cancel'); } catch { /* Retain failure evidence until teardown. */ }

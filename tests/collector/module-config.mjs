@@ -141,7 +141,7 @@ try {
   found = discoverModules({ cwd });
   assert.strictEqual(found.diagnostics[0].code, 'SOURCE_TOO_LARGE');
   assert.throws(() => prepareSelection(found, 'all'));
-  console.log('Legacy, mixed schema, unsafe IDs, JSON and source size block starts: OK');
+  console.log('Other versions, mixed schema, unsafe IDs, JSON and source size block starts: OK');
   for (const [declaration, code] of [[false, 'INVALID_MODULE'], [null, 'INVALID_MODULE'],
     [{ enabled: null }, 'INVALID_ENABLED'], [{ label: '\u001bprivate' }, 'INVALID_LABEL'],
     [{ language: null }, 'INVALID_LANGUAGE'], [{ order: 1.5 }, 'INVALID_ORDER'],

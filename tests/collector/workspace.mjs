@@ -48,7 +48,7 @@ async function main(){
     fs.writeFileSync(configPath,'{"env":"synthetic-secret",invalid');const invalid=collect('status');
     assert.strictEqual(invalid.workspace.moduleConfig.status,'invalid');assert(!JSON.stringify(invalid).includes('synthetic-secret'));
     collect('start','all',false);collect('logs');collect('cancel');
-    console.log('V2 selection, removed-config management and safe diagnostics: OK');
+    console.log('Selection, removed-config management and safe diagnostics: OK');
   }finally{
     collect('cancel');for(const id of ['api','billing'])await waitFor(id,job=>!job||!['preparing','running'].includes(job.status));
     removePath(directory,{recursive:true,force:true});removePath(app,{recursive:true,force:true});

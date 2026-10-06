@@ -1,8 +1,8 @@
 # Angular 9 · runtimes independentes
 
 Este guia mantém Angular 9 e suas dependências existentes. A integração usa o
-target Karma já existente e não exige migrar Angular, TypeScript, Karma, Jasmine
-ou lockfile.
+target Karma já existente e não exige atualizar Angular, TypeScript, Karma,
+Jasmine ou lockfile.
 
 No Windows nativo, use os comandos e a descoberta nvm-windows de
 [WINDOWS.md](WINDOWS.md); no Linux/WSL, siga os comandos Bash abaixo.
@@ -51,7 +51,7 @@ mesmo se o Claude foi aberto com Node 26. A escolha ocorre no preflight dos mód
 locks ou iniciar comandos. O diretório do Node escolhido é anteposto somente
 ao PATH do módulo selecionado e seus subprocessos. IDs e linguagem não escolhem
 runtime: um módulo Java/Ruby pode declarar `inherit`, sem consultar `.nvmrc`.
-O CLI inicia workers com seu próprio `process.execPath`; o produto v2 não tem demo.
+O CLI inicia workers com seu próprio `process.execPath`.
 
 O Mod detecta `nvm.sh` em `$NVM_DIR`, `$HOME/.nvm` ou `$XDG_CONFIG_HOME/nvm`.
 Carrega-o em subshell com `--no-use` e consulta `nvm which --silent`, usando
@@ -110,7 +110,7 @@ de `<diretório da sessão>/.claude/test-progress.json`, opt-in no app escolhido
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "web": {
       "label": "Angular 9",
@@ -173,19 +173,16 @@ use esse ID com os mesmos verbos; nenhum nome seleciona runtime implicitamente.
 Preparação 30 s, confirmação 10 s e aborto 10 s; start do Mod tem limite de 60 s,
 sem deadline da suíte. Falha normal de um módulo não aborta os demais.
 
-Somente o workspace ativa módulos; registry schemaVersion 2 é opcional.
+Somente o workspace ativa módulos; registry schemaVersion 1 é opcional.
 `command` e `env` substituem campos inteiros de templates. `--config` é override
 CLI, com paths relativos ao workspace; o painel usa o arquivo default.
-Não há demo, aliases de início por ID ou fallback/conversão v1. Jobs/estado
-antigos exigem [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado).
+Não há aliases de início por ID: o início é sempre explícito.
 
-A validação inicial do protótipo registrou sintaxe, contratos e demo em um
-artefato legado; ela não comprova runtime v2. Consulte as evidências históricas
-por SHA em [COMPATIBILITY](docs/COMPATIBILITY.md) e os gates atuais em
-[VALIDATION](docs/VALIDATION.md). Contratos do reporter não equivalem ao aceite
-do seu app com builder/browser/dependências reais. A matriz Windows v2 está
-criada, mas execução nativa PowerShell 5.1/7 e sua CI seguem sem resultado
-comprovado nesta entrega.
+A CI executa um app Angular 9 real com Karma e Chrome headless; consulte
+[COMPATIBILITY](docs/COMPATIBILITY.md) e [VALIDATION](docs/VALIDATION.md).
+Contratos do reporter não equivalem ao aceite do seu app com
+builder/browser/dependências reais. A matriz Windows roda na CI hospedada, mas
+ainda não há aceite registrado numa máquina Windows real.
 
 ## Fontes primárias
 

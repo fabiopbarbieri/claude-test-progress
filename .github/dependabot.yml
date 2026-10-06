@@ -41,7 +41,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/tests/dependencies/python38"
     ignore:
-      # pytest 8.4+ dropped Python 3.8, the oldest supported lane.
+      # pytest 8.4+ dropped Python 3.8, the oldest supported CI job.
       - dependency-name: "pytest"
         versions: [">= 8.4"]
     schedule:
@@ -88,7 +88,7 @@ updates:
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rails72"
     ignore:
-      # Each Rails lane stays in its series; this one also pins the
+      # Each Rails CI job stays in its series; this one also pins the
       # Minitest floor (5.20.0) declared as the minimum supported version.
       - dependency-name: "rails"
         versions: [">= 7.3"]
@@ -145,7 +145,7 @@ updates:
     directory: "/tests/dependencies/angular9"
     ignore:
       # The Angular 9 toolchain is frozen: it runs on Node 12 / npm 6 with a
-      # v1 lockfile, and any update here (even security fixes) pulls a newer
+      # lockfileVersion 1, and any update here (even security fixes) pulls a newer
       # Angular builder and rewrites the lock. This also blocks Dependabot
       # security PRs for this directory; the alerts stay open for review.
       - dependency-name: "*"

@@ -14,16 +14,16 @@ consulte novamente antes de outro start. Não existe `/test-progress doctor`.
 | SSH do marketplace falha | `git ls-remote git@github.com:fabiopbarbieri/claude-test-progress.git HEAD` | Configure acesso SSH; não publique chaves/tokens |
 | Painel indisponível | `status all --text` | Use texto; falha de layout não comprova falha da suíte |
 | Nenhum módulo | `list`; cwd da sessão; arquivo default | Declare módulos no workspace; registry sozinho não ativa nada |
-| Configuração global inválida | JSON, schemaVersion 2, modules e limite 1 MiB | Corrija o cadastro local; v1/misto/ID inseguro bloqueiam todos os starts |
+| Configuração global inválida | JSON, schemaVersion 1, modules e limite 1 MiB | Corrija o cadastro local; outra versão, estrutura mista ou ID inseguro bloqueiam todos os starts |
 | `all` falha mas um ID funciona | Diagnósticos de cada módulo, inclusive declarações malformadas | Corrija ou desative explicitamente o módulo; preflight de all deve passar por inteiro |
-| Template indisponível | `extends`, registry schemaVersion 2 e CLAUDE_CONFIG_DIR absoluto | Corrija a referência/fonte; standalone não depende do registry |
+| Template indisponível | `extends`, registry schemaVersion 1 e CLAUDE_CONFIG_DIR absoluto | Corrija a referência/fonte; standalone não depende do registry |
 | Node do app ausente/divergente | runtime, `.nvmrc` próxima do cwd, descriptor selecionado | Disponibilize a versão local; prefira command iniciando por `node`; não altere .nvmrc só para satisfazer o coletor |
 | Python/Ruby/Rails procura Node | `runtime` efetivo, inclusive template | Configure `inherit`; ID/linguagem não selecionam runtime |
 | Executável/adaptador indisponível | PATH efetivo, cwd, paths da instalação | Corrija o primeiro executável e o caminho do adapter; reconsulte paths após upgrade |
 | `${CLAUDE_PLUGIN_ROOT}` ou `~` aparece literalmente | command/env | Use caminho literal correto; JSON não interpola shell |
 | `.cmd`/`.bat` recusado | Argumentos com expansão/controle | Siga [WINDOWS](../WINDOWS.md); prefira Node com entrypoint JS local quando aplicável |
 | Fonte mudou durante início | Edição de workspace/registry após descoberta | Refaça list/preflight; não contorne a revalidação |
-| Estado legado bloqueia ID novo | Diagnóstico do namespace | Use o artefato antigo com cwd/owner originais; confirme quiescência antes da adoção v2 |
+| Estado incompatível bloqueia ID novo | Diagnóstico do namespace | Consulte o estado com o cwd/owner originais; preserve os arquivos e não apague locks ativos |
 | Erro antes da barreira | Diagnóstico de preparação/reserva | Nenhum comando deve ser liberado; corrija a causa antes de iniciar novamente |
 | Falha de infraestrutura após liberação | Estado do lote, compensação, recoveryRequired | Consulte todos os participantes; mantenha locks sem encerramento comprovado |
 | Um teste falhou e outros continuam | Exit code e progresso de cada módulo | Falha normal não aborta os demais; espere ou cancele explicitamente |
@@ -32,7 +32,7 @@ consulte novamente antes de outro start. Não existe `/test-progress doctor`.
 | 100% ainda ativo | Estado, exit code, logs | Espere teardown/hooks/encerramento; contadores podem concluir primeiro |
 | Sem logs/contadores novos | Heartbeat, última saída e último progresso | Atividade do executor não prova avanço; investigue a suíte ou cancele |
 | Lock ocupado | Owner e job do mesmo ID | Espere/cancele na sessão responsável; não apague locks |
-| Job sem módulo no catálogo | Config removida ou ID desativado | Status/logs/cancel permanecem disponíveis para o job v2 autenticado |
+| Job sem módulo no catálogo | Config removida ou ID desativado | Status/logs/cancel permanecem disponíveis para o job autenticado |
 | `orphaned-command` / recoveryRequired | Diagnóstico de identidade/árvore | Peça cancel no mesmo ID/owner; preserve evidência se recuperação manual for necessária |
 | Cancel solicitado ainda ativo | Status até término seguro | Pedido não é confirmação; no Windows o Job é terminado, no Linux usa-se o grupo |
 | Estado sumiu em nova sessão | Cwd canônico e owner originais | A sessão nova não adota outro owner; consulte o owner conhecido |
@@ -51,7 +51,7 @@ real nem o aceite visual:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "probe": {
       "command": ["node", "-e", "console.log('@@TEST_PROGRESS@@'+JSON.stringify({scope:'synthetic',total:1,resolved:1,passed:1,failed:0,skipped:0,final:true,totalStable:true}));"],
@@ -76,8 +76,8 @@ node /caminho/absoluto/claude-test-progress/runner/cli.mjs status \
 Reutilize cwd e owner até confirmar `completed`, 1/1, exit 0 e ausência de
 recuperação pendente. Se necessário, use `cancel --module probe` e consulte de
 novo. Não apague estado antes da confirmação. A CLI oferece
-`start/list/status/logs/cancel`; help/paths/--text pertencem ao Mod. Não há demo,
-atalhos de início por ID, --lane ou gerenciamento de jobs v1 no produto v2.
+`start/list/status/logs/cancel`; help/paths/--text pertencem ao Mod. Não há
+atalhos de início por ID: o início é sempre explícito.
 
 Se a reprodução funciona, reduza o app a um módulo e um teste da linguagem
 afetada. Execute o comando nativo no mesmo cwd/ambiente, depois o wrapper do
