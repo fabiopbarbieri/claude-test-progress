@@ -23,6 +23,9 @@ A capa é uma ilustração; a interface real é um painel de terminal:
 `/test-progress` sem argumentos abre ou fecha o painel; `×`, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
 ```
 
+A skill `test-progress:configure` permite pedir ao Claude que cadastre as suítes
+do projeto ou explique um erro do painel.
+
 Acima do prompt, uma faixa de uma linha resume o que está rodando e as falhas
 ainda não vistas; ela some quando não há nada novo.
 
