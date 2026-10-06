@@ -1,0 +1,212 @@
+﻿[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string] $NodePath,
+    [ValidateRange(3, 500)][int] $Iterations = 20,
+    [ValidateRange(0, 99)][int] $Modules = 0,
+    [switch] $Start,
+    [ValidateRange(5, 600)][int] $WindowSeconds = 30,
+    [string] $Output
+)
+# Times the Mod's polling query (status) on native Windows: PowerShell bootstrap
+# versus direct Node, for each control engine, with $Modules configured modules.
+# -Start also times start all, status with every job active and cancel all (direct
+# path, as the Mod uses after its first bootstrap) plus machine CPU over three windows:
+# nothing running, jobs active without polling, and jobs active polled every second
+# as the Mod does. CPU comes from GetSystemTimes, so short PowerShell control calls
+# are counted too. The first status call of each variant is reported apart as cold. Results are relative to this machine; they are not acceptance.
+$ErrorActionPreference = 'Stop'
+if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
+    throw 'This benchmark requires native Windows.'
+}
+if ($Start -and $Modules -lt 1) { throw '-Start requires -Modules 1 or more.' }
+$root = Split-Path -Parent $PSScriptRoot
+$node = (Resolve-Path -LiteralPath $NodePath).ProviderPath
+$ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$pwsh = Get-Command pwsh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+$engines = [ordered]@{ '5.1' = $ps51 }
+if ($pwsh) { $engines['7'] = $pwsh.Source } else { Write-Warning 'pwsh.exe not found; PowerShell 7 skipped.' }
+$cli = Join-Path $root 'runner\cli.mjs'
+$workspaces = New-Object Collections.Generic.List[string]
+
+Add-Type -Namespace TestProgressBench -Name Cpu -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+'@
+
+# Percent of all logical CPUs busy while $Body runs; kernel time includes idle time.
+function Measure-Cpu([scriptblock] $Body) {
+    $i0 = 0L; $k0 = 0L; $u0 = 0L; $i1 = 0L; $k1 = 0L; $u1 = 0L
+    $null = [TestProgressBench.Cpu]::GetSystemTimes([ref]$i0, [ref]$k0, [ref]$u0)
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $value = & $Body
+    $watch.Stop()
+    $null = [TestProgressBench.Cpu]::GetSystemTimes([ref]$i1, [ref]$k1, [ref]$u1)
+    $total = ($k1 - $k0) + ($u1 - $u0)
+    [pscustomobject]@{ cpuPct = [Math]::Round(100.0 * ($total - ($i1 - $i0)) / [Math]::Max([long]1, $total), 1)
+        seconds = [Math]::Round($watch.Elapsed.TotalSeconds, 1); value = $value }
+}
+
+# Live processes split into collector (runner, broker, control scripts) and the test commands.
+function Get-ProcessInventory {
+    $all = @(Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='powershell.exe' OR Name='pwsh.exe' OR Name='conhost.exe'")
+    $groups = [ordered]@{ collector = @(); test = @() }
+    foreach ($proc in $all) {
+        if ($proc.ProcessId -eq $PID -or -not $proc.CommandLine) { continue }
+        if ($proc.CommandLine -like '*900000*') { $groups.test += $proc }
+        elseif ($proc.CommandLine -like ('*' + $root + '*')) { $groups.collector += $proc }
+    }
+    $summary = [ordered]@{}
+    foreach ($group in $groups.GetEnumerator()) {
+        $summary[$group.Key] = [ordered]@{ count = $group.Value.Count
+            workingSetMb = [Math]::Round((($group.Value | Measure-Object WorkingSetSize -Sum).Sum) / 1MB, 1) }
+    }
+    $summary
+}
+
+function New-Workspace {
+    $dir = Join-Path ([IO.Path]::GetTempPath()) ('tp-bench-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $null = New-Item -ItemType Directory -Path (Join-Path $dir '.claude')
+    $workspaces.Add($dir)
+    if ($Modules -gt 0) {
+        # Exit-adapter jobs that only wait; cancel all ends them.
+        $set = [ordered]@{}
+        for ($m = 1; $m -le $Modules; $m++) {
+            $set[('m{0:D2}' -f $m)] = [ordered]@{
+                label = ('Bench {0:D2}' -f $m); adapter = 'exit'
+                command = @($node, '-e', 'setTimeout(function () {}, 900000)')
+            }
+        }
+        $json = [ordered]@{ schemaVersion = 1; modules = $set } | ConvertTo-Json -Depth 5
+        [IO.File]::WriteAllText((Join-Path $dir '.claude\test-progress.json'), $json, (New-Object Text.UTF8Encoding -ArgumentList $false))
+    }
+    $dir
+}
+
+function Invoke-Timed([string] $Exe, [string[]] $Arguments, [switch] $AllowFailure) {
+    # Under Stop, Windows PowerShell 5.1 turns a native stderr line into a terminating error.
+    $ErrorActionPreference = 'Continue'
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $out = & $Exe @Arguments 2>&1
+    $watch.Stop()
+    $text = ($out | Where-Object { $_ -is [string] }) -join "`n"
+    $data = $null
+    try { $data = $text | ConvertFrom-Json } catch { }
+    $ok = $LASTEXITCODE -eq 0 -and $data -and $data.ok
+    $errors = ($out | Where-Object { $_ -isnot [string] } | ForEach-Object { $_.ToString() }) -join ' '
+    if (-not $ok -and -not $AllowFailure) {
+        $detail = (($out | Out-String).Trim() -replace '\s+', ' ')
+        throw ('Call failed (exit ' + $LASTEXITCODE + '): ' + $detail.Substring(0, [Math]::Min(400, $detail.Length)))
+    }
+    [pscustomobject]@{ ms = $watch.Elapsed.TotalMilliseconds; data = $data; ok = [bool]$ok
+        error = $(if ($ok) { $null } else { $errors.Substring(0, [Math]::Min(300, $errors.Length)) }) }
+}
+
+function Get-Stats($Samples) {
+    $warm = @($Samples | Select-Object -Skip 1 | Sort-Object)
+    $pick = { param($q) $warm[[Math]::Min($warm.Count - 1, [int][Math]::Ceiling($q * $warm.Count) - 1)] }
+    [ordered]@{
+        coldMs = [Math]::Round($Samples[0]); minMs = [Math]::Round($warm[0]); p50Ms = [Math]::Round((& $pick 0.5))
+        p95Ms = [Math]::Round((& $pick 0.95)); maxMs = [Math]::Round($warm[-1])
+    }
+}
+
+function Measure-Status([string] $Exe, [string[]] $Arguments) {
+    $samples = New-Object Collections.Generic.List[double]
+    for ($i = 0; $i -le $Iterations; $i++) { $samples.Add((Invoke-Timed $Exe $Arguments).ms) }
+    Get-Stats $samples
+}
+
+function Get-ActiveCount($Data) {
+    @($Data.jobs.PSObject.Properties | Where-Object { $_.Value.status -in @('preparing', 'running', 'cancelling') }).Count
+}
+
+$previous = [Environment]::GetEnvironmentVariable('TEST_PROGRESS_POWERSHELL', 'Process')
+$results = New-Object Collections.Generic.List[object]
+$owner = 'bench-' + $PID
+try {
+    foreach ($engine in $engines.GetEnumerator()) {
+        # The collector's own control calls use this engine in both paths.
+        $env:TEST_PROGRESS_POWERSHELL = $engine.Value
+        $idle = New-Workspace
+        $bootstrap = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', (Join-Path $root 'scripts\run-collector.ps1'),
+            '-Action', 'status', '-Cwd', $idle, '-Owner', $owner, '-Module', 'all')
+        $direct = @($cli, 'status', '--cwd', $idle, '--owner', $owner, '--module', 'all')
+        foreach ($variant in @(@('bootstrap', $engine.Value, $bootstrap), @('direct', $node, $direct))) {
+            Write-Host ('Measuring idle status ' + $variant[0] + ' / PowerShell ' + $engine.Key + ' ...')
+            $stats = Measure-Status $variant[1] $variant[2]
+            $results.Add([pscustomobject](@{ scenario = 'idle-status'; path = $variant[0]; engine = $engine.Key } + $stats))
+        }
+        if (-not $Start) { continue }
+
+        $busy = New-Workspace
+        $argv = { param($action, $id = 'all') @($cli, $action, '--cwd', $busy, '--owner', $owner, '--module', $id) }
+        Write-Host ('Measuring baseline CPU (' + $WindowSeconds + ' s) ...')
+        $base = Measure-Cpu { Start-Sleep -Seconds $WindowSeconds }
+        $results.Add([pscustomobject]@{ scenario = 'cpu-baseline'; engine = $engine.Key; cpuPct = $base.cpuPct; seconds = $base.seconds })
+        Write-Host ('Measuring start all / PowerShell ' + $engine.Key + ' ...')
+        $started = Invoke-Timed $node (& $argv 'start') -AllowFailure
+        $results.Add([pscustomobject]@{ scenario = 'start-all'; path = 'direct'; engine = $engine.Key; ok = $started.ok
+            ms = [Math]::Round($started.ms); active = $(if ($started.data) { Get-ActiveCount $started.data } else { 0 }); error = $started.error })
+        try {
+            # A refused batch starts nothing; start each module alone, as from the panel, to get every job active.
+            $single = New-Object Collections.Generic.List[double]
+            for ($m = 1; $m -le $Modules -and -not $started.ok; $m++) {
+                $one = Invoke-Timed $node (& $argv 'start' ('m{0:D2}' -f $m)) -AllowFailure
+                $single.Add($one.ms)
+                if (-not $one.ok) { Write-Warning ('start m{0:D2} failed: {1}' -f $m, $one.error) }
+            }
+            if ($single.Count) {
+                $active = Get-ActiveCount (Invoke-Timed $node (& $argv 'status')).data
+                $results.Add([pscustomobject]@{ scenario = 'start-each'; path = 'direct'; engine = $engine.Key; active = $active
+                    p50Ms = [Math]::Round(($single | Sort-Object)[[int][Math]::Floor(($single.Count - 1) / 2)]); maxMs = [Math]::Round(($single | Measure-Object -Maximum).Maximum)
+                    ms = [Math]::Round(($single | Measure-Object -Sum).Sum) })
+            }
+            Write-Host ('Measuring CPU with jobs active, no polling (' + $WindowSeconds + ' s) ...')
+            $quiet = Measure-Cpu { Start-Sleep -Seconds $WindowSeconds; Get-ProcessInventory }
+            $results.Add([pscustomobject]@{ scenario = 'cpu-active-quiet'; engine = $engine.Key; cpuPct = $quiet.cpuPct
+                seconds = $quiet.seconds; processes = $quiet.value })
+            Write-Host ('Measuring active status polled every second / PowerShell ' + $engine.Key + ' ...')
+            $samples = New-Object Collections.Generic.List[double]
+            $script:activeMin = $Modules
+            $polled = Measure-Cpu {
+                for ($i = 0; $i -le $Iterations; $i++) {
+                    $call = Invoke-Timed $node (& $argv 'status')
+                    $samples.Add($call.ms)
+                    $script:activeMin = [Math]::Min($script:activeMin, (Get-ActiveCount $call.data))
+                    # The Mod's 1 s timer skips ticks while a query is pending.
+                    if ($call.ms -lt 1000) { Start-Sleep -Milliseconds (1000 - [int]$call.ms) }
+                }
+            }
+            $results.Add([pscustomobject](@{ scenario = 'active-status'; path = 'direct'; engine = $engine.Key
+                activeMin = $script:activeMin; cpuPct = $polled.cpuPct; seconds = $polled.seconds } + (Get-Stats $samples)))
+        } finally {
+            Write-Host ('Measuring cancel all / PowerShell ' + $engine.Key + ' ...')
+            $cancelled = Invoke-Timed $node (& $argv 'cancel')
+            $settle = [Diagnostics.Stopwatch]::StartNew()
+            $left = Get-ActiveCount $cancelled.data
+            while ($left -gt 0 -and $settle.Elapsed.TotalSeconds -lt 120) {
+                Start-Sleep -Milliseconds 500
+                $left = Get-ActiveCount (Invoke-Timed $node (& $argv 'status')).data
+            }
+            $results.Add([pscustomobject]@{ scenario = 'cancel-all'; path = 'direct'; engine = $engine.Key
+                ms = [Math]::Round($cancelled.ms); settleMs = [Math]::Round($settle.Elapsed.TotalMilliseconds); activeLeft = $left })
+        }
+    }
+} finally {
+    [Environment]::SetEnvironmentVariable('TEST_PROGRESS_POWERSHELL', $previous, 'Process')
+    foreach ($dir in $workspaces) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+$results | Format-Table scenario, path, engine, ok, coldMs, p50Ms, p95Ms, maxMs, ms, active, activeMin, cpuPct, seconds, settleMs, activeLeft -AutoSize | Out-String -Width 200 | Write-Host
+$os = Get-CimInstance Win32_OperatingSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$sha = (& git -C $root rev-parse --short HEAD 2>$null)
+$report = [ordered]@{
+    date = (Get-Date).ToString('s'); revision = $sha; iterations = $Iterations; modules = $Modules
+    os = $os.Caption + ' ' + $os.BuildNumber; cpu = $cpu.Name.Trim(); logicalCpus = [Environment]::ProcessorCount
+    ramGb = [Math]::Round($os.TotalVisibleMemorySize / 1MB, 1); node = (& $node --version)
+    host = $PSVersionTable.PSVersion.ToString(); executionPolicy = (Get-ExecutionPolicy).ToString()
+    limits = [ordered]@{ modStatusMs = 15000; modStartMs = 60000; batchPreparationMs = 30000 }; results = $results
+}
+$json = $report | ConvertTo-Json -Depth 6
+if ($Output) { [IO.File]::WriteAllText($Output, $json, (New-Object Text.UTF8Encoding -ArgumentList $false)) }
+$json
