@@ -3,6 +3,19 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Unreleased]
+
+### Painel
+
+- Erros quebram linha em vez de truncar e terminam numa próxima ação
+  (`≡` abre o log; aviso de `adapter` quando nenhum evento foi reconhecido).
+- Run encerrado mostra o resultado (`✓19 · 19 testes`), sem barra; a barra fina
+  aparece só enquanto o módulo roda.
+- A barra do topo resume módulos, execuções e falhas no lugar do título repetido.
+- Botão `×` fecha o painel (nunca cancela runs); `×` no cabeçalho do log o recolhe.
+- `/test-progress` sem argumentos alterna o painel entre aberto e fechado.
+- O log omite linhas `@@TEST_PROGRESS@@` do protocolo e colapsa linhas vazias.
+
 ## [0.3.0] - 2026-10-05
 
 Primeira versão pública do Test Progress.

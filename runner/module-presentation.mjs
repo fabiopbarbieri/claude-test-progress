@@ -85,10 +85,39 @@ export function statusGlyph(job) {
   return { glyph: '✓', color: 'success' };
 }
 const knownPercent = job => job.total != null && job.total > 0 && typeof job.percent === 'number' && Number.isFinite(job.percent);
+// A thin bar while a run is live: done cells in the accent, the rest subtle. Unknown totals draw dashes.
 export function progressBar(job, cells = 12) {
-  if (!knownPercent(job)) return '·'.repeat(cells);
+  if (!knownPercent(job)) return { done: '', rest: '╌'.repeat(cells) };
   const filled = Math.max(0, Math.min(cells, Math.round(job.percent / 100 * cells)));
-  return `${'█'.repeat(filled)}${'░'.repeat(cells - filled)}`;
+  return { done: '━'.repeat(filled), rest: '━'.repeat(cells - filled) };
+}
+// A finished run reads as its result, not as a full bar.
+export function outcomeText(job) {
+  if (job.status === 'error') return { text: 'erro', color: 'error' };
+  if (job.status === 'cancelled') return { text: 'cancelado', color: 'inactive' };
+  if (job.total === 0) return { text: 'sem testes', color: 'inactive' };
+  if (job.total == null) return { text: 'total desconhecido', color: 'inactive' };
+  return { text: `· ${job.total} ${job.total === 1 ? 'teste' : 'testes'}`, color: 'inactive' };
+}
+// Toolbar summary: how many modules, and only the states worth a glance.
+export function summaryLine(ids, jobs) {
+  const live = ids.filter(id => jobs[id] && (ACTIVE.has(jobs[id].status) || jobs[id].recoveryRequired)).length;
+  const failed = ids.filter(id => jobs[id] && !ACTIVE.has(jobs[id].status) &&
+    (['failed', 'error'].includes(jobs[id].status) || (jobs[id].failed ?? 0) > 0)).length;
+  return [{ text: `${ids.length} ${ids.length === 1 ? 'módulo' : 'módulos'}` },
+    ...(live ? [{ text: `${live} rodando`, color: 'warning' }] : []),
+    ...(failed ? [{ text: `${failed} ${failed === 1 ? 'falha' : 'falhas'}`, color: 'error' }] : [])];
+}
+// Protocol lines are the collector's input, not the person's log; runs of blank lines collapse to one.
+export function readableTail(lines, prefix) {
+  const kept = [];
+  for (const line of lines) {
+    if (line.includes(prefix)) continue;
+    if (!line.trim() && (!kept.length || !kept[kept.length - 1].trim())) continue;
+    kept.push(line);
+  }
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+  return kept;
 }
 export function compactPercent(job) {
   if (job.total === 0) return 'sem testes';

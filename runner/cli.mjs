@@ -8,7 +8,8 @@ import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLoc
 import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
 import { randomUUID, removePath } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
-import { sanitizeText } from './module-presentation.mjs';
+import { sanitizeText, readableTail } from './module-presentation.mjs';
+import { PREFIX } from './progress.mjs';
 import { discoverModules, prepareSelection, assertSourcesUnchanged } from './module-config.mjs';
 import { batchFiles, readBatch, changeBatch, PREPARE_MS, ABORT_MS, pause } from './module-batch.mjs';
 import { windowsLaunchCoordinator } from './windows-process.mjs';
@@ -175,10 +176,10 @@ function logs(target, state) {
     try {
       const expected = path.join(context.directory, `${moduleId}.${snapshot.runId}.log`);
       if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
-      // The tail keeps 40 lines of at most 4096 characters; 256 KiB of bytes covers them.
+      // The tail keeps 40 readable lines of at most 4096 characters, protocol lines and blank runs left out.
       const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
       const clean = sanitizeText(contents);
-      state.jobs[moduleId] = { ...snapshot, logTail: clean ? clean.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096)) : [] };
+      state.jobs[moduleId] = { ...snapshot, logTail: clean ? readableTail(clean.split(/\r?\n/), PREFIX).slice(-40).map((line) => line.slice(-4096)) : [] };
     } catch (error) { (state.stateDiagnostics[moduleId] || (state.stateDiagnostics[moduleId] = [])).push({ code: 'unsafe-log', message: error.message, blocking: true }); }
   }
 }
