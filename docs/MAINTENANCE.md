@@ -118,8 +118,8 @@ jobs without adding globally installed frameworks or new required branch checks:
 | --- | --- | --- |
 | JUnit 5.11.3 / Surefire 3.5.4 | Temurin Java 17 | Node 14.0.0 |
 | JUnit 5.11.3 / Surefire 3.5.4 | Temurin Java 21 | Node 24 |
-| Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 and 24 |
-| Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 14.0.0 and 24 |
+| Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 |
+| Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
 
 The collector's minimum remains Node 14.0.0. An app has its own runtime: Angular
 9 uses its historical Node 12 toolchain, while Angular 18 uses Node 22. This does
@@ -171,8 +171,8 @@ watch/re-run cycles, multiple browsers or native Windows support.
 ## Native Windows v2 gate
 
 [Windows modules](../.github/workflows/windows.yml) is configured for Windows
-PowerShell 5.1 and PowerShell 7, collector Node 14.0.0 and 24, with app Node
-12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
+PowerShell 5.1 with collector Node 14.0.0 and PowerShell 7 with collector Node
+14.0.0 and 24, all with app Node 12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
 [tests/windows/native.mjs](../tests/windows/native.mjs). **Neither a native run
 nor hosted CI success is evidenced in this delivery.** Parsing scripts or
 running Linux checks is not Windows acceptance.
