@@ -22,6 +22,12 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - `/test-progress` sem argumentos alterna o painel entre aberto e fechado.
 - O log omite linhas `@@TEST_PROGRESS@@` do protocolo e colapsa linhas vazias.
 
+### Adapters
+
+- Novo adapter `exit`: aceita eventos `@@TEST_PROGRESS@@` quando existirem e,
+  sem eles, decide ✓/✗ só pelo exit code (contagem desconhecida). Serve para
+  suítes sem integração, como `scripts/check.py` e `claude plugin test`.
+
 ## [0.3.0] - 2026-10-05
 
 Primeira versão pública do Test Progress.

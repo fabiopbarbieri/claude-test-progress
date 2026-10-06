@@ -38,7 +38,8 @@ export class Progress {
       try { return this.event(JSON.parse(clean.slice(index + PREFIX.length).trim())); }
       catch { return false; }
     }
-    if (this.reporterSeen || this.adapter === 'events') return false;
+    // `exit` still honours explicit events; without them the exit code alone decides.
+    if (this.reporterSeen || this.adapter === 'events' || this.adapter === 'exit') return false;
     if (this.adapter === 'auto' || this.adapter === 'maven') {
       // A goal banner identifies a new module/execution, even when its FQCNs
       // appeared earlier. The final reactor aggregate has no class identity.
