@@ -29,11 +29,29 @@ hosted run passed. Current local results belong in [VALIDATION](VALIDATION.md).
 ## Configured update coverage
 
 [Dependabot configuration](../.github/dependabot.yml) checks on Mondays at
-09:00 America/Sao_Paulo. Each of its five update entries allows three open
-version-update PRs (up to fifteen across the entries). Minor and patch version
-updates are grouped within each ecosystem; major updates remain individual
-PRs. Security updates remain individual and are not delayed by the weekly
-version-update schedule or governed by its PR limit. There is no automerge.
+09:00 America/Sao_Paulo. Each of its ten update entries allows three open
+version-update PRs. Lanes with different compatibility limits have their own
+entry. Minor and patch version updates are grouped within each entry; major
+updates remain individual PRs. Security updates remain individual and are not
+delayed by the weekly version-update schedule or governed by its PR limit.
+There is no automerge.
+
+`ignore` rules keep each lane inside the supported matrix:
+
+| Inputs | Ignored |
+| --- | --- |
+| Maven | JUnit BOM and `org.junit.platform:*` 6+ (JUnit 5 stays the contract) |
+| `python38` | pytest 8.4+ (no Python 3.8 support) |
+| `rspec` | `rspec*` 3.14+ (contract is RSpec Core 3.13.x) |
+| `rails72` | Rails 7.3+ and every Minitest update (lane pins the 5.20.0 floor) |
+| `rails80` / `rails81` | Rails outside the lane series; Minitest 6+ |
+| `angular9` | Everything: frozen Node 12 / npm 6 toolchain with a v1 lock |
+| `angular18` | Majors; TypeScript 5.6+; zone.js 0.15+ (Angular 18 peers) |
+
+Dependency and version `ignore` conditions also suppress **security** PRs for
+the matched dependencies. For `angular9` this is deliberate: every available fix
+requires a newer Angular builder. Its alerts stay open; review and dismiss them
+explicitly as fixture-only risk instead of suppressing them silently.
 
 | Ecosystem | Inputs | Consumer |
 | --- | --- | --- |
@@ -116,8 +134,8 @@ jobs without adding globally installed frameworks or new required branch checks:
 
 | Integration | App runtime | Collector runtime |
 | --- | --- | --- |
-| JUnit 5.11.3 / Surefire 3.5.4 | Temurin Java 17 | Node 14.0.0 |
-| JUnit 5.11.3 / Surefire 3.5.4 | Temurin Java 21 | Node 24 |
+| JUnit 5.11.3 / Surefire 3.6.0 | Temurin Java 17 | Node 14.0.0 |
+| JUnit 5.11.3 / Surefire 3.6.0 | Temurin Java 21 | Node 24 |
 | Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 |
 | Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
 
