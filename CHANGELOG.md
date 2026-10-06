@@ -3,36 +3,16 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
-## [Não lançado]
+## [0.5.0] - 2026-10-06
+
+Windows nativo leve e aceito: helper compilado, supervisão por eventos, `status`
+sem PowerShell e aceite visual do Mod no Windows 11.
 
 ### Windows
 
-- Aceite registrado no Windows 11 (VM): gates em PowerShell 5.1 e 7 e aceite
-  visual do Mod no Claude Code com pytest, unittest e `node --test`; detalhes
-  em [WINDOWS](WINDOWS.md#aceite-em-windows-11).
-- Controle mais leve: a DLL de `WindowsProcessHost.cs` fica em cache na raiz
-  privada do estado (só é carregada com dono confiável), raiz e diretório do
-  workspace são protegidos numa única chamada, e worker e coordenador reusam
-  por 2 s uma confirmação positiva de que o outro está vivo. Numa VM com
-  4 núcleos e pwsh 7, um job ativo caiu de 77% para 14% de CPU, cinco jobs de
-  100% para 39%, e o `start` de 1 módulo de 12 s para 5,6 s.
-- `-ExecutionPolicy Bypass` em cada PowerShell aberto pelo plugin e pelo Mod:
-  funciona com o padrão `Restricted` do Windows cliente, sem gravar política.
-  Group Policy continua prevalecendo.
-- `scripts/bench-windows.ps1` mede latência do `status`, `start`/`cancel` e CPU
-  com N módulos no Windows nativo.
-- Supervisão por eventos: o coordenador acompanha os workers que iniciou pelo
-  `ChildProcess` (o handle aberto impede reuso do PID), e cada worker percebe o
-  fim do coordenador pelo fechamento de um pipe no stdin. Com jobs parados, o
-  plugin não abre mais nenhum PowerShell.
-- `status`, `list` e `logs`: um job com heartbeat recente (até 15 s) e PID do
-  worker existente é lido como vivo sem PowerShell, e a verificação completa da
-  DACL é reusada por até 10 min; `start` e `cancel` sempre verificam. Com 3 jobs
-  e o painel consultando a cada 1 s, a CPU caiu de 63% (pwsh 7) e 98% (5.1)
-  para 2–3%, e o `status` de 1,2–3,3 s para ~80 ms.
-- Prazos de preparação e de confirmação do início crescem 1 s por módulo no
-  Windows (até 50 s e 40 s); o broker consulta a cada 250 ms e o coordenador a
-  cada 500 ms. Com pwsh 7, 20 módulos iniciam juntos em 7,5 s.
+- Aceite registrado no Windows 11 (VM): `check-windows.ps1` em PowerShell 5.1 e
+  7 e aceite visual do Mod no Claude Code com pytest, unittest e `node --test`;
+  detalhes em [WINDOWS](https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--v0.5.0/WINDOWS.md#aceite-em-windows-11).
 - Helper nativo: depois da primeira verificação da raiz privada, o Windows
   PowerShell 5.1 compila uma vez `WindowsProcessHost.cs` e `WindowsHelper.cs`
   em `helper-<hash>.exe`, que executa as chamadas de controle e é o broker de
@@ -40,10 +20,40 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   Sem compilação possível ou com o helper bloqueado (AppLocker/WDAC), o
   PowerShell continua sendo usado; `TEST_PROGRESS_WINDOWS_HELPER=0` força esse
   caminho.
+- Supervisão por eventos: o coordenador acompanha os workers que iniciou pelo
+  `ChildProcess` (o handle aberto impede reuso do PID), e cada worker percebe o
+  fim do coordenador pelo fechamento de um pipe no stdin. Com jobs parados, o
+  plugin não abre nenhum processo de controle.
+- `status`, `list` e `logs`: um job com heartbeat recente (até 15 s) e PID do
+  worker existente é lido como vivo sem processo de controle, e a verificação
+  completa da DACL é reusada por até 10 min; `start` e `cancel` sempre
+  verificam.
+- Sem o helper, o PowerShell fica mais leve: a DLL de `WindowsProcessHost.cs`
+  fica em cache na raiz privada (só é carregada com dono confiável), raiz e
+  diretório do workspace são protegidos numa única chamada, e worker e
+  coordenador reusam por 2 s uma confirmação positiva de que o outro está vivo.
+- `-ExecutionPolicy Bypass` em cada PowerShell aberto pelo plugin e pelo Mod:
+  funciona com o padrão `Restricted` do Windows cliente, sem gravar política.
+  Group Policy continua prevalecendo.
+- Prazos de preparação e de confirmação do início crescem 1 s por módulo no
+  Windows (até 50 s e 40 s); o broker consulta a cada 250 ms e o coordenador a
+  cada 500 ms.
 - Logs com acentos corretos: cada linha da saída é lida como UTF-8 e, se não
   for UTF-8 válido, na code page ANSI do sistema (lida uma vez do registro).
   Python, Java e outras ferramentas usam essa code page com a saída
   redirecionada; antes apareciam `�` no lugar dos acentos.
+- `scripts/bench-windows.ps1` mede latência do `status`, `start`/`cancel` e CPU
+  com N módulos no Windows nativo.
+
+Medido numa VM Windows 11 com 4 núcleos, antes e depois desta versão:
+
+| Cenário | 0.4.0 | 0.5.0 |
+| --- | --- | --- |
+| CPU com 1 job parado | 77% | ~0% |
+| CPU com 3 jobs e o painel aberto | 98–100% | 2–3% |
+| Latência do `status` | 2–4 s | 80–140 ms |
+| `start all` com 20 módulos | falhava por prazo | ~3 s |
+| CPU com 20 jobs parados | — | 4,5–8% |
 
 ### Coletor
 
@@ -56,8 +66,16 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - Resultado, tempo e ações de cada módulo ficam sempre alinhados à direita; o
   nome ocupa o espaço livre e é cortado só quando falta largura. Antes, com o
   painel largo, o resultado colava no nome.
-- Testes ignorados usam `⊘ 2` (antes `↷2`, pouco legível em algumas fontes);
-  o espaço evita que o símbolo cole no número.
+- Testes ignorados aparecem como `⊘ 2` (antes `↷2`, pouco legível em algumas
+  fontes).
+
+### Limites
+
+- O aceite Windows foi feito numa VM; faltam máquina física, um app Angular 9
+  real e o Claude Desktop.
+- O helper não foi testado com AppLocker/WDAC ativos; o fallback para PowerShell
+  está coberto por teste unitário.
+- Cada job ativo usa ~77 MB de RAM, quase toda do worker Node.
 
 ## [0.4.0] - 2026-10-06
 
