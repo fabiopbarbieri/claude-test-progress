@@ -104,5 +104,7 @@ Node 14/24, e Node 12 separado para o aplicativo. Numa máquina Windows:
 O gate recusa sistemas não Windows e verifica argv literal, DACL privada,
 contenção por Job Object, filhos/netos, cancelamento, compensação por perda do
 broker, `.cmd` e runtimes separados. Sintaxe e provas sintéticas no Linux não
-comprovam esses comportamentos nativos. O aceite numa máquina Windows real e o
-aceite do Claude Desktop permanecem pendentes.
+comprovam esses comportamentos nativos. Os dois gates passaram numa VM Windows 11
+em 06/10/2026, junto com o aceite visual do Mod no Claude Code
+([detalhes](../WINDOWS.md#aceite-em-windows-11)). O aceite numa máquina física e
+o aceite do Claude Desktop permanecem pendentes.

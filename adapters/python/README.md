@@ -73,7 +73,9 @@ No Windows, adapte [o exemplo próprio](../../config.python.windows.example.json
 use `.venv\\Scripts\\python.exe` e caminho absoluto Windows para `run.py`, com
 barras escapadas no JSON. Passe cada argumento como um elemento; caminhos com
 espaço não precisam de aspas adicionais. Não execute o arquivo `.py` diretamente.
-O aceite nativo Windows permanece pendente, conforme [WINDOWS.md](../../WINDOWS.md).
+Pytest e unittest passaram no aceite em Windows 11 numa VM, com Python 3.12.10
+([detalhes](../../WINDOWS.md#aceite-em-windows-11)); o aceite numa máquina
+física permanece pendente.
 
 ## Contagem
 

@@ -7,6 +7,9 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ### Windows
 
+- Aceite registrado no Windows 11 (VM): gates em PowerShell 5.1 e 7 e aceite
+  visual do Mod no Claude Code com pytest, unittest e `node --test`; detalhes
+  em [WINDOWS](WINDOWS.md#aceite-em-windows-11).
 - Controle mais leve: a DLL de `WindowsProcessHost.cs` fica em cache na raiz
   privada do estado (só é carregada com dono confiável), raiz e diretório do
   workspace são protegidos numa única chamada, e worker e coordenador reusam
