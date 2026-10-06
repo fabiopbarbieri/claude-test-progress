@@ -37,6 +37,16 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   Sem compilação possível ou com o helper bloqueado (AppLocker/WDAC), o
   PowerShell continua sendo usado; `TEST_PROGRESS_WINDOWS_HELPER=0` força esse
   caminho.
+- Logs com acentos corretos: cada linha da saída é lida como UTF-8 e, se não
+  for UTF-8 válido, na code page ANSI do sistema (lida uma vez do registro).
+  Python, Java e outras ferramentas usam essa code page com a saída
+  redirecionada; antes apareciam `�` no lugar dos acentos.
+
+### Mod
+
+- Resultado, tempo e ações de cada módulo ficam sempre alinhados à direita; o
+  nome ocupa o espaço livre e é cortado só quando falta largura. Antes, com o
+  painel largo, o resultado colava no nome.
 
 ## [0.4.0] - 2026-10-06
 

@@ -108,6 +108,12 @@ padrão `Restricted` do Windows cliente sem gravar política. O plugin não muda
 `ExecutionPolicy` persistente, assinatura ou políticas da organização; política
 definida por Group Policy continua prevalecendo e pode bloquear os scripts.
 
+Os logs são gravados em UTF-8. Cada linha da saída dos testes é lida como
+UTF-8 e, quando não é UTF-8 válido, na code page ANSI do sistema (`ACP` em
+`HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage`), que é a usada por
+Python e Java com a saída redirecionada. Ferramentas que escrevem na code page
+OEM do console (como 850) ainda podem mostrar acentos trocados.
+
 ## Descoberta de Node e nvm-windows
 
 O coletor procura um Node 14+ executável no PATH. Se necessário, considera
