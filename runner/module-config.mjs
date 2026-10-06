@@ -196,7 +196,7 @@ export function prepareSelection(discovery, target) {
       const names = Object.keys(item.env).map(key => key.toUpperCase());
       if (new Set(names).size !== names.length) fail('INVALID_ENV', 'env contém nomes duplicados por caixa.', id);
     }
-    if (!['auto', 'events', 'maven', 'karma'].includes(item.adapter)) fail('INVALID_ADAPTER', 'O adapter do módulo não é suportado.', id);
+    if (!['auto', 'events', 'maven', 'karma', 'exit'].includes(item.adapter)) fail('INVALID_ADAPTER', 'O adapter do módulo não é suportado.', id);
     if (!['inherit', 'node-project'].includes(item.runtime)) fail('INVALID_RUNTIME', 'O runtime do módulo não é suportado.', id);
     if (typeof item.cwd !== 'string' || item.cwd.includes('\0')) fail('INVALID_CWD', 'cwd precisa ser um caminho válido.', id);
     let cwd;

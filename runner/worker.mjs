@@ -182,12 +182,14 @@ async function finish(code, signal) {
       return;
     }
     const values = progress.values(true, !cancelling && !fatalError && code === 0);
+    // Under `exit` a clean exit is the result even when no test was counted.
+    const settled = values.progressObserved || job.adapter === 'exit';
     const status = fatalError ? 'error' : cancelling ? 'cancelled' :
-      code !== 0 || values.failed > 0 ? 'failed' : values.progressObserved ? 'completed' : 'error';
+      code !== 0 || values.failed > 0 ? 'failed' : settled ? 'completed' : 'error';
     const error = fatalError ?? (status === 'error' ?
       'O comando terminou sem eventos de progresso reconhecidos; nenhum teste foi confirmado.' : null);
     persist({ ...values, status, finalSafe: true, recoveryRequired: false, infrastructureFailure: Boolean(fatalError), phase: cancelling ? 'cancelled' :
-      values.progressObserved ? 'finished' : 'no-progress-observed', endedAt: timestamp(),
+      settled ? 'finished' : 'no-progress-observed', endedAt: timestamp(),
       exitCode: Number.isInteger(code) ? code : null, exitSignal: signal ?? null,
       ...(error ? { error } : {}) });
     publishFinalSafe(job, snapshot);
