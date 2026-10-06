@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing';
-import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle } from '../runner/module-presentation.mjs';
+import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
+  statusGlyph, progressBar, compactPercent, compactCounts, clock } from '../runner/module-presentation.mjs';
 
 test('v2 titles preserve labels and IDs even when modules share a language or label', () => {
   expect(moduleTitle('api', { label: 'Suíte', language: 'Python' })).toBe('Suíte · api');
@@ -32,4 +33,23 @@ test('catalogue order plus retained recovery and state-only diagnostics exclude 
   const modules = { z: { enabled: true, order: 2 }, b: { enabled: true, order: 1 }, a: { enabled: true, order: 1 }, old: { enabled: false, order: 0 } };
   const jobs = { old: { status: 'completed' }, retired: { status: 'completed' }, lost: { status: 'error', recoveryRequired: true }, running: { status: 'running' } };
   expect(visibleModuleIds(modules, jobs, { locked: [{ blocking: true }], '*': [{ blocking: true }] })).toEqual(['a', 'b', 'z', 'locked', 'lost', 'running']);
+});
+
+test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros and clock', () => {
+  expect(statusGlyph(undefined)).toEqual({ glyph: '○', color: 'inactive' });
+  expect(statusGlyph({ status: 'running', phase: 'executing-tests' })).toEqual({ glyph: '●', color: 'warning' });
+  expect(statusGlyph({ status: 'running', phase: 'cancellation-requested' })).toEqual({ glyph: '◌', color: 'inactive' });
+  expect(statusGlyph({ status: 'completed', failed: 0 })).toEqual({ glyph: '✓', color: 'success' });
+  expect(statusGlyph({ status: 'failed', failed: 2 })).toEqual({ glyph: '✗', color: 'error' });
+  expect(statusGlyph({ status: 'cancelled' })).toEqual({ glyph: '■', color: 'inactive' });
+  expect(statusGlyph({ status: 'error', recoveryRequired: true })).toEqual({ glyph: '!', color: 'error' });
+  expect(progressBar({ total: 4, percent: 50 }, 4)).toBe('██░░');
+  expect(progressBar({ total: null, percent: null }, 4)).toBe('····');
+  expect(compactPercent({ total: 4, percent: 50, totalStable: true })).toBe('50%');
+  expect(compactPercent({ status: 'running', total: 4, percent: 50, totalStable: false })).toBe('~50%');
+  expect(compactPercent({ status: 'failed', total: 4, percent: 100, totalStable: false })).toBe('100%');
+  expect(compactPercent({ total: null, percent: null })).toBe('—');
+  expect(compactPercent({ total: 0, percent: null })).toBe('sem testes');
+  expect(compactCounts({ passed: 4, failed: 0, skipped: 1 }).map(count => count.text)).toEqual(['✓4', '↷1']);
+  expect([clock(57000), clock(7200000), clock(undefined)]).toEqual(['0:57', '2:00:00', '']);
 });

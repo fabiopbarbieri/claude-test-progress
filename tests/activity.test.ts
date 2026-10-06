@@ -42,7 +42,7 @@ test('native Windows uses Module and 15s query budget, with a 60s start budget',
   expect(calls[1].init.timeoutMs).toBe(60000);
 });
 
-test('failed query retries without implicit start or cancel and legacy schema is rejected', async ($, on) => {
+test('failed query retries without implicit start or cancel and an unknown schema is rejected', async ($, on) => {
   const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
@@ -91,7 +91,7 @@ test('polling refreshes the catalogue and all jobs, re-reading only the live sel
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   const ui = await $.ui.mount(pane);
   current = data({ api: module('api', 'Renomeada') }, {}); await clock.advance(1000);
-  expect(await ui.find({ type: 'Text', text: 'Renomeada · api' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'Renomeada' })).toBeDefined();
   current.jobs.api = { ...running, logTail: ['owner A log'] };
   await $.command.run({ command: 'test-progress', args: 'logs api --text' });
   current.modules.extra = module('extra', 'Nova'); await clock.advance(1000);
@@ -105,7 +105,7 @@ test('polling refreshes the catalogue and all jobs, re-reading only the live sel
   await ui.unmount();
 });
 
-test('AbovePrompt limits jobs to three plus remaining and leaves band empty for catalogue only', async ($, on) => {
+test('AbovePrompt is one line: active first, at most three items, and it steps aside once nothing is new', async ($, on) => {
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
   const modules = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, module(`m${i}`, `M${i}`)]));
   const jobs = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, { ...running, moduleId: `m${i}`, runId: `run${i}`, status: i === 11 ? 'running' : 'completed' }]));
@@ -117,11 +117,27 @@ test('AbovePrompt limits jobs to three plus remaining and leaves band empty for 
   const band = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
     viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
       bodyColumns: 80, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
-  expect(await band.find({ type: 'Text', text: /^M11 · m11:/ })).toBeDefined();
-  expect(await band.find({ type: 'Text', text: /^M2 · m2:/ })).toBeUndefined();
-  expect(await band.find({ type: 'Text', text: '+9 restante(s) · /test-progress' })).toBeDefined();
+  expect(await band.find({ key: 'band' })).toMatchObject({ props: { flexDirection: 'row' } });
+  expect(await band.find({ key: 'summary-m11' })).toBeDefined();
+  expect(await band.find({ type: 'Text', text: ' ~50%' })).toBeDefined();
+  expect(await band.find({ key: 'summary-m0' })).toBeDefined();
+  expect(await band.find({ key: 'summary-m2' })).toBeUndefined();
+  expect(await band.find({ type: 'Text', text: '  ·  +9' })).toBeDefined();
+  expect(await band.find({ type: 'Text', text: /falha\(s\)|restante/ })).toBeUndefined();
+  // Only finished, passing runs: nothing to report.
+  current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' } });
+  await $.command.run({ command: 'test-progress', args: '--text' });
+  expect(await band.find({ key: 'band' })).toBeUndefined();
+  // An unseen failure shows in red until the pane is opened.
+  current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' }, m3: { ...jobs.m3, status: 'failed', failed: 2 } });
+  await $.command.run({ command: 'test-progress', args: '--text' });
+  expect(await band.find({ type: 'Text', text: ' ✗2' })).toMatchObject({ props: { color: 'error' } });
+  const ui = await $.ui.mount(pane);
+  await ui.unmount();
+  await $.command.run({ command: 'test-progress', args: '--text' });
+  expect(await band.find({ key: 'band' })).toBeUndefined();
   current = data(modules, {}); await $.command.run({ command: 'test-progress', args: '--text' });
-  expect(await band.find({ type: 'Text', text: /^M11 · m11:/ })).toBeUndefined();
+  expect(await band.find({ key: 'band' })).toBeUndefined();
   await band.unmount();
 });
 

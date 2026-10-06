@@ -1,14 +1,17 @@
 // Claude Code Mods 2.1.289+. No host Node APIs run inside the Mod sandbox.
-import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle,
-  percentage, progressText, countSummary, diagnosticText, sanitizeText, sanitizeTail } from '../runner/module-presentation.mjs';
+import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
+  sanitizeText, sanitizeTail, statusGlyph, progressBar, compactPercent, compactCounts, clock, configStatus } from '../runner/module-presentation.mjs';
 const PANE = 'claude-test-progress';
 let modules = {}, jobs = {}, stateDiagnostics = {}, workspace = null;
-let identity = '', generation = 0, sessionOwner = '', sessionWorkspace = '';
+let identity = '', generation = 0, sessionOwner = '';
 let busy = false, lastError = '', registrationError = '', timer = null;
 // Collector calls run one at a time; commands and buttons wait instead of being dropped.
 let queue = Promise.resolve(), queued = 0, idleTicks = 0, collectorNode = null;
 const IDLE_POLL_TICKS = 10;
 let selectedLogs = null, logTail = [], chooseLogs = false, showHelp = false;
+// Runs the person has seen in the pane; the band only keeps unseen failures.
+let seenRuns = new Set();
+const NARROW_COLUMNS = 60;
 const visible = () => visibleModuleIds(modules, jobs, stateDiagnostics);
 const enabled = () => visible().filter(id => modules[id]?.enabled);
 const catalogue = () => JSON.stringify({ modules, moduleConfig: workspace?.moduleConfig, stateBlocked: workspace?.stateBlocked, stateDiagnostics });
@@ -16,6 +19,12 @@ const actionProjection = () => JSON.stringify({ catalogue: catalogue(), jobs: Ob
   [id, jobs[id].runId, jobs[id].status, !!jobs[id].recoveryRequired, !!jobs[id].cancellable]) });
 const projection = () => JSON.stringify({ modules, jobs, stateDiagnostics, workspace, identity, generation,
   busy, lastError, registrationError, selectedLogs, logTail, chooseLogs, showHelp });
+// Labels alone read best; a label shared by two visible modules gets its ID.
+function displayNames() {
+  const ids = visible(), count = {};
+  for (const id of ids) { const label = modules[id]?.label ?? id; count[label] = (count[label] ?? 0) + 1; }
+  return Object.fromEntries(ids.map(id => { const label = modules[id]?.label ?? id; return [id, count[label] > 1 && label !== id ? `${label} (${id})` : label]; }));
+}
 const diagnostics = id => [...(modules[id]?.diagnostics ?? []), ...(stateDiagnostics[id] ?? [])];
 function serialized(task) {
   queued += 1;
@@ -38,16 +47,11 @@ function startAllowed(id) {
     !diagnostics(id).length && !ACTIVE.has(jobs[id]?.status) && !jobs[id]?.recoveryRequired;
 }
 const allAllowed = () => enabled().length > 0 && enabled().every(startAllowed);
-function withinWorkspace(directory) {
-  if (!directory || !sessionWorkspace) return false;
-  const windows = /^[a-z]:[\\/]|^\\\\/i.test(sessionWorkspace);
-  const normalize = value => (windows ? value.replace(/\\/g, '/').toLowerCase() : value).replace(/\/+$/, '');
-  const root = normalize(sessionWorkspace), candidate = normalize(directory);
-  return candidate === root || candidate.startsWith(`${root}/`);
-}
 function shortSummary(id) {
   const job = jobs[id];
-  return `${moduleTitle(id, modules[id])}: ${job ? `${percentage(job)}${job.total != null && !job.totalStable ? ' parcial' : ''} · ${labels[job.status] ?? job.status} · ${job.failed ?? 0} falha(s)` : 'sem execução'}`;
+  if (!job) return `${moduleTitle(id, modules[id])}: sem execução`;
+  const counts = compactCounts(job).map(count => count.text).join(' ');
+  return `${moduleTitle(id, modules[id])}: ${statusGlyph(job).glyph} ${compactPercent(job)} · ${labels[job.status] ?? job.status}${counts ? ` · ${counts}` : ''}`;
 }
 function textSummary() {
   const rows = ['Test Progress', ...(sessionOwner ? [`owner=${sessionOwner}`] : [])];
@@ -67,7 +71,7 @@ function textSummary() {
     if (job.error) rows.push(`  ${job.error}`);
   }
   if (!visible().length) rows.push('Nenhum módulo ativado neste workspace.', 'Configure .claude/test-progress.json; consulte /test-progress help.');
-  rows.push(`Cadastro: ${workspace?.moduleConfig?.status ?? 'não consultado'} · .claude/test-progress.json`);
+  rows.push(`Cadastro: ${configStatus[workspace?.moduleConfig?.status] ?? 'não consultado'} · .claude/test-progress.json`);
   if (workspace?.error) rows.push(`Configuração: ${workspace.error}`);
   for (const item of workspace?.moduleConfig?.diagnostics ?? []) rows.push(`Configuração: ${diagnosticText(item)}`);
   for (const item of stateDiagnostics['*'] ?? []) rows.push(`Estado: ${diagnosticText(item)}`);
@@ -79,9 +83,9 @@ async function synchronizeIdentity($) {
   const cwd = await $.session.cwd(), owner = await $.session.id();
   const key = `${cwd}\n${owner}`;
   if (identity !== key) {
-    generation += 1; identity = key; sessionOwner = owner; sessionWorkspace = cwd;
+    generation += 1; identity = key; sessionOwner = owner;
     modules = {}; jobs = {}; stateDiagnostics = {}; workspace = null;
-    selectedLogs = null; logTail = []; chooseLogs = false; showHelp = false; lastError = '';
+    selectedLogs = null; logTail = []; chooseLogs = false; showHelp = false; lastError = ''; seenRuns = new Set();
   }
   return { cwd, owner, generation };
 }
@@ -172,11 +176,15 @@ const HELP = [
   '/test-progress cancel [id|all] — cancela jobs ativos/recuperáveis desta sessão.',
   '/test-progress help | paths — ajuda e caminhos instalados.',
   'Acrescente --text para resposta textual, inclusive no modo headless.',
-  'Cadastro: <diretório da sessão>/.claude/test-progress.json (schemaVersion 2).',
+  'Cadastro: <diretório da sessão>/.claude/test-progress.json.',
   'Windows: PowerShell 5.1/7; cancelamento da árvore por Job Object.',
   'Percentual = testes resolvidos / testes conhecidos. Total parcial pode crescer.',
   'Cobertura de código e estimativa de tempo não são calculadas.',
 ].join('\n');
+const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
+  '▶ iniciar  ■ cancelar  ≡ logs  ~ total parcial',
+  '✓ passaram  ✗ falharam  ↷ ignorados',
+  '/test-progress help lista os comandos.'];
 function textLogs(moduleId) {
   const ids = moduleId === 'all' ? Object.keys(jobs).sort() : [moduleId];
   return ids.filter(id => jobs[id]).map(id => `LOGS · ${id} · ${jobs[id].runId}\n${sanitizeTail(jobs[id].logTail).join('\n')}`).join('\n\n');
@@ -216,9 +224,9 @@ export function register(on) {
   });
   on('session.end', async ($, e, next) => {
     // Poll survives clear/resume/branch; workers and timer aren't cancelled here.
-    identity = ''; generation += 1; sessionOwner = ''; sessionWorkspace = '';
+    identity = ''; generation += 1; sessionOwner = '';
     modules = {}; jobs = {}; stateDiagnostics = {}; workspace = null; lastError = '';
-    selectedLogs = null; logTail = []; chooseLogs = false; showHelp = false;
+    selectedLogs = null; logTail = []; chooseLogs = false; showHelp = false; seenRuns = new Set();
     $.ui.invalidate('ui.render'); return next(e);
   });
   on('command.run', { command: 'test-progress' }, async ($, e, next) => {
@@ -259,81 +267,125 @@ export function register(on) {
     const guarded = fn => async () => {
       await synchronizeIdentity($);
       if (generation !== expected.generation || actionProjection() !== expected.projection) {
-        lastError = 'A seleção mudou. Atualize o painel antes de agir.'; $.ui.invalidate('ui.render'); return;
+        lastError = 'A seleção mudou. Tente de novo.'; $.ui.invalidate('ui.render'); return;
       }
       await fn();
     };
-    // Button has no disabled prop in the native API. Dim and guard instead of inventing HTML attributes.
-    const button = (key, label, action, id = 'all', allowed = true) => Button({ key,
-      label: busy ? `${label}…` : label, plain: true, dimColor: busy || !allowed,
-      onPress: guarded(async () => { if (allowed) await perform($, action, id, expected); }) });
+    // Opening the pane acknowledges finished runs, so the band can step aside.
+    const unseen = Object.values(jobs).filter(job => !seenRuns.has(job.runId));
+    if (unseen.length) { for (const job of unseen) seenRuns.add(job.runId); Promise.resolve().then(() => $.ui.invalidate('ui.render')); }
+    const narrow = (e.props?.bodyColumns ?? 80) < NARROW_COLUMNS;
     const text = (value, props = {}) => Text({ ...props, children: [value] });
-    const block = id => {
+    // Button has no disabled prop in the native API. Dim and guard instead of inventing HTML attributes.
+    const button = (key, label, action, id = 'all', allowed = true) => Button({ key, label, plain: true,
+      dimColor: busy || !allowed, onPress: guarded(async () => { if (allowed) await perform($, action, id, expected); }) });
+    const local = (key, label, fn) => Button({ key, label, plain: true, onPress: guarded(async () => { fn(); $.ui.invalidate('ui.render'); }) });
+    const names = displayNames();
+    const nameWidth = Math.min(18, Math.max(6, ...visible().map(id => names[id].length))) + 1;
+    const actions = id => {
       const module = modules[id], job = jobs[id];
-      const color = job?.status === 'failed' || job?.status === 'error' ? 'red' : job?.status === 'completed' ? 'green' : 'yellow';
-      const lines = [text(moduleTitle(id, module), { bold: true }), text(`Linguagem: ${module?.language ?? 'não informada'}`, { dimColor: true })];
-      if (!module?.enabled) lines.push(text('Módulo removido/desativado.', { dimColor: true }));
-      for (const item of diagnostics(id)) lines.push(text(diagnosticText(item), { color: 'red' }));
-      if (!job) lines.push(text(stateDiagnostics[id]?.length ? 'Snapshot indisponível; confira o estado antes de iniciar.' : 'Ainda não iniciado.', { dimColor: true }));
-      else {
-        lines.push(text(progressText(job), { color, bold: true }), text(countSummary(job)),
-          text(`${job.passed ?? 0} ✅ · ${job.failed ?? 0} ❌ · ${job.skipped ?? 0} ⏩`),
-          text(`${labels[job.status] ?? job.status} · ${job.phase}`, { color }),
-          text(`Duração: ${duration(job)}`, { dimColor: true }));
-        if (job.recoveryRequired) lines.push(text('Recuperação pendente.', { color: 'yellow' }));
-        if (!withinWorkspace(job.cwd) && job.cwd) lines.push(text(`Diretório: ${job.cwd}`, { dimColor: true, wrap: 'truncate' }));
-        if (job.command) lines.push(text(`Comando: ${job.command.join(' ')}`, { dimColor: true, wrap: 'truncate' }));
-        if (job.exitCode != null) lines.push(text(`Exit: ${job.exitCode}`, { dimColor: true }));
-        if (job.revision?.head) lines.push(text(`revisão: ${job.revision.head.slice(0, 8)}${job.revision.dirty ? ' (com alterações)' : ''}`, { dimColor: true }));
-        if (job.nodeRuntime) lines.push(text(`Node ${job.nodeRuntime.version}`, { dimColor: true }));
-        if (job.error) lines.push(text(job.error, { color: 'red' }));
-      }
-      // A vertical action group remains usable on narrow terminal and desktop panes.
-      lines.push(Box({ key: `actions-${id}`, flexDirection: 'column', children: [
-        ...(module?.enabled ? [button(`start-${id}`, `Iniciar ${id}`, 'start', id, startAllowed(id))] : []),
-        ...(job ? [button(`logs-${id}`, `Ver logs ${id}`, 'logs', id)] : []),
-        ...(job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ?
-          [button(`cancel-${id}`, `${job.recoveryRequired ? 'Cancelar órfão' : 'Cancelar'} ${id}`, 'cancel', id)] : []),
-      ] }));
-      return Box({ key: `module-${id}`, flexDirection: 'column', children: lines });
-    };
-    const logChanged = selectedLogs && jobs[selectedLogs.id]?.runId !== selectedLogs.runId;
-    // Pane bodies are scrolled by the host, with keyboard focus anchored to keyed native Buttons.
-    return Box({ key: 'module-list', flexDirection: 'column', children: [
-      Box({ key: 'toolbar', flexDirection: 'column', children: [button('refresh', 'Atualizar', 'status'),
-        Button({ key: 'help', label: showHelp ? 'Ocultar ajuda' : 'Ajuda', plain: true, onPress: guarded(() => {
-          showHelp = !showHelp; $.ui.invalidate('ui.render');
-        }) }),
-        Button({ key: 'close', label: 'Fechar', plain: true, onPress: () => $.ui.close({ id: PANE }) })] }),
-      ...(enabled().length >= 2 ? [button('start-all', 'Iniciar Todos', 'start', 'all', allAllowed())] : []),
-      ...visible().flatMap(id => [text(' ', { key: `gap-${id}` }), block(id)]),
-      ...(!visible().length ? [text('Nenhum módulo ativado neste workspace.', { dimColor: true }),
-        text('Configure .claude/test-progress.json; consulte /test-progress help.', { dimColor: true })] : []),
-      text(`Cadastro: ${workspace?.moduleConfig?.status ?? 'não consultado'} · .claude/test-progress.json`, { dimColor: true }),
-      ...(workspace?.error ? [text(`Configuração: ${workspace.error}`, { color: 'red' })] : []),
-      ...(workspace?.moduleConfig?.diagnostics ?? []).map(item => text(`Configuração: ${diagnosticText(item)}`, { color: 'red' })),
-      ...(stateDiagnostics['*'] ?? []).map(item => text(`Estado: ${diagnosticText(item)}`, { color: 'red' })),
-      ...(lastError ? [text(lastError, { color: 'red' })] : []),
-      ...(registrationError ? [text(`Registro: ${registrationError}`, { color: 'red' })] : []),
-      ...(showHelp ? HELP.split('\n').map(line => text(line, { dimColor: true })) : []),
-      ...(chooseLogs ? [text('Escolha um módulo para ver os logs.', { dimColor: true })] : []),
-      ...(selectedLogs ? [text(`LOGS · ${selectedLogs.id} · ${selectedLogs.runId} · últimas 12 linhas`, { bold: true }),
-        ...(logChanged ? [text('A execução mudou. Os logs selecionados foram preservados.', { color: 'yellow' }),
-          ...(jobs[selectedLogs.id] ? [button('select-current-logs', 'Ver logs da execução atual', 'logs', selectedLogs.id)] : [])] : []),
-        ...logTail.slice(-12).map((line, i) => text(line, { key: `log-${selectedLogs.runId}-${i}`, wrap: 'truncate' })),
-        Button({ key: 'hide-logs', label: 'Ocultar logs', plain: true, onPress: guarded(() => {
-          selectedLogs = null; logTail = []; chooseLogs = false; $.ui.invalidate('ui.render');
+      const open = selectedLogs?.id === id;
+      return [
+        ...(job ? [Button({ key: `logs-${id}`, label: '≡', plain: true, dimColor: busy && !open, onPress: guarded(async () => {
+          if (open && !chooseLogs) { selectedLogs = null; logTail = []; $.ui.invalidate('ui.render'); return; }
+          await perform($, 'logs', id, expected);
         }) })] : []),
+        ...(job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ? [button(`cancel-${id}`, '■', 'cancel', id)] :
+          module?.enabled ? [button(`start-${id}`, '▶', 'start', id, startAllowed(id))] : []),
+      ];
+    };
+    const progress = (id, cells) => {
+      const job = jobs[id];
+      if (!job) return [text('—', { key: 'none', color: 'inactive' })];
+      if (job.recoveryRequired) return [text('órfão: processo ainda vivo', { key: 'orphan', color: 'error' })];
+      const { color } = statusGlyph(job);
+      const stopping = job.phase === 'cancellation-requested';
+      return [
+        Box({ key: 'bar', width: cells + 1, children: [text(progressBar(job, cells), { color: stopping ? 'inactive' : color })] }),
+        Box({ key: 'pct', width: 11, children: [text(compactPercent(job), { dimColor: stopping })] }),
+        ...(stopping ? [text('parando…', { key: 'stopping', color: 'inactive' })] :
+          compactCounts(job).map(count => text(`${count.text} `, { key: count.text, color: count.color }))),
+      ];
+    };
+    const logBlock = id => {
+      if (selectedLogs?.id !== id) return [];
+      const changed = jobs[id]?.runId !== selectedLogs.runId;
+      const lines = logTail.slice(-12);
+      return [Box({ key: `log-${id}`, flexDirection: 'column', paddingLeft: 2, children: [
+        ...(changed && jobs[id] ? [Box({ key: 'changed', flexDirection: 'row', gap: 1, children: [
+          text('│ nova execução', { color: 'inactive' }), button('select-current-logs', '↻', 'logs', id)] })] : []),
+        ...(lines.length ? lines.map((line, i) => text(`│ ${line}`, { key: `log-${selectedLogs.runId}-${i}`, wrap: 'truncate',
+          ...(/\b(ERROR|FAIL(ED|URE)?)\b/.test(line) ? { color: 'error' } : { dimColor: true }) })) :
+          [text('│ sem saída ainda', { key: 'empty', color: 'inactive' })]),
+      ] })];
+    };
+    const row = id => {
+      const job = jobs[id], module = modules[id];
+      const { glyph, color } = statusGlyph(job);
+      const time = job ? clock(job.elapsedMs) : '';
+      const head = [Box({ key: 'glyph', width: 2, children: [text(glyph, { color })] }),
+        Box({ key: 'name', ...(narrow ? { flexGrow: 1 } : { width: nameWidth }),
+          children: [text(names[id], { wrap: 'truncate', ...(module?.enabled ? {} : { dimColor: true }) })] })];
+      const tail = Box({ key: 'tail', flexDirection: 'row', flexGrow: 1, justifyContent: 'flex-end', gap: 1, children: [
+        ...(time ? [text(time, { key: 'time', dimColor: true })] : []), ...actions(id)] });
+      const problems = [...diagnostics(id).map(diagnosticText), ...(job?.error ? [job.error] : [])];
+      return Box({ key: `module-${id}`, flexDirection: 'column', children: [
+        ...(narrow ? [Box({ key: 'line', flexDirection: 'row', children: [...head, tail] }),
+          ...(job ? [Box({ key: 'progress', flexDirection: 'row', paddingLeft: 2, children: progress(id, 10) })] : [])] :
+          [Box({ key: 'line', flexDirection: 'row', children: [...head, ...progress(id, 12), tail] })]),
+        ...problems.slice(0, 2).map((item, i) => text(`  ${item}`, { key: `problem-${i}`, color: 'error', wrap: 'truncate' })),
+        ...logBlock(id),
+      ] });
+    };
+    const ids = visible();
+    const configured = ['absent', 'valid'].includes(workspace?.moduleConfig?.status ?? 'absent');
+    return Box({ key: 'module-list', flexDirection: 'column', children: [
+      Box({ key: 'toolbar', flexDirection: 'row', justifyContent: 'space-between', children: [
+        text(busy ? 'Test Progress …' : 'Test Progress', { key: 'title', dimColor: true }),
+        Box({ key: 'toolbar-actions', flexDirection: 'row', gap: 1, children: [
+          ...(enabled().length >= 2 ? [button('start-all', '▶ todos', 'start', 'all', allAllowed())] : []),
+          local('help', '?', () => { showHelp = !showHelp; })] })] }),
+      ...ids.map(row),
+      ...(!ids.length && configured && !workspace?.error ? [text('Nenhum módulo em .claude/test-progress.json', { key: 'empty', dimColor: true })] : []),
+      ...(chooseLogs ? [text('Escolha ≡ em um módulo.', { key: 'choose-logs', dimColor: true })] : []),
+      ...(selectedLogs && !ids.includes(selectedLogs.id) ? logBlock(selectedLogs.id) : []),
+      ...(workspace?.error ? [text(`Configuração: ${workspace.error}`, { key: 'config-error', color: 'error' })] : []),
+      ...(workspace?.moduleConfig?.diagnostics ?? []).map((item, i) => text(`Configuração: ${diagnosticText(item)}`, { key: `config-${i}`, color: 'error' })),
+      ...(stateDiagnostics['*'] ?? []).map((item, i) => text(`Estado: ${diagnosticText(item)}`, { key: `state-${i}`, color: 'error' })),
+      ...(lastError ? [text(lastError, { key: 'last-error', color: 'error' })] : []),
+      ...(registrationError ? [text(`Registro: ${registrationError}`, { key: 'registration', color: 'error' })] : []),
+      ...(showHelp ? LEGEND.map((line, i) => text(line, { key: `legend-${i}`, dimColor: true })) : []),
     ] });
   });
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const existing = await next(e);
+    if (e.props?.hasSurvey) return existing;
+    const live = id => ACTIVE.has(jobs[id].status) || jobs[id].recoveryRequired;
+    const failed = id => ['failed', 'error'].includes(jobs[id].status) || (jobs[id].failed ?? 0) > 0;
     const ids = visible().filter(id => jobs[id]);
-    if (e.props?.hasSurvey || !ids.length) return existing;
-    ids.sort((a, b) => Number(!!(ACTIVE.has(jobs[b].status) || jobs[b].recoveryRequired)) - Number(!!(ACTIVE.has(jobs[a].status) || jobs[a].recoveryRequired)));
+    const active = ids.filter(live), unseenFailures = ids.filter(id => !live(id) && failed(id) && !seenRuns.has(jobs[id].runId));
+    // Nothing running and nothing new to report: the band steps aside.
+    if (!active.length && !unseenFailures.length) return existing;
+    const passed = ids.filter(id => !live(id) && !failed(id) && jobs[id].status === 'completed');
+    const shown = [...active, ...unseenFailures, ...passed];
     const { Box, Text } = $.ui.resolve(e);
+    const names = displayNames();
+    const span = (key, value, props = {}) => Text({ key, ...props, children: [value] });
+    const item = id => {
+      const job = jobs[id], { glyph, color } = statusGlyph(job);
+      const parts = [span('glyph', `${glyph} `, { color }), span('name', names[id])];
+      if (job.recoveryRequired) parts.push(span('state', ' órfão', { color: 'error' }));
+      else if (live(id)) {
+        const pct = compactPercent(job);
+        parts.push(pct === '—' ? span('resolved', ` ${job.resolved ?? 0} resolvidos`, { dimColor: true }) : span('pct', ` ${pct}`));
+      }
+      if (!job.recoveryRequired && (job.failed ?? 0) > 0) parts.push(span('failed', ` ✗${job.failed}`, { color: 'error' }));
+      return Box({ key: `summary-${id}`, flexDirection: 'row', children: parts });
+    };
+    const children = [];
+    shown.slice(0, 3).forEach((id, i) => { if (i) children.push(span(`sep-${i}`, '  ·  ', { dimColor: true })); children.push(item(id)); });
+    if (shown.length > 3) children.push(span('more', `  ·  +${shown.length - 3}`, { dimColor: true }));
     return Box({ flexDirection: 'column', children: [...(existing ? [existing] : []),
-      ...ids.slice(0, 3).map(id => Text({ key: `summary-${id}`, dimColor: true, wrap: 'truncate', children: [shortSummary(id)] })),
-      ...(ids.length > 3 ? [Text({ dimColor: true, children: [`+${ids.length - 3} restante(s) · /test-progress`] })] : [])] });
+      Box({ key: 'band', flexDirection: 'row', overflow: 'hidden', children })] });
   });
 }
