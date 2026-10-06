@@ -105,7 +105,7 @@ configuração, estado, locks e ações. Linguagem é apenas uma dica visual.
 | `language` | Opcional, 1..40 caracteres sem controles |
 | `cwd` | Default `.`; relativo ao workspace, inclusive quando herdado de template |
 | `command` | Array não vazio de strings; um elemento por argumento, primeiro executável obrigatório |
-| `adapter` | `auto`, `events`, `maven` ou `karma`; default `auto` |
+| `adapter` | `auto`, `events`, `maven`, `karma` ou `exit`; default `auto` |
 | `runtime` | `inherit` ou `node-project`; default `inherit` |
 | `env` | Map de strings literais; default `{}` |
 | `order` | Inteiro; default 0; empate pelo ID ASCII |
@@ -145,6 +145,7 @@ Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do ap
 | `events` | Eventos `@@TEST_PROGRESS@@` dos [adapters](../adapters/README.md) |
 | `maven` | Resumos de classe Maven; total desconhecido durante a execução |
 | `karma` | Linhas `Executed … of …`; precisão depende do formato do log |
+| `exit` | Eventos, se houver; sem eles, só o exit code decide ✓/✗ (contagem desconhecida) |
 
 Todos os adapters podem ser usados por qualquer ID. Configurar um runner sem
 integração não cria contadores. Python, Ruby e Rails normalmente usam `inherit`
