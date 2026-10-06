@@ -3,6 +3,22 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Não lançado]
+
+### Windows
+
+- Controle mais leve: a DLL de `WindowsProcessHost.cs` fica em cache na raiz
+  privada do estado (só é carregada com dono confiável), raiz e diretório do
+  workspace são protegidos numa única chamada, e worker e coordenador reusam
+  por 2 s uma confirmação positiva de que o outro está vivo. Numa VM com
+  4 núcleos e pwsh 7, um job ativo caiu de 77% para 14% de CPU, cinco jobs de
+  100% para 39%, e o `start` de 1 módulo de 12 s para 5,6 s.
+- `-ExecutionPolicy Bypass` em cada PowerShell aberto pelo plugin e pelo Mod:
+  funciona com o padrão `Restricted` do Windows cliente, sem gravar política.
+  Group Policy continua prevalecendo.
+- `scripts/bench-windows.ps1` mede latência do `status`, `start`/`cancel` e CPU
+  com N módulos no Windows nativo.
+
 ## [0.4.0] - 2026-10-06
 
 Painel redesenhado, adapter `exit`, skill de configuração e Mod alinhado à

@@ -73,9 +73,15 @@ $env:TEST_PROGRESS_POWERSHELL = (Get-Command pwsh.exe -CommandType Application).
 Essa variável fica no processo atual e seus filhos; não é gravada globalmente.
 
 Cada operação do coletor no Windows abre processos PowerShell curtos de
-controle (diretório privado, identidade e estado de processos). Cada chamada é
+controle (diretório privado, identidade e estado de processos). A primeira
+chamada compila `WindowsProcessHost.cs` e guarda a DLL na raiz privada do
+estado, em TEMP, com hash do código e versão do runtime no nome. As seguintes
+carregam essa DLL se o dono for o usuário, Administrators ou SYSTEM; qualquer
+dúvida volta a compilar. Enquanto há jobs ativos, worker e coordenador conferem
+se o outro continua vivo; no Windows, uma resposta positiva vale por 2 s antes
+de nova consulta, e uma negativa é sempre reconsultada. Cada chamada é
 limitada por padrão a **7500 ms** no 5.1 e **15000 ms** no 7 (`pwsh.exe`), que
-inicia mais devagar. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
+inicia mais devagar a frio. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
 limite para o engine em uso; a variável vale para os dois:
 
 ```powershell
@@ -90,8 +96,11 @@ aborta o start sem executar comandos, e no tempo que o Mod espera pelo coletor
 `status` antes de repetir a ação.
 
 Os scripts usam `-NoProfile`, parâmetros escalares no bootstrap e UTF-8 BOM
-para leitura correta em 5.1. A política de execução existente é respeitada;
-o plugin não muda `ExecutionPolicy`, assinatura ou políticas da organização.
+para leitura correta em 5.1. Cada PowerShell que o plugin abre recebe
+`-ExecutionPolicy Bypass`, que vale só para aquele processo: funciona com o
+padrão `Restricted` do Windows cliente sem gravar política. O plugin não muda
+`ExecutionPolicy` persistente, assinatura ou políticas da organização; política
+definida por Group Policy continua prevalecendo e pode bloquear os scripts.
 
 ## Descoberta de Node e nvm-windows
 

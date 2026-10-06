@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
-import { environmentValue } from './runtime.mjs';
+import { environmentValue, stateRoot } from './runtime.mjs';
 
 const script = fileURLToPath(new URL('../runtime/windows-process.ps1', import.meta.url));
 let selfIdentity = null;
@@ -20,8 +20,8 @@ export function windowsPowerShell(environment = process.env) {
   if (fs.existsSync(builtIn)) return builtIn;
   throw new Error('Windows PowerShell 5.1 ausente; configure TEST_PROGRESS_POWERSHELL com o caminho absoluto de pwsh.exe');
 }
-// Per-call limit for PowerShell control processes. PowerShell 7 starts slower than
-// 5.1 (each call compiles WindowsProcessHost.cs), so its default is higher. The
+// Per-call limit for PowerShell control processes. A cold PowerShell 7 call is slower
+// than 5.1 (it compiles WindowsProcessHost.cs until the cached DLL exists), so its default is higher. The
 // variable overrides either engine; the ceiling is the batch preparation deadline
 // and an invalid value is an error, never a silent fallback.
 export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, min: 1000, max: 30000 });
@@ -36,8 +36,11 @@ export function windowsControlTimeout(environment = process.env, engine = null) 
   }
   return timeout;
 }
+// Process-scoped Bypass lets the helpers run under the client default (Restricted)
+// without changing any persistent policy; Group Policy still takes precedence.
+export const POWERSHELL_FLAGS = Object.freeze(['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass']);
 function argumentsFor(action, parameters) {
-  return ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', script, '-Action', action, ...parameters];
+  return [...POWERSHELL_FLAGS, '-File', script, '-Action', action, '-CacheDirectory', stateRoot(), ...parameters];
 }
 function control(action, parameters, attempts = 1) {
   const engine = windowsPowerShell();
@@ -168,13 +171,14 @@ export function windowsKillOwnedBroker(identity) {
   const value = control('Kill', identityArguments(identity));
   if (value.killed !== true) throw new Error('O broker Windows não confirmou encerramento');
 }
-export function windowsSecureDirectory(directory) {
+export function windowsSecureDirectory(directory, child = null) {
   if (!path.win32.isAbsolute(directory)) throw new Error('Diretório Windows precisa ser absoluto');
+  if (child !== null && path.win32.dirname(child) !== directory) throw new Error('Subdiretório Windows precisa estar direto na raiz');
   // The first control process of a CLI call compiles WindowsProcessHost.cs; a cold
   // PowerShell 7 start can exceed the timeout. Retrying is safe: creation is atomic
   // with a protected DACL and an existing directory is only verified, never repaired.
   // Deadline-bound queries are not retried; they already fail closed as unknown.
-  const value = control('SecureDirectory', ['-Directory', directory], 2);
+  const value = control('SecureDirectory', ['-Directory', directory, ...(child === null ? [] : ['-Child', child])], 2);
   if (value.secured !== true) throw new Error('DACL do diretório Windows não confirmada');
 }
 export function windowsLaunchCoordinator(collector, request) {

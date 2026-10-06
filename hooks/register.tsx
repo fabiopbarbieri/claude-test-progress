@@ -134,7 +134,7 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   else if (windows) {
     const override = await $.env.get('TEST_PROGRESS_POWERSHELL'), systemRoot = await $.env.get('SystemRoot');
     argv = [override || (systemRoot ? `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : 'powershell.exe'),
-      '-NoLogo', '-NoProfile', '-NonInteractive', '-File', `${$.plugin.root}/scripts/run-collector.ps1`,
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', `${$.plugin.root}/scripts/run-collector.ps1`,
       '-Action', action, '-Cwd', context.cwd, '-Owner', context.owner, '-Module', moduleId];
   } else argv = ['bash', `${$.plugin.root}/scripts/run-collector.sh`, action,
     '--cwd', context.cwd, '--owner', context.owner, '--module', moduleId];

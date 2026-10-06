@@ -3,7 +3,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { Progress } from './progress.mjs';
 import { readJson, atomicJson, files, releaseLock, timestamp, ownedClaim, updateClaim, updateSnapshot, validRecord, jobFile, securePath } from './state.mjs';
-import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
+import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, killOwnedOrphan, WINDOWS_LIVENESS_MS } from './process-identity.mjs';
 import { removePath, mergeEnvironment } from './runtime.mjs';
 import { windowsSpawnSpec } from './windows-process.mjs';
 import { windowsProof, windowsCompletion } from './windows-proof.mjs';
@@ -136,18 +136,22 @@ function cancel(reason = 'cancellation-requested') {
   try { persist({ phase: reason, cancellationRequestedAt: timestamp() }); }
   catch (error) { fatalError = fatalError ?? error.message; }
 }
-function checkCancellation() {
-  if (child?.pid && !ended && !sameProcess(readBatch(job.directory, job.batchId).coordinatorIdentity)) {
-    fatalError = fatalError ?? 'Coordenador perdido durante execução';
-    compensate(fatalError);
-    cancel('supervision-lost');
+let coordinatorSeenAt = -Infinity;
+function checkCancellation(force = false) {
+  if (child?.pid && !ended && (force || !windows || Date.now() - coordinatorSeenAt >= WINDOWS_LIVENESS_MS)) {
+    if (sameProcess(readBatch(job.directory, job.batchId).coordinatorIdentity)) coordinatorSeenAt = Date.now();
+    else {
+      fatalError = fatalError ?? 'Coordenador perdido durante execução';
+      compensate(fatalError);
+      cancel('supervision-lost');
+    }
   }
   refreshWindowsProof();
   if (validRecord(readJson(locations.cancel), job.moduleId, job.runId)) cancel();
 }
 async function finish(code, signal) {
   if (ended) return;
-  try { checkCancellation(); }
+  try { checkCancellation(true); }
   catch (error) { fatalError = fatalError ?? error.message; cancelling = true; }
   ended = true;
   clearInterval(poll);
