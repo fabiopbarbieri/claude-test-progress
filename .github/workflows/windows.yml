@@ -2,6 +2,7 @@ name: Windows modules
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -19,8 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shell: [powershell, pwsh]
-        node: ['14.0.0', '24']
+        include:
+          - shell: powershell
+            node: '14.0.0'
+          - shell: pwsh
+            node: '24'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
