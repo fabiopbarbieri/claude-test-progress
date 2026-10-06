@@ -6,7 +6,7 @@
 O plugin `test-progress` apresenta os módulos declarados no seu workspace,
 com contadores, estado e logs por ID. É um
 [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.3.0**, licença **MIT**.
+independente da Anthropic. Versão **0.4.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal:
 
 ```text
@@ -47,7 +47,7 @@ O plugin não instala runners, browsers ou runtimes.
 
 | Base ou integração | Alcance e limite |
 | --- | --- |
-| Claude Code / coletor | Claude **2.1.287+**, Node **14+** para o coletor |
+| Claude Code / coletor | Claude **2.1.289+**, Node **14+** para o coletor |
 | Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio, ainda sem aceite registrado |
 | Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
 | Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |

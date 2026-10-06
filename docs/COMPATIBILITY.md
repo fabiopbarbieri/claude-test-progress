@@ -2,7 +2,7 @@
 
 [Início](../README.md) · [Uso](USAGE.md) · [Diagnóstico](TROUBLESHOOTING.md)
 
-Matriz da versão **0.3.0**. Requisito declarado é o contrato pretendido; versão
+Matriz da versão **0.4.0**. Requisito declarado é o contrato pretendido; versão
 testada é uma combinação concreta exercitada na CI ou localmente. Nenhuma linha
 implica que todas as combinações entre versões e sistemas foram exercitadas.
 Confira a CI do commit que instalar; resultados e limites em [VALIDATION](VALIDATION.md).
@@ -21,7 +21,7 @@ ilegível no namespace bloqueia novos starts até ser resolvido.
 
 | Componente / sistema | Requisito ou caminho | Testado | Limite |
 | --- | --- | --- | --- |
-| Claude Code | 2.1.287+, com Mods permitido ([launch.sh](../launch.sh), [launch.ps1](../launch.ps1)) | Test kit do Mod na CI com 2.1.289; painel e faixa em sessão real com 2.1.290 no Linux | Não prova todas as versões posteriores nem o Claude Desktop |
+| Claude Code | 2.1.289+ (`$.state`, `$.ui.panes`), com Mods permitido ([launch.sh](../launch.sh), [launch.ps1](../launch.ps1)) | Test kit do Mod na CI com 2.1.289; painel e faixa em sessão real com 2.1.290 no Linux | Não prova todas as versões posteriores nem o Claude Desktop |
 | Coletor | Node >=14.0.0, sem dependências npm | CI com Node 14.0.0 e 24 | O Node do app é independente |
 | Linux | Bash; GNU `sort -V` para descoberta nvm; recuperação por `/proc` | Todos os workflows em `ubuntu-24.04` | Não é uma matriz de distribuições |
 | WSL | Caminho Linux quando Claude e toolchain rodam dentro do WSL | Roteamento em [hooks/register.tsx](../hooks/register.tsx) | Sem aceite próprio; não misture executáveis Windows com a recuperação Linux |

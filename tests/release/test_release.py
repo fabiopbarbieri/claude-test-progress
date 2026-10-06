@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("release_check", ROOT / "scripts/check-release.py")
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
+# The shipped manifest moves with each release; these checks follow it.
+CURRENT = json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"]
 
 
 class MetadataTests(unittest.TestCase):
@@ -27,8 +29,8 @@ class MetadataTests(unittest.TestCase):
         path.write_text(json.dumps(data))
 
     def test_manifest_is_version_source(self):
-        version, notes = release.check_metadata(self.root, "0.3.0")
-        self.assertEqual(version, "0.3.0")
+        version, notes = release.check_metadata(self.root, CURRENT)
+        self.assertEqual(version, CURRENT)
         self.assertTrue(notes)
         with self.assertRaisesRegex(ValueError, "Unexpected manifest"):
             release.check_metadata(self.root, "0.0.1")
@@ -65,7 +67,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(release.release_notes(self.root, "0.3.0"), "New behavior")
 
     def test_release_heading_requires_valid_date_when_dated(self):
-        release.check_metadata(self.root, "0.3.0", dated=True)
+        release.check_metadata(self.root, CURRENT, dated=True)
         for heading in ("## [0.3.0] - Pending", "## [0.3.0] - 2026-13-40", "## [0.3.0]", "## [0.3.0] - 2026-10-05 draft"):
             with self.subTest(heading=heading):
                 (self.root / "CHANGELOG.md").write_text(heading + "\n\nNotes\n")

@@ -3,7 +3,16 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-06
+
+Painel redesenhado, adapter `exit`, skill de configuração e Mod alinhado à
+documentação de Mods do Claude Code.
+
+### Requisito
+
+- Claude Code **2.1.289+** (antes 2.1.287+): o Mod usa `$.state`, `$.ui.panes` e
+  `$.ui.close`, cobertos pelo test kit da CI nessa versão. Os launchers recusam
+  versões anteriores.
 
 ### Skill
 
@@ -36,6 +45,15 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - Novo adapter `exit`: aceita eventos `@@TEST_PROGRESS@@` quando existirem e,
   sem eles, decide ✓/✗ só pelo exit code (contagem desconhecida). Serve para
   suítes sem integração, como `scripts/check.py` e `claude plugin test`.
+  O painel mostra `exit 0` / `exit N` como resultado.
+
+### Limites
+
+- O hot reload preservando o painel e o botão `×` foram cobertos pelo test kit;
+  o aceite visual em sessão real desta versão está pendente.
+- O listener JUnit continua `0.3.0`: o artefato não mudou.
+- `tsc` checa o Mod apenas onde o Claude gerou `.claude-plugin/types`; a CI não
+  roda essa checagem. Windows nativo segue sem aceite registrado.
 
 ## [0.3.0] - 2026-10-05
 

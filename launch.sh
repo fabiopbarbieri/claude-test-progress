@@ -19,8 +19,8 @@ fi
 major="${BASH_REMATCH[1]}"
 minor="${BASH_REMATCH[2]}"
 patch="${BASH_REMATCH[3]}"
-if (( major < 2 || (major == 2 && minor < 1) || (major == 2 && minor == 1 && patch < 287) )); then
-  printf 'Mods requer Claude 2.1.287+. Encontrado: %s\n' "$claude_version" >&2
+if (( major < 2 || (major == 2 && minor < 1) || (major == 2 && minor == 1 && patch < 289) )); then
+  printf 'Mods requer Claude 2.1.289+. Encontrado: %s\n' "$claude_version" >&2
   printf 'Use CLAUDE_BIN=/caminho/do/claude-atualizado bash %s/launch.sh\n' "$prototype_root" >&2
   exit 1
 fi
