@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { performance } from 'perf_hooks';
+import { managed } from './windows-process.mjs';
 
 // The broker replaces the proof with File.Replace. Opening it during that window can
 // briefly fail with a sharing error; retry only those codes, within the same budget
@@ -46,12 +47,8 @@ export function windowsProof(jobPath, runId, expectedPid = null) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   if (!proof || proof.schema !== 1 || proof.runId !== runId || proof.contained !== true) return null;
   const identity = proof.brokerIdentity;
-  if (!identity || identity.platform !== 'win32' || identity.managedBroker !== true || identity.contained !== true ||
-      !Number.isInteger(identity.pid) || identity.pid <= 0 ||
-      (expectedPid !== null && identity.pid !== expectedPid) ||
-      typeof identity.startTime !== 'string' || !/^\d+$/.test(identity.startTime) ||
-      typeof identity.owner !== 'string' || !/^S-\d+(?:-\d+)+$/.test(identity.owner) ||
-      !Number.isInteger(identity.sessionId) || identity.sessionId < 0 ||
+  // managed() authenticates the broker identity; the proof adds its run and expected PID.
+  if (!managed(identity) || (expectedPid !== null && identity.pid !== expectedPid) ||
       identity.jobName !== `Local\\claude-test-progress-${runId}` || proof.jobName !== identity.jobName ||
       typeof proof.treeEmpty !== 'boolean') return null;
   return proof;
