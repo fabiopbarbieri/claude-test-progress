@@ -111,7 +111,18 @@ function privateDirectory(directory) {
   securePath(directory, true);
   fs.chmodSync(directory, 0o700);
 }
-export function namespace(cwd, owner) {
+// Windows: a verified private DACL can only be changed by its owner or an administrator,
+// so read-only calls may reuse a verification recorded in the private root for this long.
+// Type, link and real-path checks still run on every call; mutating calls always re-verify.
+const ACL_REUSE_MS = 10 * 60 * 1000;
+function aclVerifiedRecently(marker, directory) {
+  try {
+    const record = readJson(marker);
+    const age = Date.now() - Date.parse(record?.verifiedAt);
+    return record?.schemaVersion === SCHEMA_VERSION && record.directory === directory && age >= 0 && age < ACL_REUSE_MS;
+  } catch { return false; }
+}
+export function namespace(cwd, owner, { reuseVerifiedAcl = false } = {}) {
   if (!path.isAbsolute(cwd)) throw new Error('--cwd precisa ser absoluto');
   cwd = fs.realpathSync(cwd);
   if (!fs.statSync(cwd).isDirectory()) throw new Error('--cwd precisa ser um diretório');
@@ -123,9 +134,15 @@ export function namespace(cwd, owner) {
     // Create with an explicit user SID: elevated Windows otherwise defaults to
     // the Administrators group, which cannot authenticate this private state.
     // One control call secures the root and then the workspace directory.
-    windowsSecureDirectory(root, directory);
-    securePath(root, true);
-    securePath(directory, true);
+    const marker = path.join(root, `acl-${id}.json`);
+    const present = reuseVerifiedAcl && securePath(root, true, true) && securePath(directory, true, true);
+    if (!present || !aclVerifiedRecently(marker, directory)) {
+      windowsSecureDirectory(root, directory);
+      securePath(root, true);
+      securePath(directory, true);
+      try { atomicJson(marker, { schemaVersion: SCHEMA_VERSION, directory, verifiedAt: timestamp() }); }
+      catch { /* Without a marker the next call verifies again. */ }
+    }
   } else {
     privateDirectory(root);
     privateDirectory(directory);
@@ -234,6 +251,19 @@ export function stateIds(directory) {
   }
   return [...ids].sort();
 }
+// Windows: a running worker rewrites its snapshot heartbeat every 5 s. A fresh heartbeat
+// plus an existing worker PID answers "alive" for this read without starting PowerShell.
+// A stale heartbeat or a missing PID falls back to the authenticated query, and any
+// recovery still re-authenticates under the mutation gate; liveness never authorizes a kill.
+const HEARTBEAT_FRESH_MS = 15000;
+function workerBeating(snapshot, claim) {
+  const identity = claim?.workerIdentity;
+  if (!validRecord(claim, snapshot.moduleId, snapshot.runId) || !validProcessIdentity(identity) || snapshot.workerPid !== identity.pid) return false;
+  const age = Date.now() - Date.parse(snapshot.heartbeatAt);
+  if (!(age >= 0 && age < HEARTBEAT_FRESH_MS)) return false;
+  try { process.kill(identity.pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+}
 export function inspectState(directory, { recover = true } = {}) {
   securePath(directory, true);
   const jobs = Object.create(null);
@@ -242,6 +272,7 @@ export function inspectState(directory, { recover = true } = {}) {
   const diagnose = (id, message, global = false, code = 'state-unavailable') => { (stateDiagnostics[id] || (stateDiagnostics[id] = [])).push({ code, message, blocking: true }); if (global) blocked = true; };
   const ids = stateIds(directory);
   const queried = new Map();
+  const beating = new Set();
   if (recover && process.platform === 'win32') {
     for (const moduleId of ids) {
       try {
@@ -249,6 +280,7 @@ export function inspectState(directory, { recover = true } = {}) {
         const snapshot = readJson(loc.snapshot);
         if (!snapshot || (!ACTIVE.has(snapshot.status) && !snapshot.recoveryRequired)) continue;
         const claim = readJson(loc.claim);
+        if (workerBeating(snapshot, claim)) { beating.add(moduleId); continue; }
         for (const identity of [claim?.workerIdentity, claim?.coordinatorIdentity, claim?.launchIdentity]) {
           if (validProcessIdentity(identity)) queried.set(JSON.stringify(identity), identity);
         }
@@ -340,7 +372,7 @@ export function inspectState(directory, { recover = true } = {}) {
       let current = snapshot;
       if (ACTIVE.has(snapshot.status) || snapshot.recoveryRequired) {
         if (!claim) { diagnose(moduleId, 'Execução ativa sem claim autenticado.'); }
-        else if (recover && !alive(claim.workerIdentity) && !alive(claim.coordinatorIdentity) && !alive(claim.launchIdentity)) {
+        else if (recover && !beating.has(moduleId) && !alive(claim.workerIdentity) && !alive(claim.coordinatorIdentity) && !alive(claim.launchIdentity)) {
           current = mutateLock(directory, moduleId, () => {
             // Liveness can take seconds on Windows. Read again under the same gate used by workers.
             const latest = readJson(loc.snapshot);

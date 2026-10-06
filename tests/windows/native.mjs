@@ -6,7 +6,8 @@ import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { namespace, files, readJson, jobFile, atomicJson } from '../../runner/state.mjs';
 import { windowsProof } from '../../runner/windows-proof.mjs';
-import { windowsGroupState, windowsKillOwnedBroker } from '../../runner/windows-process.mjs';
+import { windowsGroupState, windowsKillOwnedBroker, windowsSameProcess } from '../../runner/windows-process.mjs';
+import { readBatch } from '../../runner/module-batch.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 
 assert.strictEqual(process.platform, 'win32', 'Native Windows APIs must actually execute');
@@ -360,6 +361,41 @@ async function main() {
     assertEmpty(lostBroker.brokerIdentity);
     assertEmpty(compensated.brokerIdentity);
     console.log('Authenticated broker loss, Job Object tree cleanup and detached batch compensation: OK');
+
+    // Workers see their coordinator end through the stdin pipe it holds, without polling PowerShell.
+    start();
+    state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
+    const orphanedApi = captureTree('api', state.jobs.api);
+    const orphanedBilling = captureTree('billing', state.jobs.billing);
+    const coordinator = readBatch(context.directory, state.jobs.api.batchId).coordinatorIdentity;
+    assert(windowsSameProcess(coordinator), 'Coordinator identity must be authenticated before it is killed');
+    const coordinatorKilledAt = Date.now();
+    process.kill(coordinator.pid);
+    state = await waitFor(value => ['api', 'billing'].every(id => value.jobs[id].status === 'error' &&
+      value.jobs[id].infrastructureFailure === true), 45000, ['api', 'billing']);
+    const pipeReaction = Date.now() - coordinatorKilledAt;
+    assert(pipeReaction < 15000, `Workers took ${pipeReaction} ms to observe the lost coordinator`);
+    for (const id of ['api', 'billing']) assert.match(state.jobs[id].error, /Coordenador perdido/);
+    assertEmpty(orphanedApi.brokerIdentity);
+    assertEmpty(orphanedBilling.brokerIdentity);
+    console.log(`Coordinator loss observed through the worker pipe in ${pipeReaction} ms; trees empty: OK`);
+
+    // The coordinator sees a launched worker end through its exit event and aborts the batch.
+    start();
+    state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
+    const lostWorkerTree = captureTree('api', state.jobs.api);
+    const siblingTree = captureTree('billing', state.jobs.billing);
+    const lostWorker = readJson(files(context.directory, 'api').claim).workerIdentity;
+    assert(windowsSameProcess(lostWorker), 'Worker identity must be authenticated before it is killed');
+    const workerKilledAt = Date.now();
+    process.kill(lostWorker.pid);
+    state = await waitFor(value => value.jobs.api.infrastructureFailure === true && !['preparing', 'running'].includes(value.jobs.api.status) &&
+      value.jobs.billing.status === 'cancelled', 45000, ['api']);
+    const exitReaction = Date.now() - workerKilledAt;
+    assert(exitReaction < 15000, `Coordinator took ${exitReaction} ms to observe the lost worker`);
+    assertEmpty(lostWorkerTree.brokerIdentity);
+    assertEmpty(siblingTree.brokerIdentity);
+    console.log(`Worker loss observed through its exit event in ${exitReaction} ms; batch compensated, trees empty: OK`);
     safeToRemove = true;
   } finally {
     try { collect('cancel'); } catch { /* Preserve uncertain state for inspection. */ }

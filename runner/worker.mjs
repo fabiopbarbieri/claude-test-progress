@@ -13,6 +13,16 @@ import { SCHEMA_VERSION } from './schema.mjs';
 async function main() {
 
 const jobPath = process.argv[2];
+// Windows: the coordinator holds our stdin pipe; its close means the coordinator ended.
+const coordinatorPipe = process.platform === 'win32' && process.argv[3] === '--coordinator-pipe';
+let coordinatorGone = false;
+if (coordinatorPipe) {
+  process.stdin.on('error', () => { coordinatorGone = true; });
+  process.stdin.on('close', () => { coordinatorGone = true; });
+  process.stdin.on('end', () => { coordinatorGone = true; });
+  process.stdin.on('data', () => { /* The coordinator never writes; discard. */ });
+  process.stdin.unref?.();
+}
 const job = readJson(jobPath);
 if (!job || !validRecord(job, job.moduleId) || jobPath !== jobFile(job.directory, job.moduleId, job.runId)) throw new Error('Arquivo de execução inválido');
 securePath(job.directory, true);
@@ -137,9 +147,17 @@ function cancel(reason = 'cancellation-requested') {
   catch (error) { fatalError = fatalError ?? error.message; }
 }
 let coordinatorSeenAt = -Infinity;
+let coordinatorAuthenticated = false;
+// The pipe answers only after one authenticated check that the recorded coordinator is alive.
+function coordinatorAlive(identity) {
+  if (coordinatorPipe && coordinatorAuthenticated) return !coordinatorGone;
+  const alive = sameProcess(identity);
+  if (alive && coordinatorPipe && !coordinatorGone) coordinatorAuthenticated = true;
+  return alive && !coordinatorGone;
+}
 function checkCancellation(force = false) {
-  if (child?.pid && !ended && (force || !windows || Date.now() - coordinatorSeenAt >= WINDOWS_LIVENESS_MS)) {
-    if (sameProcess(readBatch(job.directory, job.batchId).coordinatorIdentity)) coordinatorSeenAt = Date.now();
+  if (child?.pid && !ended && (force || !windows || coordinatorPipe || Date.now() - coordinatorSeenAt >= WINDOWS_LIVENESS_MS)) {
+    if (coordinatorAlive(readBatch(job.directory, job.batchId).coordinatorIdentity)) coordinatorSeenAt = Date.now();
     else {
       fatalError = fatalError ?? 'Coordenador perdido durante execução';
       compensate(fatalError);
@@ -250,7 +268,7 @@ for (;;) {
     await finish(null, null);
     return;
   }
-  if (!sameProcess(manifest.coordinatorIdentity)) throw new Error('Coordenador perdido antes da execução');
+  if (!coordinatorAlive(manifest.coordinatorIdentity)) throw new Error('Coordenador perdido antes da execução');
   if (Date.now() >= Date.parse(manifest.deadlineAt) && manifest.state === 'preparing') throw new Error('Prazo de preparação expirado');
   if (manifest.state === 'released') break;
   await pause();

@@ -8,6 +8,16 @@ import { SCHEMA_VERSION } from './schema.mjs';
 export const PREPARE_MS = 30000;
 export const ACK_MS = 10000;
 export const ABORT_MS = 10000;
+// Windows starts one PowerShell broker per module, and those starts contend for CPU.
+// Each selected module extends the preparation and spawn-acknowledgement deadlines,
+// capped so a start still answers within the Mod's 60 s wait.
+export const WINDOWS_MS_PER_MODULE = 1000;
+export function preparationMs(count, platform = process.platform) {
+  return platform === 'win32' ? Math.min(PREPARE_MS + WINDOWS_MS_PER_MODULE * count, 50000) : PREPARE_MS;
+}
+export function acknowledgementMs(count, platform = process.platform) {
+  return platform === 'win32' ? Math.min(ACK_MS + WINDOWS_MS_PER_MODULE * count, 40000) : ACK_MS;
+}
 export const pause = (ms = 25) => new Promise((resolve) => setTimeout(resolve, ms));
 export function batchFiles(directory, batchId) {
   if (!validRunId(batchId)) throw new Error('batchId inválido');

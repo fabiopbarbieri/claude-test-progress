@@ -6,7 +6,7 @@ import { processIdentity, processIdentities, sameProcess, sameProcesses, groupSt
 import { removePath } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
-import { batchFiles, readBatch, changeBatch, compensation, ACK_MS, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
+import { batchFiles, readBatch, changeBatch, compensation, acknowledgementMs, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
 
 async function main() {
@@ -71,19 +71,33 @@ async function main() {
     manifest = latest;
     return true;
   }
+  // On Windows every native liveness query starts PowerShell. A worker this coordinator
+  // launched is answered from its own ChildProcess instead: while the handle is open the
+  // PID cannot be reused, and the exit event is the kernel's answer. Only an identity
+  // that matches the authenticated launch identity takes this path.
+  const workerProcesses = new Map();
+  function launchedState(identity) {
+    if (process.platform !== 'win32' || !identity) return null;
+    for (const [moduleId, launch] of workerProcesses) {
+      const known = workerLaunches.get(moduleId);
+      if (known && identity.pid === known.pid && identity.startTime === known.startTime && identity.owner === known.owner) return !launch.exited;
+    }
+    return null;
+  }
   const seenAlive = new Map();
   // Supervision liveness: on Windows a recent positive answer is reused (see WINDOWS_LIVENESS_MS).
   function queryLiveness(identities) {
     if (process.platform !== 'win32') return sameProcesses(identities);
     const now = Date.now(), keys = identities.map(identity => JSON.stringify(identity));
-    const fresh = keys.map(key => now - (seenAlive.get(key) ?? -Infinity) < WINDOWS_LIVENESS_MS);
-    const stale = identities.filter((identity, index) => identity && !fresh[index]);
+    const launched = identities.map(launchedState);
+    const fresh = keys.map((key, index) => launched[index] === null && now - (seenAlive.get(key) ?? -Infinity) < WINDOWS_LIVENESS_MS);
+    const stale = identities.filter((identity, index) => identity && launched[index] === null && !fresh[index]);
     const answers = stale.length ? sameProcesses(stale) : [];
     stale.forEach((identity, index) => {
       if (answers[index]) seenAlive.set(JSON.stringify(identity), now);
       else seenAlive.delete(JSON.stringify(identity));
     });
-    return keys.map((key, index) => fresh[index] || seenAlive.get(key) === now);
+    return keys.map((key, index) => launched[index] ?? (fresh[index] || seenAlive.get(key) === now));
   }
   async function supervise() {
     manifest = readBatch(request.directory, request.batchId);
@@ -135,7 +149,7 @@ async function main() {
             const identity = snapshot.childIdentity ?? claim.childIdentity;
             if (canKillOwnedOrphan(identity)) killOwnedOrphan(identity);
           }
-        } else if (manifest.state === 'released' && !claim.spawnAcknowledgedAt && Date.now() > Date.parse(manifest.releasedAt) + ACK_MS) {
+        } else if (manifest.state === 'released' && !claim.spawnAcknowledgedAt && Date.now() > Date.parse(manifest.releasedAt) + acknowledgementMs(manifest.entries.length)) {
           cancelAll('Prazo de confirmação do spawn expirado');
         }
       } catch (error) {
@@ -160,11 +174,20 @@ async function main() {
     }
     // Every job and claim has passed preflight before the first worker is prepared.
     const launched = [];
+    const windows = process.platform === 'win32';
     for (const entry of manifest.entries) {
-      const worker = spawn(process.execPath, [workerPath, jobFile(request.directory, entry.moduleId, entry.runId)],
-        { detached: true, stdio: 'ignore', cwd: path.dirname(workerPath), windowsHide: true });
+      // On Windows the worker's stdin is a private pipe: it closes when this coordinator ends.
+      const worker = spawn(process.execPath, [workerPath, jobFile(request.directory, entry.moduleId, entry.runId), ...(windows ? ['--coordinator-pipe'] : [])],
+        { detached: true, stdio: [windows ? 'pipe' : 'ignore', 'ignore', 'ignore'], cwd: path.dirname(workerPath), windowsHide: true });
       await new Promise((resolve, reject) => { worker.once('error', reject); if (worker.pid) resolve(); });
       launched.push({ entry, pid: worker.pid });
+      if (windows) {
+        const launch = { child: worker, exited: false };
+        worker.once('exit', () => { launch.exited = true; });
+        worker.stdin.on('error', () => { /* A finished worker closes its end; exit reports it. */ });
+        worker.stdin.unref();
+        workerProcesses.set(entry.moduleId, launch);
+      }
       worker.unref();
     }
     const launchedIdentities = processIdentities(launched.map(value => value.pid));
@@ -183,7 +206,7 @@ async function main() {
         identities.push(claim.workerIdentity ?? workerLaunches.get(entry.moduleId));
         if (!claim.readyAt || !claim.workerIdentity) ready = false;
       }
-      if (sameProcesses(identities).some(value => !value)) throw new Error('Worker perdido durante preparação');
+      if (queryLiveness(identities).some(value => !value)) throw new Error('Worker perdido durante preparação');
       if (ready) break;
       if (stopping || Date.now() >= deadline) throw new Error('Prazo de preparação dos workers expirado');
       await pause();
@@ -200,7 +223,7 @@ async function main() {
             validRecord(readJson(files(request.directory, entry.moduleId).cancel), entry.moduleId, entry.runId)) throw new Error('Preparo mudou antes da liberação');
         identities.push(claim.workerIdentity);
       }
-      if (sameProcesses(identities).some(value => !value) || Date.now() >= deadline) throw new Error('Preparo ou prazo mudou antes da liberação');
+      if (queryLiveness(identities).some(value => !value) || Date.now() >= deadline) throw new Error('Preparo ou prazo mudou antes da liberação');
       // The native query can take seconds. Revalidate ownership once more before
       // committing release; the query result never substitutes for the current claim.
       for (const [index, entry] of current.entries.entries()) {
@@ -225,7 +248,9 @@ async function main() {
       changeBatch(request.directory, request.batchId, (value) => ({ ...value, supervisionError: 'Observação do aborto terminou sem confirmar todas as árvores; locks conservados.' }));
       break;
     }
-    await pause(75);
+    // Each pass reads every entry's batch, snapshot and claim; on Windows every open is
+    // also scanned by the antivirus, so the loop runs less often there.
+    await pause(process.platform === 'win32' ? 500 : 75);
   }
   changeBatch(request.directory, request.batchId, (value) => ({ ...value, supervisionEndedAt: timestamp() }));
   removePath(requestPath, { force: true });
