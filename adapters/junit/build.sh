@@ -3,7 +3,7 @@ set -euo pipefail
 
 adapter_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 build_dir="$adapter_dir/build"
-platform_version=1.11.3
+platform_version=1.14.4
 mkdir -p "$build_dir/deps" "$build_dir/classes"
 
 fetch_jar() {
