@@ -42,6 +42,12 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   Python, Java e outras ferramentas usam essa code page com a saída
   redirecionada; antes apareciam `�` no lugar dos acentos.
 
+### Coletor
+
+- `start` não é mais recusado quando coincide com a atualização do manifesto de
+  outro lote (gate de milissegundos): reavalia o estado por até 1 s antes de
+  recusar e, se recusar, informa o motivo.
+
 ### Mod
 
 - Resultado, tempo e ações de cada módulo ficam sempre alinhados à direita; o

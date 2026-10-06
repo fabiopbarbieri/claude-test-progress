@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { namespace, files, readJson, atomicJson } from '../../runner/state.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 const cli = fileURLToPath(new URL('../../runner/cli.mjs', import.meta.url));
@@ -75,6 +75,16 @@ async function main() {
     assert.strictEqual(collect('start', 'api').ok, true, 'a finished module can restart while sibling remains active');
     await new Promise(resolve => setTimeout(resolve, 250));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'old supervisor cannot compensate a safely finished run after its module restarts');
+    // A coordinator holds its batch gate for milliseconds; a start that meets it waits instead of refusing.
+    await waitFor(result => settled(result, 'api', 'failed'));
+    const gateBatch = randomUUID();
+    const gateManifest = path.join(context.directory, `batch.${gateBatch}.json`), gate = path.join(context.directory, `batch.${gateBatch}.mutation`);
+    atomicJson(gateManifest, { schemaVersion: 1, batchId: gateBatch, state: 'aborted', entries: [{ moduleId: 'api', runId: randomUUID() }] });
+    fs.mkdirSync(gate, { mode: 0o700 });
+    spawn(process.execPath, ['-e', `setTimeout(()=>{const fs=require('fs');fs.rmdirSync(${JSON.stringify(gate)});fs.unlinkSync(${JSON.stringify(gateManifest)});},300)`], { stdio: 'ignore' });
+    const gated = collect('start', 'api');
+    assert.strictEqual(gated.ok, true, `a transient batch gate must not refuse a start: ${gated.error}`);
+    assert(!fs.existsSync(gate), 'the start waited for the gate to clear');
     atomicJson(files(context.directory, 'foreign').snapshot, { version: 'other', module: 'foreign', runId: 'old' });
     const rejected = collect('start', 'api');
     assert.strictEqual(rejected.ok, false);

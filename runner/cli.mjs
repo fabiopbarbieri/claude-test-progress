@@ -45,9 +45,19 @@ function initialSnapshot(config, runId, batchId, codeRevision) {
 }
 async function start(selection, preparationStartedAt) {
   if (!selection.ids.length) throw new Error('Nenhum módulo habilitado para iniciar.');
-  const initialState = inspectState(context.directory);
+  // A coordinator holds its batch gate for milliseconds while it updates the manifest.
+  // Only a block that outlasts the gate's own one-second wait refuses the start.
+  let initialState = inspectState(context.directory);
+  const settleUntil = Date.now() + 1000;
+  while (initialState.blocked && Date.now() < settleUntil) {
+    await pause(50);
+    initialState = inspectState(context.directory);
+  }
   if (selection.ids.some(id => initialState.stateDiagnostics[id]?.some(item => item.blocking))) throw new Error('Módulo selecionado contém estado bloqueado; recuperação segura necessária.');
-  if (initialState.blocked) throw new Error('Namespace contém estado incompatível ou inseguro; novos starts bloqueados.');
+  if (initialState.blocked) {
+    const reason = (initialState.stateDiagnostics['*'] || []).map(item => item.message)[0];
+    throw new Error(`Namespace contém estado incompatível ou inseguro; novos starts bloqueados.${reason ? ` ${reason}` : ''}`);
+  }
   const deadlineAt = new Date(preparationStartedAt + preparationMs(selection.ids.length)).toISOString();
   if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preflight e preparação expirado antes da reserva.');
   const batchId = randomUUID();
