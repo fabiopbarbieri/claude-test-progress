@@ -97,7 +97,10 @@ claude plugin test .
 
 Os testes do Mod simulam respostas do coletor. Não equivalem a olhar ou operar
 o painel em uma sessão real. Tipos em `.claude-plugin/types` são gerados pelo
-Claude; `tsconfig.json` não é um gate independente antes dessa geração.
+Claude; `tsconfig.json` não é um gate independente antes dessa geração. Com os tipos
+gerados, `npx -p typescript@5 tsc -p .` checa `hooks/register.tsx`, o contrato de
+estado em `types/index.d.ts` e `runner/module-presentation.d.mts`; os testes ficam
+fora porque os fixtures são propositalmente parciais.
 
 Ao alterar contagem, observe seleção, falhas de preparação/finalização,
 interrupção, total desconhecido e zero testes. Preserve o
