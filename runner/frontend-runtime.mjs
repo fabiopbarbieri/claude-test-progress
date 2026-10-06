@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
-import { windowsPowerShell } from './windows-process.mjs';
+import { windowsPowerShell, POWERSHELL_FLAGS } from './windows-process.mjs';
 import { mergeEnvironment } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
 
@@ -33,7 +33,7 @@ export function frontendRuntime(cwd, environment, command, { runtime = 'node-pro
   let output;
   try {
     const executable = windows ? windowsPowerShell(inherited) : 'bash';
-    const args = windows ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', driver, '-Mode', 'project', '-Cwd', cwd] :
+    const args = windows ? [...POWERSHELL_FLAGS, '-File', driver, '-Mode', 'project', '-Cwd', cwd] :
       [driver, 'project', '--cwd', cwd];
     output = execFileSync(executable, args, {
       cwd, env: inherited, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],

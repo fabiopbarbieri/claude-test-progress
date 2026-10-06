@@ -12,6 +12,11 @@ function proc(pid) {
 function bootId() {
   return fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
 }
+// On Windows every liveness query starts a PowerShell process, so supervision loops
+// trust a positive answer this long before asking again. A process found absent
+// never comes back, and a negative or failed answer is always queried again.
+export const WINDOWS_LIVENESS_MS = 2000;
+
 export function processIdentity(pid) {
   if (process.platform === 'win32') return windowsIdentity(pid);
   if (process.platform !== 'linux' || !Number.isInteger(pid) || pid <= 0) return null;

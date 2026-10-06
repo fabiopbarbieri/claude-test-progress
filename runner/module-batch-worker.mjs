@@ -2,7 +2,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { readJson, atomicJson, files, ownedClaim, updateClaim, validRecord, jobFile, releaseLock, timestamp, ACTIVE, inspectState } from './state.mjs';
-import { processIdentity, processIdentities, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
+import { processIdentity, processIdentities, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, killOwnedOrphan, WINDOWS_LIVENESS_MS } from './process-identity.mjs';
 import { removePath } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
@@ -71,6 +71,20 @@ async function main() {
     manifest = latest;
     return true;
   }
+  const seenAlive = new Map();
+  // Supervision liveness: on Windows a recent positive answer is reused (see WINDOWS_LIVENESS_MS).
+  function queryLiveness(identities) {
+    if (process.platform !== 'win32') return sameProcesses(identities);
+    const now = Date.now(), keys = identities.map(identity => JSON.stringify(identity));
+    const fresh = keys.map(key => now - (seenAlive.get(key) ?? -Infinity) < WINDOWS_LIVENESS_MS);
+    const stale = identities.filter((identity, index) => identity && !fresh[index]);
+    const answers = stale.length ? sameProcesses(stale) : [];
+    stale.forEach((identity, index) => {
+      if (answers[index]) seenAlive.set(JSON.stringify(identity), now);
+      else seenAlive.delete(JSON.stringify(identity));
+    });
+    return keys.map((key, index) => fresh[index] || seenAlive.get(key) === now);
+  }
   async function supervise() {
     manifest = readBatch(request.directory, request.batchId);
     const queried = [];
@@ -80,7 +94,7 @@ async function main() {
       catch { queried.push(null); }
       queried.push(workerLaunches.get(entry.moduleId) ?? null);
     }
-    const present = sameProcesses(queried);
+    const present = queryLiveness(queried);
     const liveness = new Map(queried.map((identity, index) => [JSON.stringify(identity), present[index]]));
     const alive = identity => liveness.has(JSON.stringify(identity)) ? liveness.get(JSON.stringify(identity)) : sameProcess(identity);
     let allSafe = true;

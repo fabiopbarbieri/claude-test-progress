@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { randomBytes } from 'crypto';
 
@@ -6,6 +7,11 @@ import { randomBytes } from 'crypto';
 export function environmentValue(environment, name) {
   const key = Object.keys(environment).find((entry) => entry.toUpperCase() === name);
   return key === undefined ? undefined : environment[key];
+}
+
+// Per-user root of the private collector state; the Windows host assembly cache lives here too.
+export function stateRoot() {
+  return path.join(fs.realpathSync(os.tmpdir()), `claude-test-progress-${process.getuid?.() ?? 'user'}`);
 }
 
 export function mergeEnvironment(...environments) {

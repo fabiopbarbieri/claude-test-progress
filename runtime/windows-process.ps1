@@ -9,6 +9,8 @@
     [string] $JobName,
     [int] $SessionId = -1,
     [string] $Directory,
+    [string] $Child,
+    [string] $CacheDirectory,
     [string] $Collector,
     [string] $Queries,
     [int] $SelfProcessId
@@ -17,7 +19,52 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-Add-Type -Path (Join-Path $PSScriptRoot 'WindowsProcessHost.cs')
+
+# Compiling WindowsProcessHost.cs costs most of a short control call. Reuse an assembly
+# compiled earlier into the private state root, keyed by source hash and runtime. Only a
+# plain file owned by this user, Administrators or SYSTEM (elevated tokens create files
+# owned by Administrators) is loaded; any other doubt falls back to compiling in memory.
+function Test-TrustedAssembly([string] $Path) {
+    try {
+        $info = New-Object IO.FileInfo($Path)
+        if (-not $info.Exists -or ($info.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return $false }
+        $sections = [Security.AccessControl.AccessControlSections]::Owner
+        if ($PSVersionTable.PSVersion.Major -ge 6) { $acl = [IO.FileSystemAclExtensions]::GetAccessControl($info, $sections) }
+        else { $acl = $info.GetAccessControl($sections) }
+        $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+        return $owner -in @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value, 'S-1-5-32-544', 'S-1-5-18')
+    } catch { return $false }
+}
+function Import-ProcessHost {
+    $source = Join-Path $PSScriptRoot 'WindowsProcessHost.cs'
+    $cached = $null
+    try {
+        if ($CacheDirectory -and [IO.Path]::IsPathRooted($CacheDirectory) -and [IO.Directory]::Exists($CacheDirectory) -and
+            ([IO.File]::GetAttributes($CacheDirectory) -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try { $digest = [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($source))).Replace('-', '').Substring(0, 16) }
+            finally { $sha.Dispose() }
+            $runtime = [Environment]::Version.ToString() + '-' + $PSVersionTable.PSVersion.Major
+            $cached = Join-Path $CacheDirectory ('host-' + $runtime + '-' + $digest.ToLowerInvariant() + '.dll')
+        }
+    } catch { $cached = $null }
+    if ($cached -and -not [IO.File]::Exists($cached)) {
+        $temporary = $cached + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+        try {
+            Add-Type -Path $source -OutputAssembly $temporary -OutputType Library
+            # A concurrent process may publish the same key first; that file is checked below.
+            [IO.File]::Move($temporary, $cached)
+        } catch {
+        } finally {
+            try { if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) } } catch { }
+        }
+    }
+    if ($cached -and (Test-TrustedAssembly $cached)) {
+        try { $null = [Reflection.Assembly]::LoadFrom($cached); return } catch { }
+    }
+    if (-not ('TestProgress.WindowsProcessHost' -as [type])) { Add-Type -Path $source }
+}
+Import-ProcessHost
 
 function Write-Control($Value) {
     [Console]::Out.WriteLine(($Value | ConvertTo-Json -Compress -Depth 8))
@@ -107,7 +154,7 @@ if ($Action -eq 'Kill') {
     Write-Control @{ killed = $true }
     exit 0
 }
-if ($Action -eq 'SecureDirectory') {
+function Protect-PrivateDirectory([string] $Directory) {
     Assert-Absolute $Directory
     # Validate the existing chain before creation or any ACL change.
     $existing = Test-Path -LiteralPath $Directory
@@ -161,7 +208,18 @@ if ($Action -eq 'SecureDirectory') {
             throw 'Private state ACL has unexpected permissions.'
         }
     }
-    Write-Control @{ secured = $true; owner = $user.Value }
+    $user.Value
+}
+if ($Action -eq 'SecureDirectory') {
+    $owner = Protect-PrivateDirectory $Directory
+    if ($Child) {
+        # The namespace root and its workspace directory are secured in one control call.
+        if (-not [IO.Path]::GetFullPath((Split-Path -Parent $Child)).Equals([IO.Path]::GetFullPath($Directory), [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Private child directory must be directly under its root.'
+        }
+        $null = Protect-PrivateDirectory $Child
+    }
+    Write-Control @{ secured = $true; owner = $owner }
     exit 0
 }
 

@@ -1,11 +1,10 @@
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { execFileSync } from 'child_process';
 import { performance } from 'perf_hooks';
 import { processIdentity, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, validProcessIdentity } from './process-identity.mjs';
-import { removePath } from './runtime.mjs';
+import { removePath, stateRoot } from './runtime.mjs';
 import { windowsSecureDirectory } from './windows-process.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { validModuleId } from './module-id.mjs';
@@ -107,13 +106,6 @@ export function atomicJson(file, value) {
   finally { removePath(temporary, { force: true }); }
 }
 function privateDirectory(directory) {
-  if (process.platform === 'win32') {
-    // Create with an explicit user SID: elevated Windows otherwise defaults to
-    // the Administrators group, which cannot authenticate this private state.
-    windowsSecureDirectory(directory);
-    securePath(directory, true);
-    return;
-  }
   try { fs.mkdirSync(directory, { mode: 0o700 }); }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
   securePath(directory, true);
@@ -124,11 +116,20 @@ export function namespace(cwd, owner) {
   cwd = fs.realpathSync(cwd);
   if (!fs.statSync(cwd).isDirectory()) throw new Error('--cwd precisa ser um diretório');
   if (!owner || owner.length > 512 || owner.includes('\0')) throw new Error('--owner precisa identificar a sessão');
-  const root = path.join(fs.realpathSync(os.tmpdir()), `claude-test-progress-${process.getuid?.() ?? 'user'}`);
-  privateDirectory(root);
+  const root = stateRoot();
   const id = crypto.createHash('sha256').update(`${cwd}\0${owner}`).digest('hex');
   const directory = path.join(root, id);
-  privateDirectory(directory);
+  if (process.platform === 'win32') {
+    // Create with an explicit user SID: elevated Windows otherwise defaults to
+    // the Administrators group, which cannot authenticate this private state.
+    // One control call secures the root and then the workspace directory.
+    windowsSecureDirectory(root, directory);
+    securePath(root, true);
+    securePath(directory, true);
+  } else {
+    privateDirectory(root);
+    privateDirectory(directory);
+  }
   return { cwd, directory };
 }
 export function files(directory, moduleId) {
