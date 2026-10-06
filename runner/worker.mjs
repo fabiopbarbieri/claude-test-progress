@@ -8,6 +8,7 @@ import { removePath, mergeEnvironment } from './runtime.mjs';
 import { windowsSpawnSpec } from './windows-process.mjs';
 import { windowsProof, windowsCompletion } from './windows-proof.mjs';
 import { readBatch, requestCompensation, publishFinalSafe, pause } from './module-batch.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 
 async function main() {
 
@@ -95,7 +96,7 @@ function terminate(signal) {
   try {
     if (windows) {
       // The broker observes the bound request and terminates its entire Job.
-      try { atomicJson(locations.cancel, { schemaVersion: 2, moduleId: job.moduleId, runId: job.runId, requestedAt: timestamp() }); }
+      try { atomicJson(locations.cancel, { schemaVersion: SCHEMA_VERSION, moduleId: job.moduleId, runId: job.runId, requestedAt: timestamp() }); }
       catch (error) { fatalError = fatalError ?? error.message; }
       try { refreshWindowsProof(); }
       catch (error) { fatalError = fatalError ?? error.message; }

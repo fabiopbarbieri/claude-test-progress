@@ -1,16 +1,17 @@
 // Pure presentation rules shared by native surfaces and text. No host APIs.
 import { validModuleId } from './module-id.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 export const ACTIVE = new Set(['preparing', 'running']);
 export const labels = { preparing: 'Preparando', running: 'Em execução', completed: 'Encerrado',
   failed: 'Encerrado com falha', cancelled: 'Cancelado', error: 'Erro' };
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
 export function validateEnvelope(data) {
   const config = data?.workspace?.moduleConfig;
-  if (data?.schemaVersion !== 2 || data.schema !== undefined || data.lanes !== undefined || typeof data.ok !== 'boolean' || !record(data.modules) ||
+  if (data?.schemaVersion !== SCHEMA_VERSION || typeof data.ok !== 'boolean' || !record(data.modules) ||
       !record(data.jobs) || !record(data.stateDiagnostics) || !record(config) ||
       !['absent', 'valid', 'invalid'].includes(config.status) ||
-      ![2, null].includes(config.schemaVersion) || !Array.isArray(config.enabledIds)) {
-    throw new Error('Versão de resposta do coletor incompatível; requer schemaVersion 2.');
+      ![SCHEMA_VERSION, null].includes(config.schemaVersion) || !Array.isArray(config.enabledIds)) {
+    throw new Error(`Versão de resposta do coletor incompatível; requer schemaVersion ${SCHEMA_VERSION}.`);
   }
   for (const [id, module] of Object.entries(data.modules)) {
     if (!validModuleId(id) || module?.id !== id || typeof module.label !== 'string' ||
@@ -21,7 +22,7 @@ export function validateEnvelope(data) {
     }
   }
   for (const [id, job] of Object.entries(data.jobs)) {
-    if (!validModuleId(id) || job?.schemaVersion !== 2 || job.moduleId !== id ||
+    if (!validModuleId(id) || job?.schemaVersion !== SCHEMA_VERSION || job.moduleId !== id ||
         typeof job.runId !== 'string' || !job.runId || job.source !== 'config' || !Object.prototype.hasOwnProperty.call(labels, job.status) ||
         typeof job.phase !== 'string' || job.command !== undefined && !Array.isArray(job.command)) {
       throw new Error('Snapshot de job incompatível na resposta do coletor.');

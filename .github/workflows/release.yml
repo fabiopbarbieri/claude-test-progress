@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact stable version in plugin.json (for example 0.2.0)
+        description: Exact stable version in plugin.json (for example 0.3.0)
         required: true
         type: string
 
@@ -96,6 +96,6 @@ jobs:
             echo '## Preparation passed; publication still requires human approval'
             echo "Commit: $RELEASE_SHA"
             echo "Version: $RELEASE_VERSION"
-            echo 'Check docs/RELEASING.md, integrated adapter/Mod evidence and isolated marketplace upgrade evidence for this SHA.'
+            echo 'Check docs/RELEASING.md, integrated adapter and Mod evidence for this SHA.'
             echo 'No tag, GitHub release or distribution asset was created.'
           } >> "$GITHUB_STEP_SUMMARY"

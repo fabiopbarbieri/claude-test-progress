@@ -157,7 +157,7 @@ def collector(ruby, app, cancel=False):
     owner = "rails-check-" + uuid.uuid4().hex
     config = app / "collector.json"
     test_file = "test/models/slow_test.rb" if cancel else "test/models/outcomes_test.rb"
-    config.write_text(json.dumps({"schemaVersion": 2, "modules": {"backend": {
+    config.write_text(json.dumps({"schemaVersion": 1, "modules": {"backend": {
         "command": [ruby, str(ADAPTER), "test", test_file], "cwd": ".",
         "adapter": "events", "env": {}}}}), encoding="utf-8")
 

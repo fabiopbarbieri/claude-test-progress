@@ -15,7 +15,7 @@ function workspace() {
   const suite = path.join(cwd, 'suite.mjs');
   fs.writeFileSync(suite, `import fs from 'fs';fs.writeFileSync(process.env.MARKER,'started');console.log('alive');setInterval(()=>{},1000);`);
   const modules = Object.fromEntries(['api', 'ui'].map(id => [id, { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: { MARKER: path.join(cwd, id) } }]));
-  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules }));
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules }));
   const context = namespace(cwd, owner);
   const args = (action, id = 'all') => [cli, action, '--cwd', cwd, '--owner', owner, '--module', id, '--config', config];
   const collect = (action, id = 'all', hooks = null) => {

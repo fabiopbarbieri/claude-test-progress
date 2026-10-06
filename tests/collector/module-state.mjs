@@ -11,7 +11,7 @@ const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'module-state-'));
 const context = namespace(cwd, randomUUID());
 try {
   const replacementFile = files(context.directory, 'replacement').snapshot;
-  const originalValue = { schemaVersion: 2, moduleId: 'replacement', runId: randomUUID(), status: 'running', heartbeatAt: '2026-01-01T00:00:00.000Z' };
+  const originalValue = { schemaVersion: 1, moduleId: 'replacement', runId: randomUUID(), status: 'running', heartbeatAt: '2026-01-01T00:00:00.000Z' };
   const replacementValue = { ...originalValue, heartbeatAt: '2026-01-01T00:00:05.000Z' };
   atomicJson(replacementFile, originalValue);
   const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -141,7 +141,7 @@ try {
   const teardown = namespace(cwd, randomUUID());
   try {
     const loc = files(teardown.directory, 'api');
-    const terminal = { schemaVersion: 2, moduleId: 'api', runId: randomUUID(), status: 'completed', exitCode: 0 };
+    const terminal = { schemaVersion: 1, moduleId: 'api', runId: randomUUID(), status: 'completed', exitCode: 0 };
     for (const step of ['mutation-realpath', 'lock-realpath', 'claim-realpath', 'claim-open', 'claim-after-open', 'cancel-realpath']) {
       atomicJson(loc.snapshot, terminal);
       fs.mkdirSync(loc.lock, { mode: 0o700 });
@@ -177,7 +177,7 @@ try {
         const observed = inspectState(teardown.directory);
         assert(injected, `teardown injection ${step} must execute`);
         assert.strictEqual(observed.jobs.api?.status, 'completed', `${step} must preserve the authenticated terminal snapshot`);
-        assert.strictEqual(observed.blocked, false, `${step} must not create legacy diagnostics from obsolete reads`);
+        assert.strictEqual(observed.blocked, false, `${step} must not create incompatible-state diagnostics from obsolete reads`);
         assert(!observed.stateDiagnostics.api, `${step} must not retain diagnostics from a discarded observation`);
       } finally { fs.realpathSync = originalRealpath; fs.openSync = originalOpen; }
     }
@@ -210,7 +210,7 @@ try {
     fs.unlinkSync(gate);
     const batchId = randomUUID();
     const batch = batchFiles(teardown.directory, batchId);
-    atomicJson(batch.manifest, { schemaVersion: 2, batchId, state: 'preparing', entries: [{ moduleId: 'api', runId: retryRun }] });
+    atomicJson(batch.manifest, { schemaVersion: 1, batchId, state: 'preparing', entries: [{ moduleId: 'api', runId: retryRun }] });
     fs.mkdirSync(batch.gate, { mode: 0o700 });
     releasedBetweenAttempts = false;
     fs.lstatSync = function(file, ...args) {
@@ -232,8 +232,8 @@ try {
   releaseLock(context.directory, 'api', randomUUID());
   assert(fs.existsSync(files(context.directory, 'api').lock));
   releaseLock(context.directory, 'api', runId);
-  atomicJson(files(context.directory, 'old').snapshot, { schema: 1, runId: 'old', lane: 'old' });
-  atomicJson(files(context.directory, 'good').snapshot, { schemaVersion: 2, moduleId: 'good', runId: randomUUID(), status: 'completed' });
+  atomicJson(files(context.directory, 'old').snapshot, { version: 'other', runId: 'old', module: 'old' });
+  atomicJson(files(context.directory, 'good').snapshot, { schemaVersion: 1, moduleId: 'good', runId: randomUUID(), status: 'completed' });
   const state = inspectState(context.directory);
   assert.strictEqual(state.blocked, true);
   assert(state.stateDiagnostics.old.length);
@@ -243,18 +243,18 @@ try {
   assert(inspectState(context.directory).stateDiagnostics.unsafe.length);
   assert.throws(() => files(context.directory, '../escape'));
   const orphanRun = randomUUID();
-  atomicJson(path.join(context.directory, `hidden.${orphanRun}.job.json`), { schema: 1, runId: orphanRun, lane: 'hidden' });
-  assert(inspectState(context.directory).stateDiagnostics.hidden?.length, 'standalone legacy job must be enumerated');
+  atomicJson(path.join(context.directory, `hidden.${orphanRun}.job.json`), { version: 'other', runId: orphanRun, module: 'hidden' });
+  assert(inspectState(context.directory).stateDiagnostics.hidden?.length, 'standalone incompatible job must be enumerated');
   atomicJson(files(context.directory, 'cancel-only').cancel, { schema: 1, runId: 'old' });
-  assert(inspectState(context.directory).stateDiagnostics['cancel-only']?.length, 'standalone legacy cancellation must be enumerated');
+  assert(inspectState(context.directory).stateDiagnostics['cancel-only']?.length, 'standalone incompatible cancellation must be enumerated');
   fs.writeFileSync(files(context.directory, 'broken').snapshot, 'private-secret-invalid-json');
   assert(!JSON.stringify(inspectState(context.directory)).includes('private-secret'), 'corrupt state diagnostics cannot expose file contents');
   if (process.platform === 'linux') {
     const fastRun = randomUUID();
     acquireLock(context.directory, 'fast', fastRun);
     const dead = { ...processIdentity(process.pid), pid: 2147483647, group: 2147483647 };
-    atomicJson(files(context.directory, 'fast').claim, { schemaVersion: 2, moduleId: 'fast', runId: fastRun, workerIdentity: dead, childIdentity: dead, spawnAttemptAt: new Date().toISOString() });
-    const running = { schemaVersion: 2, moduleId: 'fast', runId: fastRun, status: 'running', childIdentity: dead };
+    atomicJson(files(context.directory, 'fast').claim, { schemaVersion: 1, moduleId: 'fast', runId: fastRun, workerIdentity: dead, childIdentity: dead, spawnAttemptAt: new Date().toISOString() });
+    const running = { schemaVersion: 1, moduleId: 'fast', runId: fastRun, status: 'running', childIdentity: dead };
     atomicJson(files(context.directory, 'fast').snapshot, running);
     const originalRead = fs.readFileSync;
     let finishedDuringLiveness = false;
@@ -282,7 +282,7 @@ try {
     fs.symlinkSync(path.join(cwd, 'outside'), path.join(controls.directory, `batch.${controlId}.request.json`));
     assert.strictEqual(inspectState(controls.directory).blocked, true, 'batch control files must authenticate paths even without modules');
   } finally { removePath(controls.directory, { recursive: true, force: true }); }
-  console.log('module v2 state, legacy blocking, independent enumeration and run ownership: OK');
+  console.log('module state, incompatible-state blocking, independent enumeration and run ownership: OK');
 } finally {
   removePath(context.directory, { recursive: true, force: true });
   removePath(cwd, { recursive: true, force: true });

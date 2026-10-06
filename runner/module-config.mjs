@@ -6,6 +6,7 @@ import { validModuleId, requireModuleId } from './module-id.mjs';
 import { frontendRuntime } from './frontend-runtime.mjs';
 import { windowsCommand } from './windows-shell.mjs';
 import { mergeEnvironment } from './runtime.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 
 const sourceLimit = 1024 * 1024;
 const fields = new Set(['enabled', 'label', 'language', 'cwd', 'order', 'adapter', 'runtime', 'env', 'command', 'extends']);
@@ -53,9 +54,9 @@ function readSource(file) {
 function rootDiagnostic(source, collection) {
   if (source.status !== 'valid') return source.diagnostic;
   const value = source.value;
-  if (!object(value) || value.schemaVersion !== 2 || !object(value[collection]) ||
+  if (!object(value) || value.schemaVersion !== SCHEMA_VERSION || !object(value[collection]) ||
       Object.keys(value).some(key => key !== 'schemaVersion' && key !== collection)) {
-    return diagnostic('INVALID_SCHEMA', 'A fonte deve usar somente schemaVersion: 2 e seu catálogo declarado.');
+    return diagnostic('INVALID_SCHEMA', `A fonte deve usar somente schemaVersion: ${SCHEMA_VERSION} e seu catálogo declarado.`);
   }
   if (Object.keys(value[collection]).some(id => !validModuleId(id))) {
     return diagnostic('INVALID_MODULE_ID', 'O catálogo contém um ID inválido ou reservado.');
@@ -91,7 +92,7 @@ export function discoverModules(context, { configPath } = {}) {
   if (registryError) diagnostics.push(registryError);
   const sourceError = rootDiagnostic(source, 'modules');
   if (source.status === 'absent') return { modules, workspace, diagnostics, catalog, revision };
-  workspace.moduleConfig.schemaVersion = source.value?.schemaVersion === 2 ? 2 : null;
+  workspace.moduleConfig.schemaVersion = source.value?.schemaVersion === SCHEMA_VERSION ? SCHEMA_VERSION : null;
   if (sourceError) {
     workspace.moduleConfig.status = 'invalid';
     diagnostics.push(sourceError);
@@ -165,7 +166,7 @@ function executableOnPath(executable, cwd, environment, id) {
 
 export function prepareSelection(discovery, target) {
   if (discovery.workspace.moduleConfig.status !== 'valid') {
-    fail('WORKSPACE_CONFIG_UNAVAILABLE', 'O workspace precisa de uma configuração válida no schema 2.');
+    fail('WORKSPACE_CONFIG_UNAVAILABLE', `O workspace precisa de uma configuração válida (schemaVersion ${SCHEMA_VERSION}).`);
   }
   let ids;
   if (target === 'all') ids = ordered(discovery.modules).filter(id => discovery.modules[id].enabled);

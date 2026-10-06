@@ -1,14 +1,14 @@
 import { expect, mock, test } from 'claude-code/testing';
-const running = { schemaVersion: 2, moduleId: 'api', runId: 'fixture-long-job', source: 'config',
+const running = { schemaVersion: 1, moduleId: 'api', runId: 'fixture-long-job', source: 'config',
   status: 'running', phase: 'executing-tests', total: 2, totalStable: false, resolved: 1,
   passed: 1, failed: 0, skipped: 0, percent: 50, exitCode: null, logPath: '/tmp/fixture.log',
   elapsedMs: 7200000, heartbeatAt: '2026-01-01T02:00:00.000Z', heartbeatAgeMs: 1000,
   lastOutputAt: '2026-01-01T00:00:01.000Z', lastProgressAt: '2026-01-01T00:00:01.000Z' };
 const module = (id = 'api', label = 'API') => ({ id, label, language: null, order: 0,
   enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [] });
-const data = (modules = { api: module() }, jobs = { api: running }) => ({ schemaVersion: 2, ok: true,
+const data = (modules = { api: module() }, jobs = { api: running }) => ({ schemaVersion: 1, ok: true,
   modules, jobs, stateDiagnostics: {}, workspace: { moduleConfig: {
-    status: 'valid', schemaVersion: 2, enabledIds: Object.keys(modules) }, stateBlocked: false } });
+    status: 'valid', schemaVersion: 1, enabledIds: Object.keys(modules) }, stateBlocked: false } });
 const response = (value = data()) => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify(value) } });
 const pane = { plugin: 'test-progress', component: 'Pane', requestId: 'claude-test-progress', surface: 'terminal',
   viewport: { columns: 80, rows: 25 }, props: { title: 'Test Progress', isFocused: true,
@@ -24,7 +24,7 @@ test('text status distinguishes quiet activity, uses module flag and short queri
     'último sinal do executor=2026-01-01T02:00:00.000Z',
     'último progresso reconhecido=2026-01-01T00:00:01.000Z', 'exitCode=ainda desconhecido']) expect(answer.text).toContain(value);
   expect(calls[0].argv[2]).toBe('status'); expect(calls[0].init.timeoutMs).toBe(5000);
-  expect(calls[0].argv).toContain('--module'); expect(calls[0].argv).not.toContain('--lane');
+  expect(calls[0].argv).toContain('--module');
   await $.command.run({ command: 'test-progress', args: 'start api --text' });
   expect(calls[1].init.timeoutMs).toBe(60000);
 });
@@ -36,7 +36,7 @@ test('native Windows uses Module and 15s query budget, with a 60s start budget',
   on('env.get', () => ({ value: undefined }));
   on('process.run', ($, e) => { calls.push(e); return response(); });
   await $.command.run({ command: 'test-progress', args: 'status api --text' });
-  expect(calls[0].argv).toContain('-Module'); expect(calls[0].argv).not.toContain('-Lane');
+  expect(calls[0].argv).toContain('-Module');
   expect(calls[0].init.timeoutMs).toBe(15000);
   await $.command.run({ command: 'test-progress', args: 'start api --text' });
   expect(calls[1].init.timeoutMs).toBe(60000);
@@ -49,13 +49,13 @@ test('failed query retries without implicit start or cancel and an unknown schem
   on('process.run', ($, e) => {
     actions.push(e.argv[2]);
     if (actions.length === 1) return { deny: 'fixture query timed out' };
-    if (actions.length === 3) return response({ schema: 1, ok: true, lanes: {} });
+    if (actions.length === 3) return response({ ...data(), schemaVersion: 2 });
     return response();
   });
   expect((await $.command.run({ command: 'test-progress', args: '--text' })).text).toContain('fixture query timed out');
   expect((await $.command.run({ command: 'test-progress', args: '--text' })).text).toContain('runId=fixture-long-job');
-  const legacy = await $.command.run({ command: 'test-progress', args: '--text' });
-  expect(legacy.text).toContain('schemaVersion 2'); expect(legacy.text).toContain('runId=fixture-long-job');
+  const unknown = await $.command.run({ command: 'test-progress', args: '--text' });
+  expect(unknown.text).toContain('schemaVersion 1'); expect(unknown.text).toContain('runId=fixture-long-job');
   expect(actions).toEqual(['status', 'status', 'status']);
 });
 

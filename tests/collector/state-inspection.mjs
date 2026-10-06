@@ -14,7 +14,7 @@ function fixture(name) {
   fs.mkdirSync(directory, { mode: 0o700 });
   const loc = files(directory, 'api');
   const runId = randomUUID();
-  const snapshot = { schemaVersion: 2, moduleId: 'api', runId, status: 'failed', phase: 'finished',
+  const snapshot = { schemaVersion: 1, moduleId: 'api', runId, status: 'failed', phase: 'finished',
     finalSafe: true, recoveryRequired: false, infrastructureFailure: false, exitCode: 1,
     total: 2, resolved: 2, passed: 1, failed: 1, skipped: 0, totalStable: true,
     startedAt: '2026-10-05T12:00:00.000Z', endedAt: '2026-10-05T12:00:01.000Z',
@@ -69,12 +69,12 @@ try {
   finally { Atomics.wait = nativeWait; Date.now = originalDateNow; }
   const elapsed = performance.now() - started;
   terminalPreserved(busy, held);
-  assert.strictEqual(busy.blocked, false, 'An authenticated busy gate is local, not legacy global state');
+  assert.strictEqual(busy.blocked, false, 'An authenticated busy gate is local, not incompatible global state');
   assert(waits.length > 0 && waits.every(delay => delay > 0 && delay <= 10), 'Observation must yield with bounded backoff');
   assert(elapsed >= 75 && elapsed < 1000, `The monotonic 100 ms observation must stay bounded (${Math.round(elapsed)} ms)`);
   assert(busy.stateDiagnostics.api?.some(item => item.code === 'state-busy' && item.blocking === true));
   assert(!busy.stateDiagnostics['*'], 'The busy module must not create a global diagnostic');
-  assert(!JSON.stringify(busy.stateDiagnostics).includes('legado'), 'An in-progress teardown is not a legacy claim');
+  assert(!JSON.stringify(busy.stateDiagnostics).includes('incompatível'), 'An in-progress teardown is not an incompatible claim');
   assert(fs.existsSync(held.loc.lock) && fs.existsSync(held.gate), 'Inspection must leave writer-owned gates untouched');
   fs.rmdirSync(held.loc.lock);
   fs.rmdirSync(held.gate);
@@ -86,7 +86,7 @@ try {
   const running = { ...heartbeat.snapshot, status: 'running', phase: 'running', finalSafe: false, endedAt: null, exitCode: null };
   atomicJson(heartbeat.loc.snapshot, running);
   fs.mkdirSync(heartbeat.loc.lock, { mode: 0o700 });
-  atomicJson(heartbeat.loc.claim, { schemaVersion: 2, moduleId: 'api', runId: running.runId, createdAt: running.startedAt });
+  atomicJson(heartbeat.loc.claim, { schemaVersion: 1, moduleId: 'api', runId: running.runId, createdAt: running.startedAt });
   fs.mkdirSync(heartbeat.gate, { mode: 0o700 });
   let heartbeatWaited = false;
   Atomics.wait = function(...args) { heartbeatWaited = true; return nativeWait(...args); };
@@ -96,16 +96,16 @@ try {
   assert.strictEqual(heartbeatWaited, false, 'A consistent gated observation must not wait for the writer');
   assert.strictEqual(heartbeatState.jobs.api?.status, 'running', 'A running job must stay visible while its heartbeat holds the gate');
   assert.strictEqual(heartbeatState.blocked, false);
-  assert(!JSON.stringify(heartbeatState.stateDiagnostics).includes('legado'));
+  assert(!JSON.stringify(heartbeatState.stateDiagnostics).includes('incompatível'));
 
-  const legacy = fixture('stable-legacy-claim');
-  fs.mkdirSync(legacy.loc.lock, { mode: 0o700 });
-  atomicJson(legacy.loc.claim, { schema: 1, lane: 'api', runId: 'legacy' });
-  const legacyState = inspectState(legacy.directory, { recover: false });
-  assert.strictEqual(legacyState.blocked, true, 'A stable legacy claim still blocks the namespace');
-  assert.strictEqual(legacyState.jobs.api, undefined, 'A legacy claim must not authenticate the terminal result');
-  assert(legacyState.stateDiagnostics.api?.some(item => /legado/.test(item.message)));
-  assert.deepStrictEqual(JSON.parse(fs.readFileSync(legacy.loc.claim, 'utf8')), { schema: 1, lane: 'api', runId: 'legacy' });
+  const foreign = fixture('stable-foreign-claim');
+  fs.mkdirSync(foreign.loc.lock, { mode: 0o700 });
+  atomicJson(foreign.loc.claim, { version: 'other', module: 'api', runId: 'foreign' });
+  const foreignState = inspectState(foreign.directory, { recover: false });
+  assert.strictEqual(foreignState.blocked, true, 'A stable incompatible claim still blocks the namespace');
+  assert.strictEqual(foreignState.jobs.api, undefined, 'An incompatible claim must not authenticate the terminal result');
+  assert(foreignState.stateDiagnostics.api?.some(item => /incompatível|desconhecido/.test(item.message)));
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(foreign.loc.claim, 'utf8')), { version: 'other', module: 'api', runId: 'foreign' });
 
   const unsafe = fixture('unsafe-gate');
   fs.mkdirSync(unsafe.loc.lock, { mode: 0o700 });
@@ -122,7 +122,7 @@ try {
   assert.strictEqual(unsafeState.jobs.api, undefined);
   assert(JSON.stringify(unsafeState.stateDiagnostics).match(/inseguro|Link/));
   assert(fs.lstatSync(unsafe.gate).isSymbolicLink() && fs.existsSync(unsafe.loc.lock), 'Inspection must not recover or remove unsafe state');
-  console.log('Read-only state inspection yields for authenticated teardown, preserves busy terminal results and rejects legacy/unsafe gates: OK');
+  console.log('Read-only state inspection yields for authenticated teardown, preserves busy terminal results and rejects incompatible/unsafe gates: OK');
 } finally {
   Atomics.wait = nativeWait;
   Date.now = originalDateNow;

@@ -196,8 +196,8 @@ if ($Action -eq 'LaunchCoordinator') {
     if (-not [IO.File]::Exists($Collector)) { throw 'Collector executable is unavailable.' }
     $request = (Read-PrivateText $JobFile) | ConvertFrom-Json
     $batchGuid = [Guid]::Empty
-    if ($request.schemaVersion -ne 2 -or -not [Guid]::TryParse([string]$request.batchId, [ref]$batchGuid)) {
-        throw 'Invalid v2 coordinator request.'
+    if ($request.schemaVersion -ne 1 -or -not [Guid]::TryParse([string]$request.batchId, [ref]$batchGuid)) {
+        throw 'Invalid coordinator request.'
     }
     Assert-PrivatePath $request.directory
     $expectedRequest = Join-Path $request.directory ('batch.' + $batchGuid.ToString('D') + '.request.json')
@@ -211,10 +211,10 @@ if ($Action -eq 'LaunchCoordinator') {
 }
 if ((Get-Item -LiteralPath $JobFile).Length -gt 1048576) { throw 'Private job exceeds size limit.' }
 $job = (Read-PrivateText $JobFile) | ConvertFrom-Json
-if ($job.schemaVersion -ne 2 -or $job.moduleId -cnotmatch '^[a-z][a-z0-9-]{0,47}$' -or
+if ($job.schemaVersion -ne 1 -or $job.moduleId -cnotmatch '^[a-z][a-z0-9-]{0,47}$' -or
     $job.moduleId -in @('all', 'constructor', 'prototype', 'con', 'prn', 'aux', 'nul') -or
     $job.moduleId -match '^(?:com|lpt)[1-9]$') {
-    throw 'Invalid v2 job or module identity.'
+    throw 'Invalid job or module identity.'
 }
 $runGuid = [Guid]::Empty
 if (-not [Guid]::TryParse([string]$job.runId, [ref]$runGuid)) { throw 'Run identity must be a UUID.' }
@@ -227,7 +227,7 @@ if ([IO.Path]::GetFullPath($JobFile) -cne [IO.Path]::GetFullPath($expectedJob)) 
 $claimPath = Join-Path $job.directory ($job.moduleId + '.lock/claim.json')
 Assert-PrivatePath $claimPath
 $claim = (Read-PrivateText $claimPath) | ConvertFrom-Json
-if ($claim.schemaVersion -ne 2 -or $claim.moduleId -cne $job.moduleId -or $claim.runId -cne $job.runId) {
+if ($claim.schemaVersion -ne 1 -or $claim.moduleId -cne $job.moduleId -or $claim.runId -cne $job.runId) {
     throw 'Run claim does not match job identity.'
 }
 if ($null -eq $job.windowsCommand -or [string]::IsNullOrEmpty($job.windowsCommand.file)) {
@@ -254,7 +254,7 @@ try {
     if ([IO.File]::Exists($cancelFile)) {
         Assert-PrivatePath $cancelFile
         $cancel = (Read-PrivateText $cancelFile) | ConvertFrom-Json
-        if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
+        if ($cancel.schemaVersion -eq 1 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
             $proof.cancelled = $true
             $hostProcess.Cancel()
         }
@@ -268,7 +268,7 @@ try {
         if (-not $proof.cancelled -and [IO.File]::Exists($cancelFile)) {
             Assert-PrivatePath $cancelFile
             $cancel = (Read-PrivateText $cancelFile) | ConvertFrom-Json
-            if ($cancel.schemaVersion -eq 2 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
+            if ($cancel.schemaVersion -eq 1 -and $cancel.moduleId -ceq $job.moduleId -and $cancel.runId -ceq $job.runId) {
                 $proof.cancelled = $true
                 $hostProcess.Cancel()
             }

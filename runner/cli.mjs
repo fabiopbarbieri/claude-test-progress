@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { SCHEMA_VERSION } from './schema.mjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
@@ -33,7 +34,7 @@ function argumentsOf(argv) {
   return { action, options, target };
 }
 function initialSnapshot(config, runId, batchId, codeRevision) {
-  return { schemaVersion: 2, runId, moduleId: config.moduleId, label: config.label, batchId, source: 'config',
+  return { schemaVersion: SCHEMA_VERSION, runId, moduleId: config.moduleId, label: config.label, batchId, source: 'config',
     status: 'preparing', phase: 'preparing', unit: 'tests', total: null, resolved: 0, passed: 0, failed: 0, skipped: 0,
     totalStable: false, percent: null, progressObserved: false, startedAt: timestamp(), updatedAt: timestamp(),
     endedAt: null, exitCode: null, heartbeatAt: null, lastOutputAt: null, lastProgressAt: null, pid: null, workerPid: null,
@@ -63,7 +64,7 @@ async function start(selection, preparationStartedAt) {
       acquireLock(context.directory, entry.moduleId, entry.runId, { batchId });
       reserved.push(entry);
     }
-    // Namespace-wide legacy checks happen again after reserving, before preparing workers.
+    // Namespace-wide incompatible-state checks happen again after reserving, before preparing workers.
     // Own newly reserved locks are expected to have no snapshots yet.
     for (const entry of entries) ownedClaim(context.directory, entry.moduleId, entry.runId);
     const revisions = new Map();
@@ -73,13 +74,13 @@ async function start(selection, preparationStartedAt) {
       const config = selection.configurations[entry.moduleId];
       if (!revisions.has(config.cwd)) revisions.set(config.cwd, revision(config.cwd));
       atomicJson(files(context.directory, entry.moduleId).snapshot, initialSnapshot(config, entry.runId, batchId, revisions.get(config.cwd)));
-      atomicJson(jobFile(context.directory, entry.moduleId, entry.runId), { ...config, schemaVersion: 2, ...entry,
+      atomicJson(jobFile(context.directory, entry.moduleId, entry.runId), { ...config, schemaVersion: SCHEMA_VERSION, ...entry,
         directory: context.directory, batchId, collectorRuntime, ...(testHooks[entry.moduleId] ? { testHooks: testHooks[entry.moduleId] } : {}) });
     }
-    atomicJson(loc.manifest, { schemaVersion: 2, batchId, state: 'preparing', entries, launchIdentity: processIdentity(process.pid),
+    atomicJson(loc.manifest, { schemaVersion: SCHEMA_VERSION, batchId, state: 'preparing', entries, launchIdentity: processIdentity(process.pid),
       coordinatorIdentity: null, createdAt: timestamp(), deadlineAt });
     manifestCreated = true;
-    atomicJson(loc.request, { schemaVersion: 2, batchId, directory: context.directory, revision: selection.revision });
+    atomicJson(loc.request, { schemaVersion: SCHEMA_VERSION, batchId, directory: context.directory, revision: selection.revision });
     let identity;
     if (process.platform === 'win32') {
       // Whitelist only NUL handles. Native PowerShell must receive EOF even
@@ -122,7 +123,7 @@ async function start(selection, preparationStartedAt) {
       try {
         const claim = ownedClaim(context.directory, entry.moduleId, entry.runId);
         if (sameProcess(claim.coordinatorIdentity) || sameProcess(claim.workerIdentity)) {
-          atomicJson(files(context.directory, entry.moduleId).cancel, { schemaVersion: 2, ...entry, requestedAt: timestamp() });
+          atomicJson(files(context.directory, entry.moduleId).cancel, { schemaVersion: SCHEMA_VERSION, ...entry, requestedAt: timestamp() });
           continue;
         }
         if (claim.spawnAttemptAt) continue; // An unacknowledged spawn is an unknown tree.
@@ -161,7 +162,7 @@ async function cancel(target, state) {
         if (process.platform === 'win32') removePath(`${jobFile(context.directory, moduleId, snapshot.runId)}.windows.json`, { force: true });
       } else if (ACTIVE.has(snapshot.status)) {
         ownedClaim(context.directory, moduleId, snapshot.runId);
-        atomicJson(files(context.directory, moduleId).cancel, { schemaVersion: 2, moduleId, runId: snapshot.runId, requestedAt: timestamp() });
+        atomicJson(files(context.directory, moduleId).cancel, { schemaVersion: SCHEMA_VERSION, moduleId, runId: snapshot.runId, requestedAt: timestamp() });
       }
       actionResults[moduleId] = { ok: true, action: 'cancel', runId: snapshot.runId };
     } catch (error) { actionResults[moduleId] = { ok: false, action: 'cancel', error: error.message }; }
@@ -185,7 +186,7 @@ function envelope(state, ok, error) {
   const modules = discovery?.modules || Object.create(null);
   for (const [id, job] of Object.entries(state.jobs)) if (!modules[id]) modules[id] = { id, label: job.label || id, language: job.language || null,
     order: Object.keys(modules).length, enabled: false, directoryPresent: false, origin: 'state', diagnostics: [] };
-  return { schemaVersion: 2, ok, modules, jobs: state.jobs,
+  return { schemaVersion: SCHEMA_VERSION, ok, modules, jobs: state.jobs,
     workspace: { ...(discovery?.workspace || {}), moduleConfig: { ...(discovery?.workspace?.moduleConfig || { status: 'absent', schemaVersion: null, enabledIds: [] }), diagnostics: discovery?.diagnostics || [] }, stateBlocked: state.blocked },
     stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}),
     // The Mod reuses this Node for later queries instead of bootstrapping a shell each time.

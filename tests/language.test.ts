@@ -2,23 +2,24 @@ import { expect, test } from 'claude-code/testing';
 import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
   statusGlyph, progressBar, compactPercent, compactCounts, clock } from '../runner/module-presentation.mjs';
 
-test('v2 titles preserve labels and IDs even when modules share a language or label', () => {
+test('titles preserve labels and IDs even when modules share a language or label', () => {
   expect(moduleTitle('api', { label: 'Suíte', language: 'Python' })).toBe('Suíte · api');
   expect(moduleTitle('worker', { label: 'Suíte', language: 'Python' })).toBe('Suíte · worker');
   expect(moduleTitle('backend', { label: 'Backend', language: 'Ruby' })).toBe('Backend · backend');
 });
 
-test('slash requires explicit start and rejects removed demo and lane shortcuts', () => {
+test('slash requires explicit start and rejects unknown actions and options', () => {
   expect(parseCommand('')).toEqual({ action: 'status', moduleId: 'all', text: false });
   expect(parseCommand('start api --text')).toEqual({ action: 'start', moduleId: 'api', text: true });
-  for (const raw of ['backend', 'frontend', 'all', 'demo', '--demo', 'start', 'start ../api', 'list api', 'help api', 'start API', 'status --lane api']) expect(() => parseCommand(raw)).toThrow();
+  for (const raw of ['backend', 'all', 'unknown', '--unknown', 'start', 'start ../api', 'list api', 'help api', 'start API', 'status --module api']) expect(() => parseCommand(raw)).toThrow();
 });
 
-test('v2 collector envelope rejects legacy data and malformed snapshots', () => {
-  const envelope = { schemaVersion: 2, ok: true, modules: {}, jobs: {}, workspace: {
+test('collector envelope rejects unknown versions and malformed snapshots', () => {
+  const envelope = { schemaVersion: 1, ok: true, modules: {}, jobs: {}, workspace: {
     moduleConfig: { status: 'absent', schemaVersion: null, enabledIds: [] }, stateBlocked: false }, stateDiagnostics: {} };
   expect(validateEnvelope(envelope)).toBe(envelope);
-  expect(() => validateEnvelope({ schema: 1, ok: true, lanes: {} })).toThrow();
+  expect(() => validateEnvelope({ ...envelope, schemaVersion: 2 })).toThrow();
+  expect(() => validateEnvelope({ ok: true, modules: {} })).toThrow();
   expect(() => validateEnvelope({ ...envelope, jobs: { api: { schemaVersion: 1 } } })).toThrow();
   expect(() => validateEnvelope({ ...envelope, modules: { api: { id: 'other' } } })).toThrow();
 });

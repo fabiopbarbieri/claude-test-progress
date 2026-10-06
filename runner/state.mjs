@@ -9,6 +9,7 @@ import { removePath } from './runtime.mjs';
 import { windowsSecureDirectory } from './windows-process.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { validModuleId } from './module-id.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 
 export const ACTIVE = new Set(['preparing', 'running']);
 export const timestamp = () => new Date().toISOString();
@@ -141,7 +142,7 @@ export function jobFile(directory, moduleId, runId) {
   return path.join(directory, `${moduleId}.${runId}.job.json`);
 }
 export function validRecord(value, moduleId, runId = null) {
-  return Boolean(value && value.schemaVersion === 2 && value.moduleId === moduleId && validRunId(value.runId) &&
+  return Boolean(value && value.schemaVersion === SCHEMA_VERSION && value.moduleId === moduleId && validRunId(value.runId) &&
     (runId === null || value.runId === runId));
 }
 export function ownedClaim(directory, moduleId, runId) {
@@ -215,7 +216,7 @@ export function acquireLock(directory, moduleId, runId, extra = {}) {
     }
     try { fs.mkdirSync(loc.lock, { mode: 0o700 }); }
     catch (error) { if (error.code === 'EEXIST') throw new Error(`Já existe lock de execução em ${moduleId}`); throw error; }
-    atomicJson(loc.claim, { ...extra, schemaVersion: 2, moduleId, runId, launchIdentity: processIdentity(process.pid), createdAt: timestamp() });
+    atomicJson(loc.claim, { ...extra, schemaVersion: SCHEMA_VERSION, moduleId, runId, launchIdentity: processIdentity(process.pid), createdAt: timestamp() });
   });
 }
 function activity(snapshot) {
@@ -312,10 +313,10 @@ export function inspectState(directory, { recover = true } = {}) {
       }
       if (busy) {
         // Complete incompatible records still block the namespace. A missing
-        // claim under an authenticated gate is busy, not evidence of schema v1.
-        if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot legado ou incompatível; novos starts bloqueados.', true); continue; }
-        if (claim && !validRecord(claim, moduleId)) { diagnose(moduleId, 'Claim legado ou incompatível; novos starts bloqueados.', true); continue; }
-        if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento legado ou inválido; conservado.', true);
+        // claim under an authenticated gate is busy, not evidence of an incompatible record.
+        if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot incompatível; novos starts bloqueados.', true); continue; }
+        if (claim && !validRecord(claim, moduleId)) { diagnose(moduleId, 'Claim incompatível; novos starts bloqueados.', true); continue; }
+        if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento inválido; conservado.', true);
         diagnose(moduleId, 'Alteração de estado em andamento; nova observação necessária.', false, 'state-busy');
         const terminal = readJson(loc.snapshot);
         if (validRecord(terminal, moduleId) && ['error', 'failed', 'completed', 'cancelled'].includes(terminal.status) &&
@@ -324,9 +325,9 @@ export function inspectState(directory, { recover = true } = {}) {
         continue;
       }
       if (gate) diagnose(moduleId, 'Gate de alteração de lock presente; nenhuma recuperação por idade ou PID.');
-      if (lock && !validRecord(claim, moduleId)) diagnose(moduleId, 'Lock legado, desconhecido ou claim inválido; conservado.', true);
-      if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot legado ou incompatível; novos starts bloqueados.', true); continue; }
-      if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento legado ou inválido; conservado.', true);
+      if (lock && !validRecord(claim, moduleId)) diagnose(moduleId, 'Lock desconhecido ou claim inválido; conservado.', true);
+      if (snapshot && !validRecord(snapshot, moduleId)) { diagnose(moduleId, 'Snapshot incompatível; novos starts bloqueados.', true); continue; }
+      if (pendingCancel && !validRecord(pendingCancel, moduleId)) diagnose(moduleId, 'Pedido de cancelamento inválido; conservado.', true);
       if (!snapshot) { if (lock) diagnose(moduleId, 'Lock sem snapshot; conservado.'); continue; }
       if (!['preparing', 'running', 'error', 'failed', 'completed', 'cancelled'].includes(snapshot.status)) {
         diagnose(moduleId, 'Status de snapshot desconhecido.', true); continue;
@@ -371,7 +372,7 @@ export function inspectState(directory, { recover = true } = {}) {
       jobs[moduleId] = activity(current);
     } catch (error) { diagnose(moduleId, error.message); }
   }
-  // Files with names outside the v2 vocabulary also fail closed.
+  // Files with names outside the state vocabulary also fail closed.
   for (const name of fs.readdirSync(directory)) {
     // Authenticate every entry before deciding whether its vocabulary is understood.
     try { if (!securePath(path.join(directory, name), /\.(?:lock|mutation)$/.test(name), true)) continue; }
@@ -384,12 +385,12 @@ export function inspectState(directory, { recover = true } = {}) {
       try {
         if (!validRunId(control[1])) throw new Error('Identidade de controle do lote inválida');
         const manifest = readJson(path.join(directory, `batch.${control[1]}.json`));
-        if (!manifest || manifest.schemaVersion !== 2 || manifest.batchId !== control[1] || !Array.isArray(manifest.entries) ||
+        if (!manifest || manifest.schemaVersion !== SCHEMA_VERSION || manifest.batchId !== control[1] || !Array.isArray(manifest.entries) ||
             !manifest.entries.length || manifest.entries.some(entry => !validId(entry.moduleId) || !validRunId(entry.runId))) throw new Error('Controle sem manifest autenticado');
         if (control[2] === 'mutation') { if (!securePath(path.join(directory, name), true, true)) continue; diagnose('*', 'Gate de controle do lote presente; nenhuma recuperação automática.', true); continue; }
         const value = readJson(path.join(directory, name));
         if (value === null && !securePath(path.join(directory, name), false, true)) continue;
-        if (!value || value.schemaVersion !== 2 || value.batchId !== manifest.batchId) throw new Error('Controle do lote incompatível');
+        if (!value || value.schemaVersion !== SCHEMA_VERSION || value.batchId !== manifest.batchId) throw new Error('Controle do lote incompatível');
         if (control[2] === 'request.json') {
           if (value.directory !== directory || !Array.isArray(value.revision) || value.revision.some(source => !source ||
               typeof source.path !== 'string' || !path.isAbsolute(source.path) || !(source.digest === null || /^[0-9a-f]{64}$/.test(source.digest)))) throw new Error('Pedido de lote inválido');
@@ -403,16 +404,16 @@ export function inspectState(directory, { recover = true } = {}) {
       try {
         const job = readJson(path.join(directory, name));
         if (job === null && !securePath(path.join(directory, name), false, true)) continue;
-        if (!validRecord(job, jobMatch[1], jobMatch[2])) diagnose(jobMatch[1], 'Job legado ou incompatível; conservado.', true);
+        if (!validRecord(job, jobMatch[1], jobMatch[2])) diagnose(jobMatch[1], 'Job incompatível; conservado.', true);
       } catch (error) { diagnose(jobMatch[1], error.message); }
     }
     const batchMatch = /^batch\.([0-9a-f-]{36})\.json$/.exec(name);
     if (batchMatch) {
       try {
         const batch = readJson(path.join(directory, name));
-        if (!batch || batch.schemaVersion !== 2 || batch.batchId !== batchMatch[1] || !validRunId(batch.batchId) ||
+        if (!batch || batch.schemaVersion !== SCHEMA_VERSION || batch.batchId !== batchMatch[1] || !validRunId(batch.batchId) ||
             !['preparing', 'released', 'aborted'].includes(batch.state) || !Array.isArray(batch.entries) ||
-            batch.entries.some(entry => !validId(entry.moduleId) || !validRunId(entry.runId))) diagnose('*', 'Manifest do lote inválido ou legado.', true);
+            batch.entries.some(entry => !validId(entry.moduleId) || !validRunId(entry.runId))) diagnose('*', 'Manifest do lote inválido.', true);
         else if (batch.supervisionError) for (const entry of batch.entries) diagnose(entry.moduleId, batch.supervisionError);
       } catch (error) { diagnose('*', error.message, true); }
     }

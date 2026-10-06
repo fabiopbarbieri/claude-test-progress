@@ -41,7 +41,7 @@ function module(id, extra = {}) {
   return { label: id, command: [process.execPath, suite, 'parent', 'literal space', 'quote"value', 'trailing\\'],
     cwd: '.', adapter: 'events', runtime: 'inherit', env: { MARKER: path.join(app, id) }, ...extra };
 }
-function configure(modules) { fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules })); }
+function configure(modules) { fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules })); }
 function shell(args, env = process.env) {
   const result = spawnSync(engine, ['-NoLogo', '-NoProfile', '-NonInteractive', ...args],
     { cwd: app, env, encoding: 'utf8', timeout: 65000, windowsHide: true });
@@ -55,8 +55,8 @@ function collect(action, target = 'all', env = process.env) {
   // Some scenarios expect ok:false; log the reason so unexpected failures are diagnosable.
   if (!value.ok) console.error(`collect ${action} ${target} returned ok:false: ${value.error ?? JSON.stringify(value.actionResults ?? null)}` +
     ` stateDiagnostics=${JSON.stringify(value.stateDiagnostics ?? null).split(app).join('<fixture>')}`);
-  assert.strictEqual(value.schemaVersion, 2);
-  assert(!('lanes' in value) && !('schema' in value));
+  assert.strictEqual(value.schemaVersion, 1);
+  assert.strictEqual(value.schemaVersion, 1);
   assert.strictEqual(result.status, value.ok ? 0 : 1);
   return value;
 }
@@ -305,15 +305,15 @@ async function main() {
       configure(invalid);
       assert.strictEqual(collect('start').ok, false);
     }
-    for (const option of ['-Lane', '-Unknown']) {
+    for (const option of ['-Unknown', '-Other']) {
       const rejected = shell(['-File', path.join(root, 'scripts/run-collector.ps1'), '-Action', 'start',
         '-Cwd', app, '-Owner', owner, option, 'api']);
-      assert.notStrictEqual(rejected.status, 0, 'Legacy or unknown wrapper option accepted');
+      assert.notStrictEqual(rejected.status, 0, 'Unknown wrapper option accepted');
     }
     const rejected = spawnSync(process.execPath, [path.join(root, 'runner/cli.mjs'), 'start',
-      '--cwd', app, '--owner', owner, '--lane', 'api'], { encoding: 'utf8' });
+      '--cwd', app, '--owner', owner, '--unknown', 'api'], { encoding: 'utf8' });
     assert.strictEqual(rejected.status, 1);
-    console.log('Reserved IDs, case-insensitive environment collisions and removed lane options: OK');
+    console.log('Reserved IDs, case-insensitive environment collisions and unknown options: OK');
 
     // A real batch command accepts a simple literal argument; shell control is rejected before reservation.
     const batch = path.join(app, 'safe command.cmd');

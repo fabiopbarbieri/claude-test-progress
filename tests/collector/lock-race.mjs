@@ -51,7 +51,7 @@ try {
   assert.throws(() => acquireLock(directory, 'api', randomUUID()), /recuperação manual/);
   assert(Date.now() - before < 2500);
   assert(fs.existsSync(gate));
-  console.log('v2 release/reserve serialization, run ownership and unknown locks fail closed: OK');
+  console.log('Release/reserve serialization, run ownership and unknown locks fail closed: OK');
 } finally {
   fs.unlinkSync = original;
   removePath(directory, { recursive: true, force: true });

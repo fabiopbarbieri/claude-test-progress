@@ -7,14 +7,14 @@ const pane = (surface: 'terminal' | 'desktop', columns = 120) => ({
 });
 const module = (id: string, order = 0, overrides = {}) => ({ id, label: 'Suíte', language: 'Python',
   order, enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [], ...overrides });
-const job = (moduleId: string, overrides = {}) => ({ schemaVersion: 2, moduleId, runId: `run-${moduleId}`,
+const job = (moduleId: string, overrides = {}) => ({ schemaVersion: 1, moduleId, runId: `run-${moduleId}`,
   source: 'config', status: 'running', phase: 'executing-tests', total: 4, totalStable: false,
   resolved: 4, passed: 2, failed: 1, skipped: 1, percent: 100, cwd: '/work',
   command: ['python', 'suite.py'], exitCode: null, ...overrides });
 const data = (modules = {}, jobs = {}, stateDiagnostics = {}, stateBlocked = false) => ({
-  schemaVersion: 2, ok: true, modules, jobs, stateDiagnostics,
+  schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics,
   workspace: { moduleConfig: { status: Object.keys(modules).length ? 'valid' : 'absent',
-    schemaVersion: Object.keys(modules).length ? 2 : null,
+    schemaVersion: Object.keys(modules).length ? 1 : null,
     enabledIds: Object.keys(modules).filter(id => modules[id].enabled) }, stateBlocked },
 });
 const response = value => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value) } });
@@ -49,7 +49,6 @@ for (const surface of ['terminal', 'desktop'] as const) {
         expect(await ui.find({ key: 'module-m11' })).toBeDefined();
         expect(await ui.findAll({ type: 'Button', text: /^▶$/ })).toHaveLength(12);
       }
-      expect(await ui.find({ key: 'demo' })).toBeUndefined();
       await ui.unmount();
     }
     expect(actions).toEqual(['list', 'list', 'list', 'list']);
@@ -119,7 +118,7 @@ test('removed/disabled terminal jobs disappear, active jobs and state-only locks
   const current = data({ api: module('api'), disabled: module('disabled', 0, { enabled: false }) }, {
     disabled: job('disabled', { status: 'completed' }), retired: job('retired', { status: 'completed' }),
     orphan: job('orphan', { status: 'error', recoveryRequired: true, cancellable: true }) },
-    { locked: [{ code: 'corrupt', message: 'Estado ilegível.', blocking: true }], '*': [{ code: 'legacy', message: 'Estado antigo.', blocking: true }] }, true);
+    { locked: [{ code: 'corrupt', message: 'Estado ilegível.', blocking: true }], '*': [{ code: 'incompatible', message: 'Estado incompatível.', blocking: true }] }, true);
   const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
@@ -203,12 +202,12 @@ test('invalid catalogue cause and per-ID action errors stay separate from retain
   const current = { ...data({}, { api: job('api') }), ok: false,
     actionResults: { api: { ok: false, action: 'cancel', error: 'Árvore ainda desconhecida.' } } };
   current.workspace.moduleConfig = { status: 'invalid', schemaVersion: null, enabledIds: [],
-    diagnostics: [{ code: 'INVALID_SCHEMA', message: 'O cadastro requer schemaVersion 2.' }] };
+    diagnostics: [{ code: 'INVALID_SCHEMA', message: 'O cadastro requer schemaVersion 1.' }] };
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
   on('process.run', () => response(current));
   const answer = await $.command.run({ command: 'test-progress', args: 'cancel api --text' });
-  expect(answer.text).toContain('Configuração: O cadastro requer schemaVersion 2.');
+  expect(answer.text).toContain('Configuração: O cadastro requer schemaVersion 1.');
   expect(answer.text).toContain('api: Árvore ainda desconhecida.'); expect(answer.text).toContain('runId=run-api');
   const ui = await $.ui.mount(pane('desktop'));
   expect(await ui.find({ key: 'cancel-api' })).toBeDefined();

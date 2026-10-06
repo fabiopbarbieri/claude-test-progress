@@ -52,7 +52,7 @@ def final_counts(events, expected, scopes=1):
 def collector(node, app, argv, expected, module_id='tests', runtime='inherit', env=None, cancel=False, timeout=180):
     owner = 'adapter-check-' + uuid.uuid4().hex
     config = app / 'collector.json'
-    config.write_text(json.dumps({'schemaVersion': 2, 'modules': {module_id: {
+    config.write_text(json.dumps({'schemaVersion': 1, 'modules': {module_id: {
         'command': [str(arg) for arg in argv], 'cwd': '.', 'adapter': 'events',
         'runtime': runtime, 'env': env or {}}}}), encoding='utf-8')
 
