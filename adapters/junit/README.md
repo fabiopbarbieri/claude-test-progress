@@ -21,7 +21,7 @@ Execute dentro de `adapters/junit`. O script baixa somente JARs necessários,
 com versões fixas, do Maven Central, caso ainda não existam em `build/deps`:
 launcher/engine/commons 1.11.3, opentest4j 1.3.0 e apiguardian-api 1.1.2.
 Compila com `javac --release 17` e gera
-`build/test-progress-listener-0.1.0.jar`, sem embutir essas dependências.
+`build/test-progress-listener-0.3.0.jar`, sem embutir essas dependências.
 `build/` é ignorado pelo Git. As dependências devem existir no runtime do app.
 
 O `pom.xml` também permite empacotamento com Maven. A propriedade
@@ -37,7 +37,7 @@ local (este comando apenas instala o artefato já compilado):
 
 ```bash
 mvn install:install-file \
-  -Dfile=/caminho/absoluto/adapters/junit/build/test-progress-listener-0.1.0.jar \
+  -Dfile=/caminho/absoluto/adapters/junit/build/test-progress-listener-0.3.0.jar \
   -DpomFile=/caminho/absoluto/adapters/junit/pom.xml
 ```
 
@@ -47,7 +47,7 @@ Adicione ao `pom.xml` do app como dependência de **testes**:
 <dependency>
   <groupId>local.claude</groupId>
   <artifactId>test-progress-listener</artifactId>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -63,14 +63,14 @@ ocultem as linhas do listener do runner. Capture o stdout dos forks também; cad
 plano recebe um UUID diferente, inclusive entre forks e módulos. Nomes de testes,
 motivos de skip e exceções não são escritos no evento.
 
-## Módulo no coletor v2
+## Módulo no coletor
 
 Declare um módulo em `.claude/test-progress.json`; o listener continua sendo
 opt-in no app. ID e label não escolhem runtime ou adapter:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "api": {
       "command": ["./mvnw", "test"],
@@ -84,8 +84,8 @@ opt-in no app. ID e label não escolhem runtime ou adapter:
 Use `/test-progress start api`, `status api`, `logs api` e `cancel api`.
 Sem listener, `adapter: "maven"` oferece somente fallback de resumos do Maven.
 Vários módulos JVM podem usar IDs distintos; `start all` seleciona todos os
-habilitados. O registry opcional não ativa módulos sozinho. Não há conversão v1.
-Aceite nativo Windows v2 continua dependente de seus gates próprios.
+habilitados. O registry opcional não ativa módulos sozinho.
+Aceite nativo Windows continua dependente de seus gates próprios.
 
 ## Contagem e limites
 
@@ -102,9 +102,8 @@ e os logs do comando. Queda da JVM pode impedir o snapshot final. Módulos ainda
 não planejados não entram no total conhecido: a UI deve indicar **parcial**.
 
 Compilação e inspeção do JAR verificam API e empacotamento; não demonstram aceite
-em Surefire, forks ou um app real. A documentação inicial do protótipo registrava
-apenas essas checagens. Consulte [VERIFICATION](../../docs/VERIFICATION.md) para
-os gates atuais e os limites da integração.
+em Surefire, forks ou um app real. Consulte [VALIDATION](../../docs/VALIDATION.md)
+para os gates e os limites da integração.
 
 ## Fontes primárias
 

@@ -27,12 +27,12 @@ const registryPath = path.join(registryDirectory, 'test-progress.registry.json')
 fs.mkdirSync(path.dirname(configPath));
 fs.mkdirSync(registryDirectory);
 process.env.CLAUDE_CONFIG_DIR = registryDirectory;
-const writeWorkspace = modules => fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 2, modules }));
+const writeWorkspace = modules => fs.writeFileSync(configPath, JSON.stringify({ schemaVersion: 1, modules }));
 try {
   let found = discoverModules({ cwd });
   assert.strictEqual(found.workspace.moduleConfig.status, 'absent');
   assert.deepStrictEqual(Object.keys(found.modules), []);
-  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 2, templates: {
+  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 1, templates: {
     shared: { command: ['missing-command'], env: { TOKEN: 'synthetic-private-token' } },
   } }));
   found = discoverModules({ cwd });
@@ -40,7 +40,7 @@ try {
   writeWorkspace({ api: { label: ' API ', language: ' JVM ', extends: 'shared' },
     web: { command: ['unavailable'], runtime: 'node-project' }, off: { enabled: false } });
   found = discoverModules({ cwd });
-  assert.deepStrictEqual(found.workspace.moduleConfig, { status: 'valid', schemaVersion: 2,
+  assert.deepStrictEqual(found.workspace.moduleConfig, { status: 'valid', schemaVersion: 1,
     enabledIds: ['api', 'web'] });
   assert.strictEqual(found.modules.api.label, 'API');
   assert.strictEqual(found.modules.api.language, 'JVM');
@@ -51,9 +51,9 @@ try {
   assert.deepStrictEqual(found.modules.web.diagnostics, []);
   assert(!JSON.stringify({ modules: found.modules, workspace: found.workspace,
     diagnostics: found.diagnostics }).includes('synthetic-private-token'));
-  console.log('Read-only v2 discovery and registry activation: OK');
+  console.log('Read-only discovery and registry activation: OK');
   fs.writeFileSync(path.join(cwd, '.nvmrc'), 'unavailable-synthetic-node');
-  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 2, templates: {
+  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 1, templates: {
     shared: { command: ['missing-command'], env: { TOKEN: 'synthetic-private-token', EXTRA: 'remove' },
       adapter: 'events', runtime: 'inherit' },
   } }));
@@ -100,7 +100,7 @@ try {
   assert.throws(() => assertSourcesUnchanged(found.revision), error => error.code === 'CONFIG_SOURCES_CHANGED');
   found = discoverModules({ cwd });
   assertSourcesUnchanged(found.revision);
-  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 2, templates: {} }));
+  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 1, templates: {} }));
   assert.throws(() => assertSourcesUnchanged(found.revision), error => error.code === 'CONFIG_SOURCES_CHANGED');
   fs.unlinkSync(registryPath);
   const serializedRevision = JSON.parse(JSON.stringify(discoverModules({ cwd }).revision));
@@ -124,10 +124,10 @@ try {
   assertSourcesUnchanged(found.revision);
   assert.throws(() => prepareSelection(found, 'dependent'), error => error.code === 'TEMPLATE_UNAVAILABLE');
   console.log('Unavailable registry affects only referenced modules: OK');
-  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 2, templates: {} }));
-  for (const invalid of [null, [], { schemaVersion: 1, backend: {} },
-    { schemaVersion: 2, modules: {}, frontend: {} },
-    { schemaVersion: 2, modules: { con: {} } }]) {
+  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 1, templates: {} }));
+  for (const invalid of [null, [], { schemaVersion: 1, backend: {} }, { schemaVersion: 2, modules: {} },
+    { schemaVersion: 1, modules: {}, frontend: {} },
+    { schemaVersion: 1, modules: { con: {} } }]) {
     fs.writeFileSync(configPath, JSON.stringify(invalid));
     found = discoverModules({ cwd });
     assert.strictEqual(found.workspace.moduleConfig.status, 'invalid');
@@ -141,7 +141,7 @@ try {
   found = discoverModules({ cwd });
   assert.strictEqual(found.diagnostics[0].code, 'SOURCE_TOO_LARGE');
   assert.throws(() => prepareSelection(found, 'all'));
-  console.log('Legacy, mixed schema, unsafe IDs, JSON and source size block starts: OK');
+  console.log('Other versions, mixed schema, unsafe IDs, JSON and source size block starts: OK');
   for (const [declaration, code] of [[false, 'INVALID_MODULE'], [null, 'INVALID_MODULE'],
     [{ enabled: null }, 'INVALID_ENABLED'], [{ label: '\u001bprivate' }, 'INVALID_LABEL'],
     [{ language: null }, 'INVALID_LANGUAGE'], [{ order: 1.5 }, 'INVALID_ORDER'],
@@ -161,7 +161,7 @@ try {
       error.moduleId === 'broken' && !error.message.includes('private'));
   }
   writeWorkspace({ api: { command: [process.execPath], extends: 'shared' } });
-  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 2, templates: {
+  fs.writeFileSync(registryPath, JSON.stringify({ schemaVersion: 1, templates: {
     shared: { extends: 'other', command: [process.execPath] },
   } }));
   assert.throws(() => prepareSelection(discoverModules({ cwd }), 'api'), error => error.code === 'INVALID_TEMPLATE');
@@ -171,7 +171,7 @@ try {
   assert.strictEqual(found.workspace.moduleConfig.status, 'absent');
   assert.throws(() => prepareSelection(found, 'all'), error => error.code === 'WORKSPACE_CONFIG_UNAVAILABLE');
   const alternate = path.join(cwd, 'alternate.json');
-  fs.writeFileSync(alternate, JSON.stringify({ schemaVersion: 2, modules: { api: { command: [process.execPath] } } }));
+  fs.writeFileSync(alternate, JSON.stringify({ schemaVersion: 1, modules: { api: { command: [process.execPath] } } }));
   assert.deepStrictEqual(prepareSelection(discoverModules({ cwd }, { configPath: 'alternate.json' }), 'all').ids, ['api']);
   process.env.CLAUDE_CONFIG_DIR = 'relative-private-registry';
   found = discoverModules({ cwd }, { configPath: 'alternate.json' });

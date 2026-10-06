@@ -1,4 +1,4 @@
-// Internal fixture, invoked only through ordinary v2 configuration.
+// Internal fixture, invoked only through an ordinary module configuration.
 import fs from 'fs';
 const mode = process.argv[2] || 'pass';
 if (process.env.START_MARKER) fs.writeFileSync(process.env.START_MARKER, 'started');

@@ -16,8 +16,8 @@ export function windowsPowerShell(environment = process.env) {
   }
   const systemRoot = environmentValue(environment, 'SYSTEMROOT') || environmentValue(environment, 'WINDIR');
   if (!systemRoot) throw new Error('SystemRoot ausente: PowerShell não localizado');
-  const legacy = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  if (fs.existsSync(legacy)) return legacy;
+  const builtIn = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  if (fs.existsSync(builtIn)) return builtIn;
   throw new Error('Windows PowerShell 5.1 ausente; configure TEST_PROGRESS_POWERSHELL com o caminho absoluto de pwsh.exe');
 }
 // Per-call limit for PowerShell control processes. PowerShell 7 starts slower than

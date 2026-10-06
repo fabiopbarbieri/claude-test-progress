@@ -98,7 +98,7 @@ def smoke_checks(include_pytest=False):
         def run_case(name, runner_args, expected, cancel=False):
             owner = "release-check-" + uuid.uuid4().hex
             config = app / (name + ".json")
-            config.write_text(json.dumps({"schemaVersion": 2, "modules": {"backend": {
+            config.write_text(json.dumps({"schemaVersion": 1, "modules": {"backend": {
                 "command": [sys.executable, str(ROOT / "adapters/python/run.py")] + runner_args,
                 "cwd": ".", "adapter": "events", "env": {}}}}), encoding="utf-8")
 

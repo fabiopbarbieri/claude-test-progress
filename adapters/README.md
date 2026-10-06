@@ -3,7 +3,7 @@
 Integração opt-in: cada app mantém seu runner, ambiente e dependências.
 A [matriz de compatibilidade](../docs/COMPATIBILITY.md) separa requisitos,
 combinações testadas e aceites pendentes. Cada integração pode ocupar um ou
-vários módulos com ID próprio no schemaVersion 2. Rails (inclusive views/system),
+vários módulos com ID próprio no schemaVersion 1. Rails (inclusive views/system),
 Python e RSpec normalmente usam `runtime: "inherit"`; Karma pode usar
 `node-project`. ID e linguagem não selecionam runtime; nenhum runner é requisito
 global do Mod. Somente o workspace ativa módulos; templates pessoais são opcionais.
@@ -41,4 +41,4 @@ Um CI não identificado precisa de um coletor de stdout que reconheça o prefixo
 estas linhas sozinhas não instalam uma integração na plataforma de CI.
 
 Resultados dos gates e limites por plataforma estão em
-[VERIFICATION](../docs/VERIFICATION.md).
+[VALIDATION](../docs/VALIDATION.md).

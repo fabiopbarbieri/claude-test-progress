@@ -21,7 +21,7 @@ if (process.env.ORPHAN === '1') {
  fs.writeFileSync(${JSON.stringify(pidFile)},JSON.stringify({pid:child.pid}));child.unref();setTimeout(()=>process.exit(0),250);
 } else setInterval(()=>{},1000);
 `);
-fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: {
+fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules: {
   api: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: { ORPHAN: '1' } },
   ui: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {} }
 } }));

@@ -1,4 +1,4 @@
-// Node-only public CLI with optional tools absent and no product demo.
+// Node-only public CLI with optional tools absent.
 import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
@@ -20,8 +20,8 @@ let jobs={};
 function collect(action,moduleId='all',ok=true) {
   const reply=spawnSync(process.execPath,[path.join(root,'runner/cli.mjs'),action,
     '--cwd',app,'--owner',owner,'--module',moduleId],{env,encoding:'utf8',timeout:60000});
-  const data=JSON.parse(reply.stdout);assert.strictEqual(data.schemaVersion,2);
-  assert.strictEqual(data.ok,ok,data.error);assert(!Object.prototype.hasOwnProperty.call(data,'lanes'));
+  const data=JSON.parse(reply.stdout);assert.strictEqual(data.schemaVersion,1);
+  assert.strictEqual(data.ok,ok,data.error);
   jobs=data.jobs;return data;
 }
 async function finished(moduleId) {
@@ -36,20 +36,20 @@ async function main() {
     for(const tool of ['python','python3','ruby','bundle','java','mvn','karma','rails','git'])
       assert.strictEqual(spawnSync(tool,['--version'],{env,timeout:1000}).error?.code,'ENOENT');
     assert.strictEqual(Object.keys(collect('status').modules).length,0);
-    fs.writeFileSync(config,JSON.stringify({schemaVersion:2,modules:{api:fixture('fail'),billing:fixture('pass')}}));
+    fs.writeFileSync(config,JSON.stringify({schemaVersion:1,modules:{api:fixture('fail'),billing:fixture('pass')}}));
     collect('start');const api=await finished('api'),billing=await finished('billing');
     assert.strictEqual(api.status,'failed');assert.strictEqual(api.failed,1);assert.strictEqual(api.resolved,2);
     assert.strictEqual(billing.status,'completed');assert.strictEqual(billing.exitCode,0);
     assert.notStrictEqual(api.runId,billing.runId);
     console.log('Node-only configured modules with optional tools absent: OK');
-    fs.writeFileSync(config,JSON.stringify({schemaVersion:2,modules:{
+    fs.writeFileSync(config,JSON.stringify({schemaVersion:1,modules:{
       api:{command:['python3','synthetic.py'],adapter:'events'},web:{command:null,cwd:'missing-project'}}}));
     collect('start','api',false);
     assert.strictEqual(jobs.api.runId,api.runId,'preflight cannot replace a previous job');
     assert.strictEqual(jobs.billing.runId,billing.runId);
     assert(!fs.existsSync(path.join(directory,'api.lock')));assert(!fs.existsSync(path.join(directory,'web.lock')));
     console.log('Missing selected executable fails before reservation; other module untouched: OK');
-    collect('demo','all',false);
+    collect('unknown','all',false);
   } finally {
     collect('cancel');await finished('api');await finished('billing');
     removePath(directory,{recursive:true,force:true});removePath(app,{recursive:true,force:true});

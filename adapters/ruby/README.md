@@ -15,7 +15,7 @@ bundle exec ruby /caminho/claude-test-progress/adapters/ruby/run.rb rspec spec
 ```
 
 Copie e ajuste [config.ruby.example.json](../../config.ruby.example.json) para
-`.claude/test-progress.json` no aplicativo. Declare um módulo schemaVersion 2
+`.claude/test-progress.json` no aplicativo. Declare um módulo schemaVersion 1
 com `adapter: "events"` e `runtime: "inherit"`. O ID não escolhe runtime;
 Node/.nvmrc só é preparado quando runtime é explicitamente `node-project`.
 O Ruby/Bundler do app precisa estar no PATH do coletor, ou use executáveis

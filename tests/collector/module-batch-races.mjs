@@ -36,7 +36,7 @@ async function atomicHeartbeatStress() {
   const suite = path.join(cwd, 'silent.mjs');
   fs.writeFileSync(suite, 'setInterval(()=>{},1000);');
   const ids = Array.from({ length: 12 }, (_, index) => `worker${String(index + 1).padStart(2, '0')}`);
-  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: Object.fromEntries(ids.map(id => [id, {
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules: Object.fromEntries(ids.map(id => [id, {
     runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {}
   }])) }));
   function collect(action) {
@@ -119,7 +119,7 @@ async function main() {
   const suite = path.join(cwd, 'suite.mjs');
   fs.writeFileSync(suite, `import fs from 'fs';fs.writeFileSync(process.env.MARKER,'started');setInterval(()=>{},1000);`);
   const modules = Object.fromEntries(['api', 'ui'].map(id => [id, { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: { MARKER: path.join(cwd, id) } }]));
-  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules }));
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules }));
   const args = action => [cli, action, '--cwd', cwd, '--owner', owner, '--module', 'all', '--config', config];
   function launch(hooks) {
     const child = spawn(process.execPath, args('start'), { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TEST_PROGRESS_INTERNAL_TEST_HOOKS: JSON.stringify(hooks || {}) } });
@@ -162,7 +162,7 @@ async function releaseDuringIdentityProbe() {
   const preload = path.join(cwd, 'slow-probe.cjs');
   const observed = path.join(cwd, 'probe-observed');
   fs.writeFileSync(suite, 'setInterval(()=>{},1000);');
-  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: {
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules: {
     api: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {} }
   } }));
   fs.writeFileSync(preload, `const fs=require('fs'),path=require('path');
@@ -211,7 +211,7 @@ async function deadlineDuringFinalConfirmation() {
   const marker = path.join(cwd, 'command-started');
   const injected = path.join(cwd, 'deadline-observed');
   fs.writeFileSync(suite, `import fs from 'fs';fs.writeFileSync(${JSON.stringify(marker)},'started');setInterval(()=>{},1000);`);
-  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules: {
+  fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules: {
     api: { runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events', env: {} }
   } }));
   fs.writeFileSync(preload, `if(process.argv[1]?.endsWith('module-batch-worker.mjs')){

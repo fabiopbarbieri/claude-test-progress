@@ -8,23 +8,15 @@ com Windows PowerShell **5.1** ou PowerShell **7**. Claude Code requer **2.1.287
 e Mods permitido no ambiente. O coletor usa Node **14.0.0+** já instalado.
 Angular 9 e suas dependências permanecem como estão.
 
-**Estado de aceite v2:** implementação e gate nativo estão presentes; o gate
-**não foi executado nativamente nesta entrega**. A matriz configurada em
-[Windows modules](.github/workflows/windows.yml) não é evidência de CI aprovada.
-Histórico Linux do protótipo em [VERIFICATION](docs/VERIFICATION.md) não comprova
-v2 em Windows, PowerShell 5.1/7 ou app Angular 9 real.
+**Estado de aceite:** implementação e gate nativo estão presentes, e a matriz
+[Windows modules](.github/workflows/windows.yml) roda na CI hospedada. Ainda não
+há aceite registrado em uma máquina Windows real nem com um app Angular 9 real.
 
-V2 aceita somente cadastro `schemaVersion: 2` com `modules` e IDs seguros,
-sem demo, `--lane`, aliases de início ou conversão de configuração/estado v1.
-Templates pessoais opcionais também usam schemaVersion 2; somente workspace
+O cadastro usa `schemaVersion: 1` com `modules` e IDs seguros; o início é sempre
+explícito, por ID ou `all`. Templates pessoais opcionais também usam schemaVersion 1; somente workspace
 ativa módulos. Consulte [cadastro e templates](docs/USAGE.md#configurar-seu-projeto).
 
 ## Abrir a partir de qualquer PowerShell
-
-O v2 validado nesta entrega ainda está no checkout local. Para testá-lo, transfira
-esse checkout completo e use `claude --plugin-dir 'C:\Tools\claude-test-progress'`
-no diretório do app. Marketplace e clone remoto abaixo obtêm o artefato publicado
-e não garantem incluir este refactor ainda não publicado.
 
 Instale pelo marketplace conforme o [README](README.md), ou mantenha um clone
 completo em `C:\Tools\claude-test-progress` para usar os exemplos abaixo. Para
@@ -154,9 +146,9 @@ caminhos absolutos de `/test-progress paths` para os adaptadores; não escreva
 no argv esperando expansão. O JSON não é interpretado como PowerShell ou shell.
 
 O módulo Angular usa `node` e o Angular CLI **local** em `node_modules`, sem resolução
-por npx. A `.nvmrc` deve indicar o runtime adequado ao app; a matriz histórica
-Angular 9 lista Node 10/12. Não há migração de Angular, TypeScript, Karma,
-Jasmine ou lockfile. Veja [ANGULAR9.md](ANGULAR9.md) para integrar o reporter.
+por npx. A `.nvmrc` deve indicar o runtime adequado ao app; a matriz de
+suporte do Angular 9 lista Node 10/12. O plugin não exige atualizar Angular,
+TypeScript, Karma, Jasmine ou lockfile. Veja [ANGULAR9.md](ANGULAR9.md) para integrar o reporter.
 `adapter: "events"` requer esse reporter; `karma` é o fallback por logs.
 
 O módulo Maven com `runtime: "inherit"` aceita `.\mvnw.cmd`; Maven instalado também pode usar `mvn.cmd`.
@@ -194,7 +186,7 @@ O início conjunto reserva todos os módulos e aguarda barreira: preparação 30
 confirmação 10 s e aborto 10 s; a chamada start do Mod tem limite de 60 s.
 A suíte não tem deadline. Falha normal de teste não aborta outros módulos;
 falha de infraestrutura pode compensar o lote. Sem término comprovado, os locks
-são conservados. Status/logs/cancel de jobs v2 autenticados permanecem disponíveis
+são conservados. Status/logs/cancel de jobs autenticados permanecem disponíveis
 com configuração removida/inválida.
 
 ## Comandos e cancelamento
@@ -212,8 +204,8 @@ O broker coloca o comando e seus descendentes em um **Windows Job Object**,
 atribuído na criação do processo antes de executá-lo. O encerramento é
 confirmado quando não há processos ativos no Job. A prova fica em sidecar
 atômico privado; fechamento normal libera o módulo e conserva exit code.
-O sidecar de **prova Windows continua com `schema: 1`**: esse formato próprio
-não é schema de cadastro, estado de módulos ou envelope CLI, que usam v2.
+O sidecar de **prova Windows tem formato próprio (`schema: 1`)**, independente
+do `schemaVersion` do cadastro, do estado de módulos e da resposta da CLI.
 
 Cancelamento no Windows encerra o Job inteiro de forma forçada: não oferece
 um SIGTERM gracioso equivalente ao Linux. Recuperação exige identidade do
@@ -232,10 +224,8 @@ misture executáveis Windows com a recuperação Linux por `/proc`.
 
 Na sessão responsável por cada job, consulte `/test-progress status --text`.
 Aguarde o término ou peça `/test-progress cancel all --text` e consulte de novo
-até confirmar o estado terminal, sem recuperação pendente. Para jobs v1 ou
-demos antigas, use o artefato antigo que os iniciou: v2 não os gerencia. Estado
-legado bloqueia globalmente novos starts. Comprove quiescência antes de trocar
-a instalação e preserve evidências; veja [adoção v2](docs/USAGE.md#adotar-v2-com-estado-legado).
+até confirmar o estado terminal, sem recuperação pendente, antes de trocar a
+instalação.
 
 No PowerShell, para o escopo `user`:
 
@@ -274,13 +264,13 @@ A [matriz declarada](.github/workflows/windows.yml) combina PowerShell 5.1/7,
 Node 14.0.0/24 do coletor e Node 12.22.12 do app. Ela pretende exercitar wrapper,
 argv literal/caminhos com espaços, seleção/all, DACL privada, Job Object,
 encerramento de pai/filho/neto, perda autenticada do broker, compensação,
-configuração removida e runtimes separados. **Não há resultado nativo ou execução
-CI dessa matriz comprovado nesta entrega.** Parsing ou testes Linux não substituem
-as chamadas reais de DACL/Job Objects/prova de árvore vazia.
+configuração removida e runtimes separados, e roda na CI hospedada. Parsing ou
+testes Linux não substituem as chamadas reais de DACL/Job Objects/prova de árvore
+vazia, e a CI hospedada não substitui o aceite numa máquina Windows real.
 
 ## Fontes e evidências
 
-[Validação e limites](docs/VERIFICATION.md) · [Configuração e instalação](README.md).
+[Validação e limites](docs/VALIDATION.md) · [Configuração e instalação](README.md).
 
 O código usa [Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects),
 [CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)

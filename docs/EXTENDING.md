@@ -52,7 +52,7 @@ Dificuldades são estimativas para execução finita, não compatibilidade valid
 
 ## Limites e riscos
 
-Cada módulo declara argv, adapter e runtime no schemaVersion 2. Há zero ou
+Cada módulo declara argv, adapter e runtime no schemaVersion 1. Há zero ou
 vários módulos independentes por workspace; IDs e linguagem não escolhem runtime.
 `inherit` preserva o ambiente sem procurar Node/.nvmrc; `node-project` prepara
 Node somente no preflight selecionado. Adapters podem ser usados por qualquer
@@ -61,7 +61,7 @@ ID. Consulte [cadastro e templates](USAGE.md#configurar-seu-projeto).
 Discovery não executa runners/resolvedores nem expõe argv/env. Para um runner
 novo, configure um módulo `inherit` ou `node-project` conforme seu contrato,
 sem acrescentar semântica ao ID. O registry opcional fornece templates, mas
-somente o workspace ativa módulos. Não há fallback/conversão de schema v1.
+somente o workspace ativa módulos.
 
 O [worker](../runner/worker.mjs) lê stdout e stderr. Eventos precisam chegar
 imediatamente, com flush e linhas completas, apesar de captura e paralelismo.

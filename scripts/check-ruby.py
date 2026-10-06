@@ -36,7 +36,7 @@ def invoke(app, *args):
 
 def collector_check(app):
     config = app / 'collector.json'
-    config.write_text(json.dumps({'schemaVersion': 2, 'modules': {'backend': {
+    config.write_text(json.dumps({'schemaVersion': 1, 'modules': {'backend': {
         'command': [RUBY, str(ROOT / 'adapters/ruby/run.rb'), 'rspec', 'slow_spec.rb'],
         'cwd': '.', 'adapter': 'events', 'env': {}}}}))
     owner = 'ruby-check-' + uuid.uuid4().hex

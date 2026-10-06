@@ -1,4 +1,4 @@
-// Configuration disappearance must not strand a v2 job or its ownership.
+// Configuration disappearance must not strand a job or its ownership.
 import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
@@ -17,7 +17,7 @@ const suite={command:[process.execPath,path.join(root,'tests/collector/fixtures/
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function collect(action,moduleId='all',ok=true){
   const reply=spawnSync(process.execPath,[path.join(root,'runner/cli.mjs'),action,'--cwd',app,'--owner',owner,'--module',moduleId],{encoding:'utf8',timeout:60000});
-  const data=JSON.parse(reply.stdout);assert.strictEqual(data.schemaVersion,2);assert.strictEqual(data.ok,ok,data.error);return data;
+  const data=JSON.parse(reply.stdout);assert.strictEqual(data.schemaVersion,1);assert.strictEqual(data.ok,ok,data.error);return data;
 }
 async function waitFor(moduleId,predicate){
   const deadline=Date.now()+12000;
@@ -29,7 +29,7 @@ async function main(){
     assert.strictEqual(collect('status').workspace.moduleConfig.status,'absent');
     for(const moduleId of ['api','billing']){
       const disabled=moduleId==='api'?'billing':'api';
-      fs.writeFileSync(configPath,JSON.stringify({schemaVersion:2,modules:{[moduleId]:suite,[disabled]:{enabled:false,command:null,cwd:'missing'}}}));
+      fs.writeFileSync(configPath,JSON.stringify({schemaVersion:1,modules:{[moduleId]:suite,[disabled]:{enabled:false,command:null,cwd:'missing'}}}));
       const previous=collect('status').jobs[disabled]?.runId;
       const started=collect('start');assert.deepStrictEqual(started.workspace.moduleConfig.enabledIds,[moduleId]);
       assert.strictEqual(started.jobs[disabled]?.runId,previous);
@@ -43,12 +43,12 @@ async function main(){
       assert(!sameProcess(claim.workerIdentity));assert.strictEqual(groupState(claim.childIdentity),'empty');
       assert(!fs.existsSync(files(directory,moduleId).lock));
     }
-    fs.writeFileSync(configPath,JSON.stringify({schemaVersion:2,modules:{}}));
+    fs.writeFileSync(configPath,JSON.stringify({schemaVersion:1,modules:{}}));
     assert.deepStrictEqual(collect('status').workspace.moduleConfig.enabledIds,[]);collect('start','all',false);
     fs.writeFileSync(configPath,'{"env":"synthetic-secret",invalid');const invalid=collect('status');
     assert.strictEqual(invalid.workspace.moduleConfig.status,'invalid');assert(!JSON.stringify(invalid).includes('synthetic-secret'));
     collect('start','all',false);collect('logs');collect('cancel');
-    console.log('V2 selection, removed-config management and safe diagnostics: OK');
+    console.log('Selection, removed-config management and safe diagnostics: OK');
   }finally{
     collect('cancel');for(const id of ['api','billing'])await waitFor(id,job=>!job||!['preparing','running'].includes(job.status));
     removePath(directory,{recursive:true,force:true});removePath(app,{recursive:true,force:true});

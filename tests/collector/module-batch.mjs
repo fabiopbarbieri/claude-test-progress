@@ -20,7 +20,7 @@ setInterval(()=>{},1000);
 `);
 function descriptor(id, extra = {}) { return { label: id, runtime: 'inherit', command: [process.execPath, suite], cwd: '.', adapter: 'events',
   env: { MARKER: path.join(cwd, `${id}.marker`) }, ...extra }; }
-function configure(modules) { fs.writeFileSync(config, JSON.stringify({ schemaVersion: 2, modules })); }
+function configure(modules) { fs.writeFileSync(config, JSON.stringify({ schemaVersion: 1, modules })); }
 function collect(action, target = 'all', hooks = null) {
   const result = spawnSync(process.execPath, [cli, action, '--cwd', cwd, '--owner', owner, '--module', target, '--config', config],
     { encoding: 'utf8', timeout: 45000, env: { ...process.env, ...(hooks ? { TEST_PROGRESS_INTERNAL_TEST_HOOKS: JSON.stringify(hooks) } : {}) } });
@@ -55,9 +55,8 @@ async function main() {
     assert(!fs.existsSync(path.join(cwd, 'api.marker')), 'worker preparation failure must execute zero commands');
     assert(!fs.existsSync(path.join(cwd, 'ui.marker')));
     const started = collect('start');
-    assert.strictEqual(started.schemaVersion, 2);
+    assert.strictEqual(started.schemaVersion, 1);
     assert.strictEqual(started.ok, true, started.error + ' ' + JSON.stringify(started.stateDiagnostics ?? collect('status').stateDiagnostics));
-    assert(!('lanes' in started));
     await waitFor(() => fs.existsSync(path.join(cwd, 'api.marker')) && fs.existsSync(path.join(cwd, 'ui.marker')));
     assert.strictEqual(collect('cancel', 'api').ok, true);
     await waitFor(result => settled(result, 'api', 'cancelled'));
@@ -76,7 +75,7 @@ async function main() {
     assert.strictEqual(collect('start', 'api').ok, true, 'a finished module can restart while sibling remains active');
     await new Promise(resolve => setTimeout(resolve, 250));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'old supervisor cannot compensate a safely finished run after its module restarts');
-    atomicJson(files(context.directory, 'legacy').snapshot, { schema: 1, lane: 'legacy', runId: 'old' });
+    atomicJson(files(context.directory, 'foreign').snapshot, { version: 'other', module: 'foreign', runId: 'old' });
     const rejected = collect('start', 'api');
     assert.strictEqual(rejected.ok, false);
     assert.strictEqual(rejected.workspace.stateBlocked, true);
@@ -84,9 +83,9 @@ async function main() {
     assert.strictEqual(cancelled.ok, false, 'cancel all reports incompatible entry');
     assert.strictEqual(cancelled.actionResults.ui.ok, true, 'cancel all still processes healthy sibling');
     await waitFor(result => settled(result, 'ui', 'cancelled'));
-    const shortcuts = spawnSync(process.execPath, [cli, 'demo', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
-    assert.strictEqual(shortcuts.status, 1);
-    console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation and legacy blocking: OK');
+    const unknown = spawnSync(process.execPath, [cli, 'unknown', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
+    assert.strictEqual(unknown.status, 1);
+    console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation and incompatible-state blocking: OK');
   } finally {
     try { collect('cancel'); } catch { /* Retain failure evidence until teardown. */ }
     await new Promise(resolve => setTimeout(resolve, 400));

@@ -3,49 +3,43 @@
 `claude-test-progress` ships the `test-progress` plugin without installing test
 frameworks into the user's application. The collector still supports Node
 **14.0.0 and newer**. Files under `tests/dependencies/` are CI fixture inputs,
-not plugin runtime dependencies. The active product is **v2 only**: workspace
-and optional registry use `schemaVersion: 2`, with zero or multiple modules
+not plugin runtime dependencies. The workspace configuration and the optional
+registry use `schemaVersion: 1`, with zero or multiple modules
 identified by safe IDs. Only workspace declarations activate modules. Runtime
 is explicit (`inherit` or `node-project`), independent of ID or language;
 `command` and `env` replace whole template fields.
 
 Use `start/list/status/logs/cancel` with `--module id|all` in the collector CLI,
 `-Module` in its PowerShell bootstrap, and explicit verbs in `/test-progress`.
-There is no demo, lane option, shorthand start, v1 conversion or v1 job manager.
+Starts are always explicit, by ID or `all`.
 Discovery is read-only for configuration, does not execute app resolvers, and
 publishes neither command nor env. See [USAGE](USAGE.md) for registry location,
 the 1 MiB source limit and CLI-only `--config` scope.
 
-Before adopting v2, finish or cancel old jobs with the **old artifact that
-started them**, using their original cwd/owner. Confirm quiescence and preserve
-legacy evidence. Legacy state blocks new starts globally; changing an ID does
-not bypass it. The v2 runtime cannot manage old jobs or demos.
-
-Historical CI results in [COMPATIBILITY](COMPATIBILITY.md) are tied to
-`cc9c0aa710fa80d123c00856ec277b8f04741544`, not this v2 working tree. Workflow
-configuration below describes intended coverage; it does not claim a new
-hosted run passed. Current local results belong in [VALIDATION](VALIDATION.md).
+The tested matrix is in [COMPATIBILITY](COMPATIBILITY.md). Workflow
+configuration below describes intended coverage; the result for a commit is its
+hosted run. How to reproduce each gate is in [VALIDATION](VALIDATION.md).
 
 ## Configured update coverage
 
 [Dependabot configuration](../.github/dependabot.yml) checks on Mondays at
 09:00 America/Sao_Paulo. Each of its ten update entries allows three open
-version-update PRs. Lanes with different compatibility limits have their own
+version-update PRs. CI jobs with different compatibility limits have their own
 entry. Minor and patch version updates are grouped within each entry; major
 updates remain individual PRs. Security updates remain individual and are not
 delayed by the weekly version-update schedule or governed by its PR limit.
 There is no automerge.
 
-`ignore` rules keep each lane inside the supported matrix:
+`ignore` rules keep each CI job inside the supported matrix:
 
 | Inputs | Ignored |
 | --- | --- |
 | Maven | JUnit BOM and `org.junit.platform:*` 6+ (JUnit 5 stays the contract) |
 | `python38` | pytest 8.4+ (no Python 3.8 support) |
 | `rspec` | `rspec*` 3.14+ (contract is RSpec Core 3.13.x) |
-| `rails72` | Rails 7.3+ and every Minitest update (lane pins the 5.20.0 floor) |
-| `rails80` / `rails81` | Rails outside the lane series; Minitest 6+ |
-| `angular9` | Everything: frozen Node 12 / npm 6 toolchain with a v1 lock |
+| `rails72` | Rails 7.3+ and every Minitest update (the job pins the 5.20.0 floor) |
+| `rails80` / `rails81` | Rails outside the job's series; Minitest 6+ |
+| `angular9` | Everything: frozen Node 12 / npm 6 toolchain with a lockfileVersion 1 lock |
 | `angular18` | Majors; TypeScript 5.6+; zone.js 0.15+ (Angular 18 peers) |
 
 Dependency and version `ignore` conditions also suppress **security** PRs for
@@ -79,7 +73,7 @@ compatibility assumptions inside fixture generators. For example,
 `scripts/check-rails.py` has Minitest, Capybara and Selenium constraints. A major
 upgrade can therefore require a separate adapter/fixture change and an explicit
 matrix decision. Review an oldest-supported-runtime upgrade especially closely:
-new pytest releases may not support Python 3.8. A failing compatibility lane is
+new pytest releases may not support Python 3.8. A failing compatibility job is
 not a reason to silently raise the collector's Node minimum.
 
 The npm entry covers only real fixture dependencies; the private root package
@@ -100,7 +94,7 @@ acceptance is separate and remains pending.
    commit against the upstream repository's release tag, and keep its version
    comment on the same line. Dependabot can update both the SHA and comment.
 3. For Ruby changes, update the relevant Gemfile and lock together using Bundler
-   2.6.9 and a Ruby from the affected lane. For example, from the repository root:
+   2.6.9 and a Ruby from the affected job. For example, from the repository root:
 
    ```sh
    BUNDLE_GEMFILE=tests/dependencies/rails81/Gemfile bundle lock --update rails
@@ -140,10 +134,9 @@ jobs without adding globally installed frameworks or new required branch checks:
 | Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
 
 The collector's minimum remains Node 14.0.0. An app has its own runtime: Angular
-9 uses its historical Node 12 toolchain, while Angular 18 uses Node 22. This does
+9 uses its original Node 12 toolchain, while Angular 18 uses Node 22. This does
 not claim Angular 9 or 18 runs on the collector's Node version. The Quality workflow additionally defines checks for both collector versions
-with Python suites and long-running jobs. Its definition alone is not a passing
-v2 CI result.
+with Python suites and long-running jobs.
 
 `python3 scripts/check-junit.py` builds the checked-out listener, installs it
 into a temporary Maven repository and exercises a real Surefire application:
@@ -177,23 +170,23 @@ the reporter proves the event gate detects missing integration. The app's
 `.nvmrc` selection is checked against its distinct Node executable. npm cache,
 builds and generated app state stay temporary; nothing installs into the plugin.
 
-These legacy compatibility fixtures contain known vulnerable framework/toolchain
+These older-framework compatibility fixtures contain known vulnerable framework/toolchain
 dependencies, including critical findings in `npm audit`. They serve synthetic content on loopback
 in disposable CI, use no secrets and are not deployable sample applications.
 Do not suppress Dependabot alerts or silently upgrade the fixture's framework
-major to make them disappear. Review fixes compatible with each lane, or make
+major to make them disappear. Review fixes compatible with each CI job, or make
 an explicit supported-matrix decision. Headless Chrome comes from the hosted
 runner and is not pinned/maintained by Dependabot. When actually run, this gate executes a real Angular browser; it is not a claim of visual Claude acceptance, Rails Selenium coverage,
 watch/re-run cycles, multiple browsers or native Windows support.
 
-## Native Windows v2 gate
+## Native Windows gate
 
 [Windows modules](../.github/workflows/windows.yml) is configured for Windows
 PowerShell 5.1 with collector Node 14.0.0 and PowerShell 7 with collector Node
 14.0.0 and 24, all with app Node 12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
-[tests/windows/native.mjs](../tests/windows/native.mjs). **Neither a native run
-nor hosted CI success is evidenced in this delivery.** Parsing scripts or
-running Linux checks is not Windows acceptance.
+[tests/windows/native.mjs](../tests/windows/native.mjs) on hosted Windows
+runners. A hosted run is not acceptance on a real Windows 10/11 machine, and
+parsing scripts or running Linux checks is not Windows acceptance.
 
 Execute the gate separately in each native engine with installed runtimes:
 
@@ -204,9 +197,9 @@ Execute the gate separately in each native engine with installed runtimes:
 The scenarios are intended to observe scalar wrapper args, spaces, literal argv,
 selected preflight/all, private DACL, Job Object containment, parent/child/
 grandchild cancellation, authenticated broker loss, compensation, removed
-configuration and independent app/collector runtimes. Preserve the existing
-Windows proof sidecar `schema: 1`: it is a distinct proof protocol, not v1
-module configuration, state or CLI envelope. Do not infer support for an Angular
+configuration and independent app/collector runtimes. The Windows proof sidecar
+keeps its own `schema: 1`: it is a distinct proof protocol, independent of the
+`schemaVersion` of configuration, state and CLI responses. Do not infer support for an Angular
 app/browser from the Node 12 synthetic runtime scenario.
 
 Start coordination uses preparation 30 s, acknowledgement 10 s, abort 10 s and

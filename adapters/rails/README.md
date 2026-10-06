@@ -21,7 +21,7 @@ do app, contendo `bin/rails` e `config/boot.rb`:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "rails": {
       "label": "Rails",

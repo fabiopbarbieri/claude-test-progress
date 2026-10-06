@@ -6,8 +6,19 @@
 O plugin `test-progress` apresenta os módulos declarados no seu workspace,
 com contadores, estado e logs por ID. É um
 [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.2.0**, licença **MIT**.
-A capa é uma ilustração; a interface real é um painel de terminal.
+independente da Anthropic. Versão **0.3.0**, licença **MIT**.
+A capa é uma ilustração; a interface real é um painel de terminal:
+
+```text
+Test Progress                              ▶ todos ?
+● API        ██████████░░  83%  ✓4 ✗1        0:57 ≡ ■
+✓ Cobrança   ████████████ 100%  ✓12          0:08 ≡ ▶
+✗ Web        ███████░░░░░  58%  ✓6 ✗2 ↷1     1:40 ≡ ▶
+○ Worker     —                                    ▶
+```
+
+Acima do prompt, uma faixa de uma linha resume o que está rodando e as falhas
+ainda não vistas; ela some quando não há nada novo.
 
 ## Funcionalidades e limites
 
@@ -28,35 +39,36 @@ O plugin não instala runners, browsers ou runtimes.
 | Base ou integração | Alcance e limite |
 | --- | --- |
 | Claude Code / coletor | Claude **2.1.287+**, Node **14+** para o coletor |
-| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; aceite nativo Windows v2 pendente dos gates próprios |
+| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio, ainda sem aceite registrado |
 | Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
 | Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
 | Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |
 | Java / JUnit 5 | Java 17+; fallback Maven ou listener opcional; consulte o alcance do gate real |
 | Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
 
-Veja [versões testadas e evidências por SHA](docs/COMPATIBILITY.md).
+Veja [versões testadas](docs/COMPATIBILITY.md).
 O coletor usa seu próprio Node; `node-project` prepara o Node do aplicativo
 respeitando a `.nvmrc`. `inherit` preserva o ambiente sem descobrir Node do app.
 Linux/WSL usa Bash; descoberta nvm usa GNU `sort -V`. Windows usa PowerShell 5.1/7.
 
 ## Instalar e configurar
 
-**0.2.0 é incompatível com 0.1.0:** os comandos abaixo instalam a versão atual,
-com contrato v2 (`schemaVersion: 2`, módulos, sem lanes ou demo). Quem já usa
-0.1.0 deve encerrar os jobs e seguir a [migração](CHANGELOG.md#migração-a-partir-de-010)
-e a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado) antes de atualizar.
-
-Com acesso SSH ao GitHub configurado, no Claude Code:
+Com acesso SSH ao GitHub configurado, rode no Claude Code **um comando por vez**
+(colados juntos, as linhas seguintes viram argumentos do primeiro):
 
 ```text
 /plugin marketplace add git@github.com:fabiopbarbieri/claude-test-progress.git
-/plugin install test-progress@test-progress-marketplace
-/reload-plugins
-/test-progress help
-/test-progress paths
-/test-progress list
 ```
+
+```text
+/plugin install test-progress@test-progress-marketplace
+```
+
+```text
+/reload-plugins
+```
+
+Depois, `/test-progress help`, `/test-progress paths` e `/test-progress list`.
 
 O marketplace próprio se chama `test-progress-marketplace`. Um workspace sem
 cadastro pode ter zero módulos; listar ou abrir o painel não executa testes.
@@ -67,7 +79,7 @@ para um app Maven que já possui `mvnw` executável na raiz, em Linux/WSL:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "api": {
       "label": "API",
@@ -99,19 +111,14 @@ Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
 | `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
 
 Acrescente `--text`, por exemplo `/test-progress status all --text`.
-Não há aliases de início por ID, `demo` nem opção `--lane` no produto v2.
+No painel: `▶` inicia, `■` cancela, `≡` abre os logs sob o módulo e `?` mostra a legenda.
 [Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
 
-## Adotar v2, atualizar ou remover
+## Atualizar ou remover
 
-**Encerre os jobs com o artefato que os iniciou e confirme ausência de recuperação
-pendente antes de trocar a instalação.** O produto v2 recusa configuração v1,
-sem fallback ou conversão automática. Estado legado no namespace bloqueia novos
-starts globalmente; v2 não gerencia jobs v1 ou demos antigas. Preserve o artefato
-antigo para consultá-los/cancelá-los e siga a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado).
-
-Fechar painel, reload ou uninstall não para processos detached nem comprova
-limpeza dos logs fora do cache. Após a confirmação de encerramento:
+**Encerre os jobs e confirme que não há recuperação pendente antes de trocar a
+instalação.** Fechar painel, reload ou uninstall não para processos detached nem
+comprova limpeza dos logs fora do cache. Após a confirmação de encerramento:
 
 ```bash
 claude plugin marketplace update test-progress-marketplace
@@ -132,6 +139,6 @@ Ajuste o escopo instalado. Após atualizar, recarregue e reconsulte
 
 [Uso](docs/USAGE.md) · [Compatibilidade](docs/COMPATIBILITY.md) ·
 [Diagnóstico](docs/TROUBLESHOOTING.md) · [Windows](WINDOWS.md) · [Angular 9](ANGULAR9.md) ·
-[Verificação](docs/VERIFICATION.md) · [Segurança](SECURITY.md) ·
+[Validação](docs/VALIDATION.md) · [Segurança](SECURITY.md) ·
 [Contribuição](CONTRIBUTING.md) · [Extensões](docs/EXTENDING.md) ·
 [CI e governança](docs/CI-GOVERNANCE.md) · [Licença MIT](LICENSE).

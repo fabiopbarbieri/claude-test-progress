@@ -80,7 +80,7 @@ async function main() {
   event(1);
   const timer=setInterval(()=>{if(fs.existsSync('release')){clearInterval(timer);event(2);}},100);
   `);
-    fs.writeFileSync(path.join(app, '.claude/test-progress.json'), JSON.stringify({schemaVersion:2, modules:{
+    fs.writeFileSync(path.join(app, '.claude/test-progress.json'), JSON.stringify({schemaVersion:1, modules:{
       backend:{command:[process.execPath,path.join(app,'suite.mjs')],cwd:'.',adapter:'events'}}}));
     query('start backend');
     const first = await until(value => value?.resolved === 1);

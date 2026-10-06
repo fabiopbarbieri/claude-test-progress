@@ -11,7 +11,7 @@ O coletor continua usando seu próprio Node 14+.
 
 Requisitos: Python **3.8+**; para pytest, **pytest 7+** já disponível nesse mesmo
 ambiente. Unittest usa somente a biblioteca padrão. As versões efetivamente
-verificadas estão em [VERIFICATION](../../docs/VERIFICATION.md).
+verificadas estão em [VALIDATION](../../docs/VALIDATION.md).
 
 ## Configurar
 
@@ -23,7 +23,7 @@ pertencem ao seu app:
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "modules": {
     "python": {
       "label": "Python",

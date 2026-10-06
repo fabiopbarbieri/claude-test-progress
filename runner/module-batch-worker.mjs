@@ -7,11 +7,12 @@ import { removePath } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
 import { batchFiles, readBatch, changeBatch, compensation, ACK_MS, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 
 async function main() {
   const requestPath = process.argv[2];
   const request = readJson(requestPath);
-  if (!request || request.schemaVersion !== 2 || requestPath !== batchFiles(request.directory, request.batchId).request) throw new Error('Pedido do lote inválido');
+  if (!request || request.schemaVersion !== SCHEMA_VERSION || requestPath !== batchFiles(request.directory, request.batchId).request) throw new Error('Pedido do lote inválido');
   let manifest = readBatch(request.directory, request.batchId);
   const coordinatorIdentity = processIdentity(process.pid);
   if (!coordinatorIdentity || !sameProcess(manifest.launchIdentity)) throw new Error('Ownership de lançamento perdido');
@@ -35,7 +36,7 @@ async function main() {
         if (finalAcknowledged(manifest, entry)) continue;
         const claim = ownedClaim(request.directory, entry.moduleId, entry.runId);
         if (claim.batchId !== request.batchId) continue;
-        atomicJson(files(request.directory, entry.moduleId).cancel, { schemaVersion: 2, ...entry, batchId: request.batchId, requestedAt: timestamp() });
+        atomicJson(files(request.directory, entry.moduleId).cancel, { schemaVersion: SCHEMA_VERSION, ...entry, batchId: request.batchId, requestedAt: timestamp() });
       } catch { /* Continue cancelling every authenticated sibling. */ }
     }
   }

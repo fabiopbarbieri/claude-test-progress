@@ -1,16 +1,17 @@
 // Pure presentation rules shared by native surfaces and text. No host APIs.
 import { validModuleId } from './module-id.mjs';
+import { SCHEMA_VERSION } from './schema.mjs';
 export const ACTIVE = new Set(['preparing', 'running']);
 export const labels = { preparing: 'Preparando', running: 'Em execução', completed: 'Encerrado',
   failed: 'Encerrado com falha', cancelled: 'Cancelado', error: 'Erro' };
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
 export function validateEnvelope(data) {
   const config = data?.workspace?.moduleConfig;
-  if (data?.schemaVersion !== 2 || data.schema !== undefined || data.lanes !== undefined || typeof data.ok !== 'boolean' || !record(data.modules) ||
+  if (data?.schemaVersion !== SCHEMA_VERSION || typeof data.ok !== 'boolean' || !record(data.modules) ||
       !record(data.jobs) || !record(data.stateDiagnostics) || !record(config) ||
       !['absent', 'valid', 'invalid'].includes(config.status) ||
-      ![2, null].includes(config.schemaVersion) || !Array.isArray(config.enabledIds)) {
-    throw new Error('Versão de resposta do coletor incompatível; requer schemaVersion 2.');
+      ![SCHEMA_VERSION, null].includes(config.schemaVersion) || !Array.isArray(config.enabledIds)) {
+    throw new Error(`Versão de resposta do coletor incompatível; requer schemaVersion ${SCHEMA_VERSION}.`);
   }
   for (const [id, module] of Object.entries(data.modules)) {
     if (!validModuleId(id) || module?.id !== id || typeof module.label !== 'string' ||
@@ -21,7 +22,7 @@ export function validateEnvelope(data) {
     }
   }
   for (const [id, job] of Object.entries(data.jobs)) {
-    if (!validModuleId(id) || job?.schemaVersion !== 2 || job.moduleId !== id ||
+    if (!validModuleId(id) || job?.schemaVersion !== SCHEMA_VERSION || job.moduleId !== id ||
         typeof job.runId !== 'string' || !job.runId || job.source !== 'config' || !Object.prototype.hasOwnProperty.call(labels, job.status) ||
         typeof job.phase !== 'string' || job.command !== undefined && !Array.isArray(job.command)) {
       throw new Error('Snapshot de job incompatível na resposta do coletor.');
@@ -73,3 +74,36 @@ export function sanitizeText(value) {
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '').replace(/\t/g, '    ');
 }
 export const sanitizeTail = tail => Array.isArray(tail) ? tail.slice(-200).map(sanitizeText) : [];
+// Compact panel and band vocabulary: one-column glyphs so terminal columns stay aligned.
+export function statusGlyph(job) {
+  if (!job) return { glyph: '○', color: 'inactive' };
+  if (job.recoveryRequired || job.status === 'error') return { glyph: '!', color: 'error' };
+  if (ACTIVE.has(job.status)) return job.phase === 'cancellation-requested' ?
+    { glyph: '◌', color: 'inactive' } : { glyph: '●', color: 'warning' };
+  if (job.status === 'cancelled') return { glyph: '■', color: 'inactive' };
+  if (job.status === 'failed' || (job.failed ?? 0) > 0) return { glyph: '✗', color: 'error' };
+  return { glyph: '✓', color: 'success' };
+}
+const knownPercent = job => job.total != null && job.total > 0 && typeof job.percent === 'number' && Number.isFinite(job.percent);
+export function progressBar(job, cells = 12) {
+  if (!knownPercent(job)) return '·'.repeat(cells);
+  const filled = Math.max(0, Math.min(cells, Math.round(job.percent / 100 * cells)));
+  return `${'█'.repeat(filled)}${'░'.repeat(cells - filled)}`;
+}
+export function compactPercent(job) {
+  if (job.total === 0) return 'sem testes';
+  if (!knownPercent(job)) return '—';
+  // A finished run's total is final, whatever the stream last claimed.
+  return `${ACTIVE.has(job.status) && !job.totalStable ? '~' : ''}${percentage(job)}`;
+}
+export function compactCounts(job) {
+  return [['passed', '✓', 'success'], ['failed', '✗', 'error'], ['skipped', '↷', 'inactive']]
+    .filter(([key]) => (job?.[key] ?? 0) > 0).map(([key, glyph, color]) => ({ text: `${glyph}${job[key]}`, color }));
+}
+export function clock(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '';
+  const total = Math.floor(ms / 1000), h = Math.floor(total / 3600), m = Math.floor(total % 3600 / 60), s = total % 60;
+  const pad = value => String(value).padStart(2, '0');
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+export const configStatus = { valid: 'válido', absent: 'ausente', invalid: 'inválido' };

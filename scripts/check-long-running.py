@@ -47,7 +47,7 @@ class LongRunningTests(unittest.TestCase):
             "totalStable:true, final}));\n" + body, encoding="utf-8")
         config = self.app / ".claude"
         config.mkdir()
-        (config / "test-progress.json").write_text(json.dumps({"schemaVersion": 2, "modules": {"backend": {
+        (config / "test-progress.json").write_text(json.dumps({"schemaVersion": 1, "modules": {"backend": {
             "command": [self.node, str(fixture)], "cwd": ".", "adapter": "events"
         }}}), encoding="utf-8")
         return self.collect("start")

@@ -27,23 +27,23 @@ class MetadataTests(unittest.TestCase):
         path.write_text(json.dumps(data))
 
     def test_manifest_is_version_source(self):
-        version, notes = release.check_metadata(self.root, "0.2.0")
-        self.assertEqual(version, "0.2.0")
+        version, notes = release.check_metadata(self.root, "0.3.0")
+        self.assertEqual(version, "0.3.0")
         self.assertTrue(notes)
         with self.assertRaisesRegex(ValueError, "Unexpected manifest"):
-            release.check_metadata(self.root, "0.1.0")
+            release.check_metadata(self.root, "0.0.1")
 
     def test_reject_package_drift(self):
-        self.mutate("package.json", lambda data: data.update(version="0.1.0"))
+        self.mutate("package.json", lambda data: data.update(version="0.0.1"))
         with self.assertRaisesRegex(ValueError, "Package version"):
             release.check_metadata(self.root)
 
     def test_reject_catalog_version_even_when_matching(self):
-        self.mutate(".claude-plugin/marketplace.json", lambda data: data["plugins"][0].update(version="0.2.0"))
+        self.mutate(".claude-plugin/marketplace.json", lambda data: data["plugins"][0].update(version="0.3.0"))
         with self.assertRaisesRegex(ValueError, "not the catalog"):
             release.check_metadata(self.root)
 
-    def test_reject_source_migration(self):
+    def test_reject_source_change(self):
         self.mutate(".claude-plugin/marketplace.json", lambda data: data["plugins"][0].update(source="https://example.invalid/archive.zip"))
         with self.assertRaisesRegex(ValueError, "relative source"):
             release.check_metadata(self.root)
@@ -54,42 +54,42 @@ class MetadataTests(unittest.TestCase):
             release.check_metadata(self.root)
 
     def test_reject_nonstable_or_malformed_versions(self):
-        for version in ("v0.2.0", "00.2.0", "0.2", "0.2.0-rc.1", "0.2.0+build", "0.2.0\n", None):
+        for version in ("v0.3.0", "00.3.0", "0.3", "0.3.0-rc.1", "0.3.0+build", "0.3.0\n", None):
             with self.subTest(version=version):
                 self.mutate(".claude-plugin/plugin.json", lambda data: data.update(version=version))
                 with self.assertRaisesRegex(ValueError, "stable SemVer"):
                     release.check_metadata(self.root)
 
     def test_notes_only_include_selected_version(self):
-        (self.root / "CHANGELOG.md").write_text("# Changes\n\n## [0.2.0] - Pending\n\nNew behavior\n\n## [0.1.0]\n\nOld behavior\n")
-        self.assertEqual(release.release_notes(self.root, "0.2.0"), "New behavior")
+        (self.root / "CHANGELOG.md").write_text("# Changes\n\n## [0.3.0] - Pending\n\nNew behavior\n\n## [0.0.1]\n\nOld behavior\n")
+        self.assertEqual(release.release_notes(self.root, "0.3.0"), "New behavior")
 
     def test_release_heading_requires_valid_date_when_dated(self):
-        release.check_metadata(self.root, "0.2.0", dated=True)
-        for heading in ("## [0.2.0] - Pending", "## [0.2.0] - 2026-13-40", "## [0.2.0]", "## [0.2.0] - 2026-10-05 draft"):
+        release.check_metadata(self.root, "0.3.0", dated=True)
+        for heading in ("## [0.3.0] - Pending", "## [0.3.0] - 2026-13-40", "## [0.3.0]", "## [0.3.0] - 2026-10-05 draft"):
             with self.subTest(heading=heading):
                 (self.root / "CHANGELOG.md").write_text(heading + "\n\nNotes\n")
                 with self.assertRaisesRegex(ValueError, "release date"):
-                    release.release_notes(self.root, "0.2.0", dated=True)
-        (self.root / "CHANGELOG.md").write_text("## [0.2.0] - Pending\n\nNotes\n")
-        self.assertEqual(release.release_notes(self.root, "0.2.0"), "Notes")
-        (self.root / "CHANGELOG.md").write_text("## [0.2.0] - 2026-10-05\n\nNotes\n")
-        self.assertEqual(release.release_notes(self.root, "0.2.0", dated=True), "Notes")
+                    release.release_notes(self.root, "0.3.0", dated=True)
+        (self.root / "CHANGELOG.md").write_text("## [0.3.0] - Pending\n\nNotes\n")
+        self.assertEqual(release.release_notes(self.root, "0.3.0"), "Notes")
+        (self.root / "CHANGELOG.md").write_text("## [0.3.0] - 2026-10-05\n\nNotes\n")
+        self.assertEqual(release.release_notes(self.root, "0.3.0", dated=True), "Notes")
 
     def test_reject_relative_links_in_notes(self):
-        for link in ("docs/USAGE.md", "#migração", "../README.md", "http://example.invalid/x"):
+        for link in ("docs/USAGE.md", "#instalar", "../README.md", "http://example.invalid/x"):
             with self.subTest(link=link):
-                (self.root / "CHANGELOG.md").write_text("## [0.2.0]\n\nSee [guide](" + link + ").\n")
+                (self.root / "CHANGELOG.md").write_text("## [0.3.0]\n\nSee [guide](" + link + ").\n")
                 with self.assertRaisesRegex(ValueError, "absolute https"):
-                    release.release_notes(self.root, "0.2.0")
-        (self.root / "CHANGELOG.md").write_text("## [0.2.0]\n\nSee [guide](https://example.invalid/x#a).\n")
-        self.assertIn("https://example.invalid/x#a", release.release_notes(self.root, "0.2.0"))
+                    release.release_notes(self.root, "0.3.0")
+        (self.root / "CHANGELOG.md").write_text("## [0.3.0]\n\nSee [guide](https://example.invalid/x#a).\n")
+        self.assertIn("https://example.invalid/x#a", release.release_notes(self.root, "0.3.0"))
 
     def test_reject_missing_duplicate_or_empty_notes(self):
-        for text in ("# Empty", "## [0.2.0]\n", "## [0.2.0]\nFirst\n## [0.2.0]\nSecond"):
+        for text in ("# Empty", "## [0.3.0]\n", "## [0.3.0]\nFirst\n## [0.3.0]\nSecond"):
             (self.root / "CHANGELOG.md").write_text(text)
             with self.assertRaises(ValueError):
-                release.release_notes(self.root, "0.2.0")
+                release.release_notes(self.root, "0.3.0")
 
 
 class ProvenanceTests(unittest.TestCase):
@@ -106,33 +106,33 @@ class ProvenanceTests(unittest.TestCase):
         return release.git(self.root, *args)
 
     def test_exact_clean_sha_on_main(self):
-        self.assertEqual(release.check_provenance(self.root, "0.2.0", self.sha, "main", True),
-                         (self.sha, "test-progress--v0.2.0"))
+        self.assertEqual(release.check_provenance(self.root, "0.3.0", self.sha, "main", True),
+                         (self.sha, "test-progress--v0.3.0"))
 
     def test_reject_wrong_short_and_injected_sha(self):
         for sha in ("0" * 40, self.sha[:7], "HEAD", "$(echo injected)"):
             with self.assertRaises(ValueError):
-                release.check_provenance(self.root, "0.2.0", sha)
+                release.check_provenance(self.root, "0.3.0", sha)
 
     def test_reject_dirty_tree_including_untracked(self):
         (self.root / "unreviewed.txt").write_text("not committed")
         with self.assertRaisesRegex(ValueError, "not clean"):
-            release.check_provenance(self.root, "0.2.0", clean=True)
+            release.check_provenance(self.root, "0.3.0", clean=True)
 
     def test_reject_commit_not_on_main(self):
         self.git("checkout", "-b", "feature")
         self.git("-c", "user.name=Release Test", "-c", "user.email=release@example.invalid",
                  "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "feature")
         with self.assertRaises(ValueError):
-            release.check_provenance(self.root, "0.2.0", main_ref="main")
+            release.check_provenance(self.root, "0.3.0", main_ref="main")
 
     def test_reject_published_or_older_version(self):
-        self.git("-c", "tag.gpgsign=false", "tag", "test-progress--v0.2.0")
+        self.git("-c", "tag.gpgsign=false", "tag", "test-progress--v0.3.0")
         with self.assertRaisesRegex(ValueError, "already exists"):
-            release.check_provenance(self.root, "0.2.0")
+            release.check_provenance(self.root, "0.3.0")
         with self.assertRaisesRegex(ValueError, "must exceed"):
-            release.check_provenance(self.root, "0.1.9")
-        release.check_provenance(self.root, "0.2.1")
+            release.check_provenance(self.root, "0.2.9")
+        release.check_provenance(self.root, "0.3.1")
 
 
 class CiTests(unittest.TestCase):
