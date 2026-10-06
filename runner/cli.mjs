@@ -198,7 +198,8 @@ async function main() {
     if (Number(process.versions.node.split('.')[0]) < 14) throw new Error('Node.js 14.0.0 ou superior é necessário');
     const { action, options, target } = argumentsOf(process.argv.slice(2));
     const preparationStartedAt = Date.now();
-    context = namespace(options['--cwd'], options['--owner']);
+    // Read-only actions may reuse a recent Windows DACL verification; start and cancel never do.
+    context = namespace(options['--cwd'], options['--owner'], { reuseVerifiedAcl: !['start', 'cancel'].includes(action) });
     // Discovery enriches metadata only. State management remains available with removed/invalid configuration.
     try { discovery = discoverModules(context, { configPath: options['--config'] }); } catch (error) { if (action === 'start' || action === 'list') throw error; }
     let state = inspectState(context.directory);

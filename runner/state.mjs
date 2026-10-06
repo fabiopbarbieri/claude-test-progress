@@ -111,7 +111,18 @@ function privateDirectory(directory) {
   securePath(directory, true);
   fs.chmodSync(directory, 0o700);
 }
-export function namespace(cwd, owner) {
+// Windows: a verified private DACL can only be changed by its owner or an administrator,
+// so read-only calls may reuse a verification recorded in the private root for this long.
+// Type, link and real-path checks still run on every call; mutating calls always re-verify.
+const ACL_REUSE_MS = 10 * 60 * 1000;
+function aclVerifiedRecently(marker, directory) {
+  try {
+    const record = readJson(marker);
+    const age = Date.now() - Date.parse(record?.verifiedAt);
+    return record?.schemaVersion === SCHEMA_VERSION && record.directory === directory && age >= 0 && age < ACL_REUSE_MS;
+  } catch { return false; }
+}
+export function namespace(cwd, owner, { reuseVerifiedAcl = false } = {}) {
   if (!path.isAbsolute(cwd)) throw new Error('--cwd precisa ser absoluto');
   cwd = fs.realpathSync(cwd);
   if (!fs.statSync(cwd).isDirectory()) throw new Error('--cwd precisa ser um diretório');
@@ -123,9 +134,15 @@ export function namespace(cwd, owner) {
     // Create with an explicit user SID: elevated Windows otherwise defaults to
     // the Administrators group, which cannot authenticate this private state.
     // One control call secures the root and then the workspace directory.
-    windowsSecureDirectory(root, directory);
-    securePath(root, true);
-    securePath(directory, true);
+    const marker = path.join(root, `acl-${id}.json`);
+    const present = reuseVerifiedAcl && securePath(root, true, true) && securePath(directory, true, true);
+    if (!present || !aclVerifiedRecently(marker, directory)) {
+      windowsSecureDirectory(root, directory);
+      securePath(root, true);
+      securePath(directory, true);
+      try { atomicJson(marker, { schemaVersion: SCHEMA_VERSION, directory, verifiedAt: timestamp() }); }
+      catch { /* Without a marker the next call verifies again. */ }
+    }
   } else {
     privateDirectory(root);
     privateDirectory(directory);
