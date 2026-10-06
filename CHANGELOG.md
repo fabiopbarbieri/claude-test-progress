@@ -3,6 +3,14 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Unreleased]
+
+### Rails
+
+- Minitest 6 aceito (`>= 5.20 e < 7`); antes era recusado antes de executar
+  testes. Job de CI Rails 8.1 com Minitest 6.0.6. No Minitest 6 o carregamento
+  de plugins é opt-in, e o gate faz esse opt-in no boot da fixture.
+
 ## [0.5.0] - 2026-10-06
 
 Windows nativo leve e aceito: helper compilado, supervisão por eventos, `status`

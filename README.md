@@ -53,7 +53,7 @@ O plugin não instala runners, browsers ou runtimes.
 | Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio e aceite em VM Windows 11, ainda sem máquina física |
 | Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
 | Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
-| Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |
+| Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <7; `rack_test` não prova Selenium |
 | Java / JUnit 5 | Java 17+, JUnit 5.14+; fallback Maven ou listener opcional; consulte o alcance do gate real |
 | Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
 
