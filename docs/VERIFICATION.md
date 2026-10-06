@@ -1,4 +1,8 @@
-# Verificação da versão 0.1.0
+# Verificação histórica da versão 0.1.0
+
+Este registro descreve contratos e resultados anteriores ao refactor de módulos.
+Demo, lanes e schema v1 citados abaixo pertencem àquele artefato. Para comandos
+atuais e evidências v2, consulte [VALIDATION.md](VALIDATION.md).
 
 Registro de 2026-10-04. Diferencia checagem de código, execução do coletor,
 carregamento pelo Claude e aceite de apps/plataformas.

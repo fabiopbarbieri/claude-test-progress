@@ -42,7 +42,7 @@ Quem tem acesso de escrita também trabalha em branch própria e abre PR.
 
 ## Dependências e checks locais
 
-O coletor e a demo usam **Node 14+**. Os checks básicos abaixo usam também
+O coletor usa **Node 14+**. Os checks básicos abaixo usam também
 **Python 3.8+**, **Bash** e Git em Linux/WSL. Não é necessário instalar pacotes
 npm, Ruby, Rails, Java, Karma ou pytest para esse primeiro passo:
 
@@ -102,8 +102,10 @@ Claude; `tsconfig.json` não é um gate independente antes dessa geração.
 Ao alterar contagem, observe seleção, falhas de preparação/finalização,
 interrupção, total desconhecido e zero testes. Preserve o
 [contrato de eventos](adapters/README.md) e o código de saída nativo.
-A lane frontend ainda prepara Node/.nvmrc; testes Rails, inclusive views/system,
-usam backend. Não presuma que frontend aceita qualquer runtime.
+O cadastro e o estado usam somente schemaVersion 2. IDs não escolhem runtime:
+`inherit` conserva o ambiente e `node-project` resolve Node/.nvmrc explicitamente.
+Teste seleção individual e `all`, barreira, compensação de infraestrutura e
+recuperação de estado. Consulte o [plano integrado](docs/MODULES-PLAN.md).
 
 ## Antes de enviar
 

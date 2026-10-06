@@ -16,21 +16,27 @@ em [VALIDATION](VALIDATION.md).
 ## Configurar
 
 Adapte [config.rails.example.json](../../config.rails.example.json) para
-`<diretório da sessão>/.claude/test-progress.json`. A lane deve apontar para a raiz
+`<diretório da sessão>/.claude/test-progress.json`. O cwd do módulo deve apontar para a raiz
 do app, contendo `bin/rails` e `config/boot.rb`:
 
 ```json
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": [
-      "bundle", "exec", "ruby",
-      "/absolute/path/to/claude-test-progress/adapters/rails/run.rb",
-      "test"
-    ],
-    "cwd": ".",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "rails": {
+      "label": "Rails",
+      "runtime": "inherit",
+      "command": [
+        "bundle",
+        "exec",
+        "ruby",
+        "/absolute/path/to/claude-test-progress/adapters/rails/run.rb",
+        "test"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }
 ```
@@ -40,13 +46,15 @@ já selecionou esse ambiente, a configuração acima o herda. Um caminho absolut
 para o executável também funciona. Cada argumento ocupa um elemento no JSON;
 caminhos com espaços não precisam de aspas adicionais dentro do elemento.
 
-Execute `/test-progress backend`. `status`, `logs backend` e `cancel backend`
-usam o fluxo existente. `all` requer uma configuração frontend adicional.
+O exemplo versionado usa o ID `backend`; o trecho acima usa `rails`. Use o ID
+que estiver no seu arquivo. Com este trecho, execute `/test-progress start rails`. Consulte `status rails`, `logs rails`
+e `cancel rails`. `start all` seleciona todos os módulos habilitados; não exige
+configuração de outra linguagem.
 
 O wrapper carrega `config/boot.rb` antes de Minitest para respeitar o bundle do
 app e depois carrega `bin/rails` com os argumentos fornecidos. A instrumentação
 fica restrita a essa execução. Para remover a integração, restaure o comando
-original na configuração da lane.
+original na configuração do módulo.
 
 ## Comandos e filtros
 
@@ -54,10 +62,25 @@ Substitua o último `test` do exemplo pelos argumentos desejados:
 
 ```json
 ["test", "test/models/account_test.rb"]
+```
+
+```json
 ["test", "test/models/account_test.rb:12"]
+```
+
+```json
 ["test", "test/models/account_test.rb", "-n", "test_valid_account"]
+```
+
+```json
 ["test", "--fail-fast", "--seed", "9123"]
+```
+
+```json
 ["test:system"]
+```
+
+```json
 ["test:all"]
 ```
 
@@ -72,11 +95,11 @@ runner Rails. System tests também são testes Ruby/Minitest, usando o driver qu
 app configurou. A fixture de aceite usa `rack_test`, que verifica HTML servido;
 ela não executa JavaScript nem confirma comportamento em Chrome/Selenium.
 
-Todos esses comandos podem ocupar a lane backend. O nome da lane não limita o
-tipo de teste. Esta versão do coletor ainda resolve um runtime Node específico
-para a lane frontend: o exemplo Rails usa backend e não configura uma nova lane.
-Runners JavaScript independentes, RSpec e testes de Ruby fora de um app Rails não
-fazem parte deste adaptador.
+Todos esses comandos podem ocupar um módulo Rails com `runtime: "inherit"`.
+Cadastre IDs distintos para suites separadas; label/linguagem/ID não selecionam
+runtime. `node-project` é uma opção explícita para projetos que precisam de
+Node, independente do nome do módulo. Runners JavaScript independentes, RSpec
+e testes Ruby fora de Rails não fazem parte deste adapter.
 
 ## Contagem e interrupções
 

@@ -1,15 +1,30 @@
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": [".\\mvnw.cmd", "test"],
-    "cwd": ".",
-    "adapter": "auto",
-    "env": {}
-  },
-  "frontend": {
-    "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false", "--browsers=ChromeHeadless"],
-    "cwd": "frontend",
-    "adapter": "events",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "backend": {
+      "label": "Testes do projeto",
+      "runtime": "inherit",
+      "command": [
+        ".\\mvnw.cmd",
+        "test"
+      ],
+      "cwd": ".",
+      "adapter": "auto",
+      "env": {}
+    },
+    "frontend": {
+      "label": "Aplicação web",
+      "runtime": "node-project",
+      "command": [
+        "node",
+        "./node_modules/@angular/cli/bin/ng",
+        "test",
+        "--watch=false",
+        "--browsers=ChromeHeadless"
+      ],
+      "cwd": "frontend",
+      "adapter": "events",
+      "env": {}
+    }
   }
 }

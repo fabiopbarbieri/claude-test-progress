@@ -1,51 +1,53 @@
 # Claude Test Progress
 
-![Capa ilustrativa do Claude Test Progress, com progresso de backend e frontend](docs/assets/cover.png)
+![Capa ilustrativa do Claude Test Progress](docs/assets/cover.png)
 
 **Acompanhe seus testes no Claude Code enquanto eles rodam em segundo plano.**
-O plugin `test-progress` mostra contadores, estado e logs em duas áreas: backend
-e frontend. É um [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.1.0**, licença **MIT**.
+O plugin `test-progress` apresenta os módulos declarados no seu workspace,
+com contadores, estado e logs por ID. É um
+[Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
+independente da Anthropic. Versão **0.2.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal.
 
 ## Funcionalidades e limites
 
-- Início explícito, consulta de estado e cancelamento dos jobs da sessão.
-- Painel e resumo acima do prompt atualizados a cada segundo; saída `--text`.
-- Logs locais, sinal de atividade e demo sintética sem suíte do app.
-- Node do coletor separado do Node do frontend, respeitando a `.nvmrc` do app.
+- Cadastro de zero a vários módulos; somente o workspace ativa módulos.
+- Início explícito por ID ou `all`, consulta, logs e cancelamento por sessão.
+- Painel e resumo acima do prompt, com alternativa textual `--text`.
+- Runtime explícito: `inherit` ou `node-project`, independente do ID/linguagem.
+- Início conjunto com preflight completo e barreira entre todos os workers.
 
 Percentual é **testes resolvidos / total conhecido**, incluindo ignorados.
 Total desconhecido não é zero; total parcial pode crescer. **100% não comprova
 encerramento nem sucesso**: confira estado, falhas e código de saída. Não há
 cobertura de código, estimativa de tempo ou integração automática com uma CI.
+O plugin não instala runners, browsers ou runtimes.
 
 ## Compatibilidade resumida
 
 | Base ou integração | Alcance e limite |
 | --- | --- |
-| Claude Code / coletor | Claude **2.1.287+**, Node **14+**; Claude 2.1.289 observado em Linux |
-| Linux / WSL / Windows | Linux exercitado; WSL usa o caminho Linux, sem aceite próprio; Windows implementado, aceite nativo pendente |
-| Python | Python 3.8+, pytest 7+ declarado ou unittest; execução serial em backend |
-| Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; execução serial em backend |
-| Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; views/system em backend; `rack_test` não prova Selenium |
-| Java / JUnit 5 | Fallback Maven ou listener opcional; integração real JUnit ausente da CI atual |
-| Angular / Karma | Reporter ou fallback de logs; contratos conferidos, navegador real pendente |
+| Claude Code / coletor | Claude **2.1.287+**, Node **14+** para o coletor |
+| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; aceite nativo Windows v2 pendente dos gates próprios |
+| Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
+| Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
+| Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |
+| Java / JUnit 5 | Fallback Maven ou listener opcional; consulte o alcance do gate real |
+| Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
 
-Veja [versões testadas, CI e evidências por SHA](docs/COMPATIBILITY.md).
-Frontend prepara Node/.nvmrc; runners desconhecidos não ganham integração automática.
+Veja [versões testadas e evidências por SHA](docs/COMPATIBILITY.md).
+O coletor usa seu próprio Node; `node-project` prepara o Node do aplicativo
+respeitando a `.nvmrc`. `inherit` preserva o ambiente sem descobrir Node do app.
+Linux/WSL usa Bash; descoberta nvm usa GNU `sort -V`. Windows usa PowerShell 5.1/7.
 
-## Requisitos
+## Instalar e configurar
 
-Claude Code com Mods permitido no ambiente e Node 14+ para o coletor.
-Linux/WSL usa Bash; descoberta nvm usa GNU `sort -V`. Windows usa PowerShell
-5.1 ou 7. Core e demo não exigem Python, Ruby, Java ou Karma nem `npm install`.
-Para testes reais, **as dependências da suíte escolhida pertencem ao seu app**;
-o plugin não instala runners, browsers ou runtimes.
+**0.2.0 é incompatível com 0.1.0:** os comandos abaixo instalam a versão atual,
+com contrato v2 (`schemaVersion: 2`, módulos, sem lanes ou demo). Quem já usa
+0.1.0 deve encerrar os jobs e seguir a [migração](CHANGELOG.md#migração-a-partir-de-010)
+e a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado) antes de atualizar.
 
-## Instalar e experimentar
-
-No Claude Code, com acesso SSH ao GitHub configurado:
+Com acesso SSH ao GitHub configurado, no Claude Code:
 
 ```text
 /plugin marketplace add git@github.com:fabiopbarbieri/claude-test-progress.git
@@ -53,57 +55,63 @@ No Claude Code, com acesso SSH ao GitHub configurado:
 /reload-plugins
 /test-progress help
 /test-progress paths
-/test-progress demo
-/test-progress status
+/test-progress list
 ```
 
-O marketplace próprio se chama `test-progress-marketplace`. A demo ocupa as áreas
-da sessão e simula backend 8/8 com uma falha (exit 1), frontend 12/12 com um
-ignorado (exit 0). Aguarde o término; esses números não são testes do seu app.
-Instalação pelo terminal, clone SSH e `--plugin-dir`: [guia de uso](docs/USAGE.md).
-
-## Configuração mínima
+O marketplace próprio se chama `test-progress-marketplace`. Um workspace sem
+cadastro pode ter zero módulos; listar ou abrir o painel não executa testes.
+Instalação por terminal, clone SSH e `--plugin-dir`: [guia de uso](docs/USAGE.md).
 
 Crie `.claude/test-progress.json` no diretório em que abriu a sessão. Exemplo
 para um app Maven que já possui `mvnw` executável na raiz, em Linux/WSL:
 
 ```json
 {
-  "schemaVersion": 1,
-  "backend": {
-    "command": ["./mvnw", "test"],
-    "cwd": ".",
-    "adapter": "maven",
-    "env": {}
+  "schemaVersion": 2,
+  "modules": {
+    "api": {
+      "label": "API",
+      "command": ["./mvnw", "test"],
+      "cwd": ".",
+      "adapter": "maven",
+      "runtime": "inherit",
+      "env": {}
+    }
   }
 }
 ```
 
 `command` é **argv**: um elemento por argumento, sem expansão de shell ou de
-`CLAUDE_PLUGIN_ROOT` no JSON. `cwd` é relativo à sessão. Para adaptadores, use
-os caminhos absolutos de `/test-progress paths` e os [exemplos por runner](adapters/README.md).
-Somente backend ignora frontend; `all` exige as duas configurações.
-[Configuração detalhada](docs/USAGE.md#configurar-seu-projeto) · [Windows](WINDOWS.md).
+`CLAUDE_PLUGIN_ROOT` no JSON. `cwd` é relativo ao workspace. Use os caminhos
+absolutos de `/test-progress paths` para os [adapters](adapters/README.md).
+Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
+[Configuração e templates](docs/USAGE.md#configurar-seu-projeto) · [Windows](WINDOWS.md).
 
 ## Comandos
 
 | Comando | Ação |
 | --- | --- |
-| `/test-progress` ou `/test-progress status` | Abre/atualiza o painel sem iniciar testes |
+| `/test-progress` ou `/test-progress status [id\|all]` | Abre/atualiza o painel sem iniciar testes |
 | `/test-progress help` / `paths` | Ajuda / caminhos da instalação ativa |
-| `/test-progress demo [backend\|frontend\|all]` | Progresso sintético |
-| `/test-progress backend`, `frontend` ou `all` | Inicia a suíte configurada |
-| `/test-progress logs backend` / `logs frontend` | Consulta o log de cada área |
-| `/test-progress cancel [backend\|frontend\|all]` | Solicita cancelamento na sessão responsável |
+| `/test-progress list` | Lista módulos e diagnósticos sem resolver ferramentas |
+| `/test-progress start api` / `start all` | Inicia o módulo escolhido / todos os habilitados |
+| `/test-progress logs api` / `logs all` | Consulta logs por módulo |
+| `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
 
-Acrescente `--text`, por exemplo `/test-progress status --text`.
+Acrescente `--text`, por exemplo `/test-progress status all --text`.
+Não há aliases de início por ID, `demo` nem opção `--lane` no produto v2.
 [Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
 
-## Atualizar ou remover
+## Adotar v2, atualizar ou remover
 
-**Primeiro conclua ou cancele os jobs em cada sessão responsável e confirme o
-estado terminal, sem recuperação pendente.** Fechar o painel, reload ou uninstall
-não para processos detached nem comprova limpeza dos logs fora do cache.
+**Encerre os jobs com o artefato que os iniciou e confirme ausência de recuperação
+pendente antes de trocar a instalação.** O produto v2 recusa configuração v1,
+sem fallback ou conversão automática. Estado legado no namespace bloqueia novos
+starts globalmente; v2 não gerencia jobs v1 ou demos antigas. Preserve o artefato
+antigo para consultá-los/cancelá-los e siga a [adoção quiescente](docs/USAGE.md#adotar-v2-com-estado-legado).
+
+Fechar painel, reload ou uninstall não para processos detached nem comprova
+limpeza dos logs fora do cache. Após a confirmação de encerramento:
 
 ```bash
 claude plugin marketplace update test-progress-marketplace
@@ -116,8 +124,8 @@ Para remover, em vez de atualizar:
 claude plugin uninstall test-progress@test-progress-marketplace --scope user
 ```
 
-Ajuste o escopo instalado. Após atualizar, use `/reload-plugins` (ou reinicie),
-reconsulte `/test-progress paths` e ajuste os caminhos dos adaptadores no app.
+Ajuste o escopo instalado. Após atualizar, recarregue e reconsulte
+`/test-progress paths` para ajustar os caminhos dos adapters no app.
 [Procedimentos completos](docs/USAGE.md#atualizar-com-jobs-encerrados).
 
 ## Guias

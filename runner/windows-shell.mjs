@@ -1,20 +1,17 @@
 import fs from 'fs';
 import path from 'path';
+import { environmentValue } from './runtime.mjs';
 
-function variable(environment, name) {
-  const key = Object.keys(environment).find((entry) => entry.toUpperCase() === name);
-  return key === undefined ? undefined : environment[key];
-}
 function isFile(file) {
   try { return fs.statSync(file).isFile(); } catch { return false; }
 }
 function resolveExecutable(name, cwd, environment) {
-  const extensions = (variable(environment, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD')
+  const extensions = (environmentValue(environment, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD')
     .split(';').filter((entry) => /^\.[a-z0-9]+$/i.test(entry));
   const hasExtension = Boolean(path.win32.extname(name));
   const names = hasExtension ? [name] : [name, ...extensions.map((extension) => name + extension)];
   const explicit = /[\\/]/.test(name) || path.win32.isAbsolute(name);
-  const directories = explicit ? [cwd] : [cwd, ...(variable(environment, 'PATH') || '')
+  const directories = explicit ? [cwd] : [cwd, ...(environmentValue(environment, 'PATH') || '')
     .split(';').map((entry) => entry.replace(/^"(.*)"$/, '$1')).filter(Boolean)];
   for (const directory of directories) {
     for (const candidate of names) {
@@ -39,7 +36,7 @@ export function windowsCommand(command, cwd, environment = process.env) {
     if (values.some((value) => /[&|<>^()%!"\r\n]/.test(value))) {
       throw new Error('Argumento de .cmd/.bat contém expansão ou controle não suportado; use um executável .exe');
     }
-    const systemRoot = variable(environment, 'SYSTEMROOT') || variable(environment, 'WINDIR');
+    const systemRoot = environmentValue(environment, 'SYSTEMROOT') || environmentValue(environment, 'WINDIR');
     if (!systemRoot) throw new Error('SystemRoot ausente: cmd.exe não pode ser localizado com segurança');
     const shell = path.win32.join(systemRoot, 'System32', 'cmd.exe');
     if (!isFile(shell)) throw new Error('cmd.exe do Windows não encontrado');

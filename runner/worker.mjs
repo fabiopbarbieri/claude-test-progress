@@ -1,22 +1,30 @@
 import fs from 'fs';
+import path from 'path';
 import { spawn } from 'child_process';
 import { Progress } from './progress.mjs';
-import { readJson, atomicJson, files, releaseLock, timestamp } from './state.mjs';
-import { processIdentity, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
+import { readJson, atomicJson, files, releaseLock, timestamp, ownedClaim, updateClaim, updateSnapshot, validRecord, jobFile, securePath } from './state.mjs';
+import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, killOwnedOrphan } from './process-identity.mjs';
 import { removePath, mergeEnvironment } from './runtime.mjs';
 import { windowsSpawnSpec } from './windows-process.mjs';
-import { windowsProof } from './windows-proof.mjs';
+import { windowsProof, windowsCompletion } from './windows-proof.mjs';
+import { readBatch, requestCompensation, publishFinalSafe, pause } from './module-batch.mjs';
+
+async function main() {
 
 const jobPath = process.argv[2];
 const job = readJson(jobPath);
-if (!job) throw new Error('Arquivo de execução ausente');
-const locations = files(job.directory, job.lane);
+if (!job || !validRecord(job, job.moduleId) || jobPath !== jobFile(job.directory, job.moduleId, job.runId)) throw new Error('Arquivo de execução inválido');
+securePath(job.directory, true);
+const claim = ownedClaim(job.directory, job.moduleId, job.runId);
+if (claim.batchId !== job.batchId) throw new Error('Lote do claim divergente');
+const locations = files(job.directory, job.moduleId);
 let snapshot = readJson(locations.snapshot);
-if (snapshot?.runId !== job.runId || readJson(locations.claim)?.runId !== job.runId) {
-  throw new Error('A execução não possui mais o bloqueio da lane');
+if (!validRecord(snapshot, job.moduleId, job.runId) || snapshot.logPath !== path.join(job.directory, `${job.moduleId}.${job.runId}.log`) || readJson(locations.claim)?.runId !== job.runId) {
+  throw new Error('A execução não possui mais o bloqueio do módulo');
 }
-atomicJson(locations.claim, { ...readJson(locations.claim), workerPid: process.pid,
-  workerIdentity: processIdentity(process.pid) });
+const workerIdentity = processIdentity(process.pid);
+if (!workerIdentity) throw new Error('Identidade do worker não confirmada');
+updateClaim(job.directory, job.moduleId, job.runId, { workerPid: process.pid, workerIdentity });
 const progress = new Progress(job.adapter);
 const windows = process.platform === 'win32';
 const windowsProofPath = `${jobPath}.windows.json`;
@@ -24,23 +32,36 @@ let child;
 let ended = false;
 let cancelling = false;
 let fatalError = null;
+let acknowledged = false;
+let compensationSent = false;
+function compensate(reason) {
+  if (compensationSent) return;
+  compensationSent = true;
+  try { requestCompensation(job, reason); } catch (error) { fatalError = fatalError ?? error.message; }
+}
 let killTimer;
 let poll;
 let lastPersistedAt = 0;
+let progressPending = false;
 const heartbeatIntervalMs = 5000;
+// Fast suites report many results per second; coalesce them into a few snapshot writes.
+const progressIntervalMs = 250;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
 const buffers = { stdout: '', stderr: '' };
 const now = timestamp();
-snapshot = { ...snapshot, workerPid: process.pid, updatedAt: now };
+snapshot = { ...snapshot, workerPid: process.pid, workerIdentity, updatedAt: now };
 fs.writeFileSync(snapshot.logPath, '', { mode: 0o600, flag: 'wx' });
 
 function persist(overrides = {}) {
   const now = timestamp();
+  ownedClaim(job.directory, job.moduleId, job.runId);
+  if (!validRecord(readJson(locations.snapshot), job.moduleId, job.runId)) throw new Error('Snapshot trocado durante execução');
   snapshot = { ...snapshot, ...progress.values(), ...overrides, updatedAt: now, heartbeatAt: now };
   if (cancelling && !ended) snapshot.phase = 'cancellation-requested';
-  atomicJson(locations.snapshot, snapshot);
+  updateSnapshot(job.directory, job.moduleId, job.runId, () => snapshot);
   lastPersistedAt = Date.now();
+  progressPending = false;
 }
 function log(text) {
   fs.appendFileSync(snapshot.logPath, text, { mode: 0o600 });
@@ -65,7 +86,8 @@ function consume(stream, chunk) {
   for (const line of lines) changed = progress.line(line) || changed;
   if (changed) {
     snapshot.lastProgressAt = timestamp();
-    persist();
+    if (Date.now() - lastPersistedAt >= progressIntervalMs) persist();
+    else progressPending = true;
   }
 }
 function terminate(signal) {
@@ -73,7 +95,7 @@ function terminate(signal) {
   try {
     if (windows) {
       // The broker observes the bound request and terminates its entire Job.
-      try { atomicJson(locations.cancel, { runId: job.runId, requestedAt: timestamp() }); }
+      try { atomicJson(locations.cancel, { schemaVersion: 2, moduleId: job.moduleId, runId: job.runId, requestedAt: timestamp() }); }
       catch (error) { fatalError = fatalError ?? error.message; }
       try { refreshWindowsProof(); }
       catch (error) { fatalError = fatalError ?? error.message; }
@@ -96,8 +118,12 @@ function refreshWindowsProof() {
   if (proof.contained === true && identity?.managedBroker === true && identity?.contained === true &&
       identity.pid === child?.pid && snapshot.childIdentity?.managedBroker !== true) {
     snapshot = { ...snapshot, childIdentity: identity };
-    atomicJson(locations.claim, { ...readJson(locations.claim), childIdentity: identity });
+    updateClaim(job.directory, job.moduleId, job.runId, { childIdentity: identity });
     persist({ childIdentity: identity });
+  }
+  if (proof.resumed === true && !acknowledged) {
+    acknowledged = true;
+    updateClaim(job.directory, job.moduleId, job.runId, { spawnAcknowledgedAt: timestamp() });
   }
   return proof;
 }
@@ -110,8 +136,13 @@ function cancel(reason = 'cancellation-requested') {
   catch (error) { fatalError = fatalError ?? error.message; }
 }
 function checkCancellation() {
+  if (child?.pid && !ended && !sameProcess(readBatch(job.directory, job.batchId).coordinatorIdentity)) {
+    fatalError = fatalError ?? 'Coordenador perdido durante execução';
+    compensate(fatalError);
+    cancel('supervision-lost');
+  }
   refreshWindowsProof();
-  if (readJson(locations.cancel)?.runId === job.runId) cancel();
+  if (validRecord(readJson(locations.cancel), job.moduleId, job.runId)) cancel();
 }
 async function finish(code, signal) {
   if (ended) return;
@@ -126,8 +157,12 @@ async function finish(code, signal) {
       if (buffers[stream] && progress.line(buffers[stream])) snapshot.lastProgressAt = timestamp();
     }
     const proof = refreshWindowsProof();
-    if (proof?.error) fatalError = fatalError ?? `Broker Windows: ${proof.error}`;
     if (proof?.cancelled) cancelling = true;
+    if (windows) {
+      const completion = windowsCompletion(proof, cancelling);
+      if (completion.infrastructureFailure) fatalError = fatalError ?? completion.error;
+    }
+    if (fatalError) compensate(fatalError);
     if (Number.isInteger(proof?.exitCode)) code = proof.exitCode;
     const identity = snapshot.childIdentity;
     const deadline = Date.now() + 1500;
@@ -137,11 +172,12 @@ async function finish(code, signal) {
       group = groupState(identity);
     }
     if (group !== 'empty') {
+      compensate('Árvore do comando não vazia ao finalizar');
       // A closed leader does not prove its descendants have exited. Unknown also keeps the gate.
       persist({ ...progress.values(true, false), status: 'error', phase: 'orphaned-command',
         recoveryRequired: true, cancellable: canKillOwnedOrphan(identity), endedAt: null,
         exitCode: Number.isInteger(code) ? code : null, exitSignal: signal ?? null,
-        error: 'A saída do processo foi observada, mas o grupo ainda está ativo ou desconhecido. A lane permanece bloqueada para recuperação segura.' });
+        error: 'A saída do processo foi observada, mas o grupo ainda está ativo ou desconhecido. O módulo permanece bloqueada para recuperação segura.' });
       return;
     }
     const values = progress.values(true, !cancelling && !fatalError && code === 0);
@@ -149,11 +185,12 @@ async function finish(code, signal) {
       code !== 0 || values.failed > 0 ? 'failed' : values.progressObserved ? 'completed' : 'error';
     const error = fatalError ?? (status === 'error' ?
       'O comando terminou sem eventos de progresso reconhecidos; nenhum teste foi confirmado.' : null);
-    persist({ ...values, status, phase: cancelling ? 'cancelled' :
+    persist({ ...values, status, finalSafe: true, recoveryRequired: false, infrastructureFailure: Boolean(fatalError), phase: cancelling ? 'cancelled' :
       values.progressObserved ? 'finished' : 'no-progress-observed', endedAt: timestamp(),
       exitCode: Number.isInteger(code) ? code : null, exitSignal: signal ?? null,
       ...(error ? { error } : {}) });
-    releaseLock(job.directory, job.lane, job.runId);
+    publishFinalSafe(job, snapshot);
+    releaseLock(job.directory, job.moduleId, job.runId);
     if (readJson(locations.cancel)?.runId === job.runId) removePath(locations.cancel, { force: true });
     // The job may contain an explicit environment override; keep no finished copy.
     removePath(jobPath, { force: true });
@@ -161,6 +198,7 @@ async function finish(code, signal) {
   } catch (error) {
     // A failed final write keeps the lock. A later status call can recover only a proven empty group.
     fatalError = fatalError ?? error.message;
+    compensate(fatalError);
   }
 }
 
@@ -168,20 +206,58 @@ process.on('SIGTERM', () => cancel());
 process.on('SIGINT', () => cancel());
 process.on('uncaughtException', (error) => {
   fatalError = error.message;
+  compensate(fatalError);
   if (child?.pid && !ended) cancel('worker-error');
   else finish(null, null);
 });
 process.on('unhandledRejection', (error) => {
   fatalError = String(error?.message ?? error);
+  compensate(fatalError);
   if (child?.pid && !ended) cancel('worker-error');
   else finish(null, null);
 });
 
+// Ready means all worker-local preparation succeeded, with no user command spawned.
+const hooks = job.testHooks || {};
+if (hooks.readyFailure) throw new Error('Falha injetada na preparação do worker');
+if (hooks.readyDelayMs) await pause(hooks.readyDelayMs);
+if (hooks.readyGateFile) {
+  // A test can hold preparation until it has injected its ownership race.
+  // The real batch deadline and abort still bound the wait.
+  for (;;) {
+    const manifest = readBatch(job.directory, job.batchId);
+    if (manifest.state === 'aborted' || Date.now() >= Date.parse(manifest.deadlineAt) ||
+        fs.existsSync(hooks.readyGateFile)) break;
+    await pause();
+  }
+}
+updateClaim(job.directory, job.moduleId, job.runId, { readyAt: timestamp() });
+persist({ phase: 'ready' });
+for (;;) {
+  const manifest = readBatch(job.directory, job.batchId);
+  ownedClaim(job.directory, job.moduleId, job.runId);
+  if (!validRecord(readJson(locations.snapshot), job.moduleId, job.runId)) throw new Error('Snapshot substituído antes da execução');
+  if (!manifest.entries.some((entry) => entry.moduleId === job.moduleId && entry.runId === job.runId)) throw new Error('Worker fora do lote');
+  if (manifest.state === 'aborted' || validRecord(readJson(locations.cancel), job.moduleId, job.runId)) {
+    cancelling = true;
+    await finish(null, null);
+    return;
+  }
+  if (!sameProcess(manifest.coordinatorIdentity)) throw new Error('Coordenador perdido antes da execução');
+  if (Date.now() >= Date.parse(manifest.deadlineAt) && manifest.state === 'preparing') throw new Error('Prazo de preparação expirado');
+  if (manifest.state === 'released') break;
+  await pause();
+}
+if (hooks.dieAfterRelease) process.exit(92);
 checkCancellation();
 if (cancelling) {
-  finish(null, null);
+  await finish(null, null);
 } else {
   try {
+    // Durable attempt distinguishes a known no-spawn preparation from an unknown orphan.
+    if (!validRecord(readJson(locations.snapshot), job.moduleId, job.runId)) throw new Error('Snapshot substituído antes do spawn');
+    updateClaim(job.directory, job.moduleId, job.runId, { spawnAttemptAt: timestamp() });
+
     const environment = mergeEnvironment(process.env, job.env);
     const launch = windows ? windowsSpawnSpec(jobPath, environment) :
       { file: job.command[0], args: job.command.slice(1), options: {} };
@@ -193,6 +269,7 @@ if (cancelling) {
     child.on('close', finish);
     child.on('error', (error) => {
       fatalError = `Não foi possível iniciar ${job.command[0]}: ${error.code ?? error.message}`;
+      compensate(fatalError);
       try { log(`\nRunner: ${fatalError}\n`); } catch { /* Keep close handling independent of logs. */ }
     });
     child.stdout.setEncoding('utf8');
@@ -205,18 +282,34 @@ if (cancelling) {
     if (child.pid) {
       // Retain identity in memory even if the first disk write fails.
       snapshot = { ...snapshot, pid: child.pid, childIdentity };
-      atomicJson(locations.claim, { ...readJson(locations.claim), childIdentity });
+      updateClaim(job.directory, job.moduleId, job.runId, { childIdentity });
       persist({ status: 'running', pid: child.pid, childIdentity });
+      if (!windows && childIdentity && !hooks.ackDelayMs) {
+        acknowledged = true;
+        updateClaim(job.directory, job.moduleId, job.runId, { spawnAcknowledgedAt: timestamp() });
+      }
+      if (hooks.ackDelayMs) setTimeout(() => {
+        if (!ended) { acknowledged = true; updateClaim(job.directory, job.moduleId, job.runId, { spawnAcknowledgedAt: timestamp() }); }
+      }, hooks.ackDelayMs);
+      if (hooks.dieAfterAck) process.exit(93);
+      if (hooks.failAfterAckMs) setTimeout(() => { throw new Error('Falha injetada após ack'); }, hooks.failAfterAckMs);
     }
     poll = setInterval(() => {
       checkCancellation();
       // Silence is not failure: record worker activity without inventing test progress.
-      if (!ended && Date.now() - lastPersistedAt >= heartbeatIntervalMs) persist();
+      if (!ended && (progressPending || Date.now() - lastPersistedAt >= heartbeatIntervalMs)) persist();
     }, 150);
     persist();
   } catch (error) {
     fatalError = error.message;
+    compensate(fatalError);
     if (child?.pid) cancel('worker-error');
     else finish(null, null);
   }
 }
+
+}
+main().catch((error) => {
+  process.stderr.write(`worker: ${error.message}\n`);
+  process.exitCode = 1;
+});

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "modules": {
+    "api": {
+      "extends": "jvm-tests",
+      "label": "API principal",
+      "cwd": "services/api",
+      "order": 10
+    },
+    "billing": {
+      "extends": "jvm-tests",
+      "label": "Faturamento",
+      "cwd": "services/billing",
+      "order": 20
+    },
+    "web": {
+      "extends": "karma-tests",
+      "label": "Aplicação web",
+      "cwd": "web",
+      "order": 30
+    }
+  }
+}

@@ -2,9 +2,11 @@
 
 Integração opt-in: cada app mantém seu runner, ambiente e dependências.
 A [matriz de compatibilidade](../docs/COMPATIBILITY.md) separa requisitos,
-combinações testadas e aceites pendentes. Rails (inclusive views/system), Python
-e RSpec usam backend: frontend ainda prepara Node/.nvmrc. Nenhum desses runners
-é requisito global do mod.
+combinações testadas e aceites pendentes. Cada integração pode ocupar um ou
+vários módulos com ID próprio no schemaVersion 2. Rails (inclusive views/system),
+Python e RSpec normalmente usam `runtime: "inherit"`; Karma pode usar
+`node-project`. ID e linguagem não selecionam runtime; nenhum runner é requisito
+global do Mod. Somente o workspace ativa módulos; templates pessoais são opcionais.
 
 Consulte `/test-progress paths` para localizar os arquivos desta instalação. Use
 caminhos absolutos no argv da configuração (sem interpolação de

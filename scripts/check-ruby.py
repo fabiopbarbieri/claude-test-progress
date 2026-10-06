@@ -36,21 +36,21 @@ def invoke(app, *args):
 
 def collector_check(app):
     config = app / 'collector.json'
-    config.write_text(json.dumps({'schemaVersion': 1, 'backend': {
+    config.write_text(json.dumps({'schemaVersion': 2, 'modules': {'backend': {
         'command': [RUBY, str(ROOT / 'adapters/ruby/run.rb'), 'rspec', 'slow_spec.rb'],
-        'cwd': '.', 'adapter': 'events', 'env': {}}}))
+        'cwd': '.', 'adapter': 'events', 'env': {}}}}))
     owner = 'ruby-check-' + uuid.uuid4().hex
 
     def collect(action):
         argv = ['node', str(ROOT / 'runner/cli.mjs'), action, '--cwd', str(app),
-                '--owner', owner, '--lane', 'backend']
+                '--owner', owner, '--module', 'backend']
         if action == 'start':
             argv += ['--config', str(config)]
         reply = subprocess.run(argv, env=fixture_env(app), capture_output=True, text=True, timeout=15)
         assert reply.returncode == 0, reply.stderr
         data = json.loads(reply.stdout)
         assert data['ok'], data
-        return data['lanes']['backend']
+        return data['jobs']['backend']
 
     job = collect('start')
     try:

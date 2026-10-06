@@ -1,4 +1,7 @@
-# Evidências: painel e resiliência
+# Evidências históricas: painel e resiliência
+
+Este registro e suas capturas pertencem aos SHAs v1 indicados abaixo. Não validam
+o refactor v2. Evidências atuais ficam em [docs/VALIDATION.md](docs/VALIDATION.md).
 
 Base revisada: `cc9c0aa710fa80d123c00856ec277b8f04741544`.
 As correções de runtime estão no commit

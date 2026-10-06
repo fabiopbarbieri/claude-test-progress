@@ -40,6 +40,31 @@ Vitest nesta entrega. A configuração do app é uma etapa explícita, feita por
 Para separar o Node do coletor e do Angular 9, consulte o
 [guia Angular 9](../../ANGULAR9.md) e a configuração específica.
 
+## Módulo no coletor v2
+
+Depois de registrar o reporter no app, configure um módulo no workspace:
+
+```json
+{
+  "schemaVersion": 2,
+  "modules": {
+    "web": {
+      "command": ["node", "./node_modules/@angular/cli/bin/ng", "test", "--watch=false"],
+      "cwd": ".",
+      "adapter": "events",
+      "runtime": "node-project"
+    }
+  }
+}
+```
+
+Use `/test-progress start web`, `status web`, `logs web` e `cancel web`.
+`node-project` respeita `.nvmrc` no início selecionado, independente de ID ou
+linguagem; a descoberta não executa o resolvedor. Sem reporter, `adapter: "karma"`
+usa fallback de logs. Mais de um módulo Karma pode ter ID próprio; `start all`
+seleciona os habilitados. O registry é opcional e não ativa módulos sozinho.
+Aceite nativo Windows v2 e execução em browser real exigem gates próprios.
+
 ## Eventos e limites
 
 `onRunStart` cria scopes por navegador com total desconhecido e contadores zerados:

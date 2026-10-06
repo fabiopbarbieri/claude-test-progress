@@ -1,28 +1,32 @@
 // Public interactive fixture. Run only inside a disposable project.
-// Write initial/full/finished to backend-mode, or initial/zero/finished to
-// frontend-mode. Until finished or cancelled the process deliberately stays alive.
+// Write partial/full/unknown/zero/finished to <moduleId>-mode.
+// Until finished or cancelled the process deliberately stays alive.
 import fs from 'fs';
+import { validModuleId } from '../../../runner/module-id.mjs';
 
-const lane = process.argv[2];
-if (!['backend', 'frontend'].includes(lane)) throw new Error('Expected backend or frontend');
+const moduleId = process.argv[2];
+if (!validModuleId(moduleId)) throw new Error('Expected a safe module ID');
+const initial = process.argv[3] || 'partial';
 let previous = '';
 const timer = setInterval(() => {
-  const file = `${lane}-mode`;
-  const mode = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : 'initial';
+  const file = `${moduleId}-mode`;
+  const mode = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim() : initial;
   if (mode === previous) return;
+  const outcome = mode === 'finished' ? previous || initial : mode;
   previous = mode;
-  const full = lane === 'backend' && ['full', 'finished'].includes(mode);
-  const zero = lane === 'frontend' && ['zero', 'finished'].includes(mode);
+  const full = outcome === 'full' || (mode === 'finished' && !['zero', 'unknown'].includes(outcome));
+  const zero = outcome === 'zero';
+  const unknown = outcome === 'unknown';
   const value = {
-    scope: lane, total: lane === 'backend' ? 4 : zero ? 0 : null,
-    resolved: lane === 'backend' ? (full ? 4 : 1) : 0,
-    passed: lane === 'backend' ? (full ? 2 : 1) : 0,
+    scope: moduleId, total: zero ? 0 : unknown ? null : 4,
+    resolved: zero || unknown ? 0 : full ? 4 : 1,
+    passed: zero || unknown ? 0 : full ? 2 : 1,
     failed: full ? 1 : 0, skipped: full ? 1 : 0,
-    totalStable: lane === 'backend' || zero, final: mode === 'finished',
+    totalStable: !unknown, final: mode === 'finished',
     phase: full ? 'awaiting-process-exit' : zero ? 'zero-tests' : 'public-synthetic-fixture',
   };
   console.log('@@TEST_PROGRESS@@' + JSON.stringify(value));
-  console.log(`PUBLIC FIXTURE: ${lane} / ${mode}`);
+  console.log(`PUBLIC FIXTURE: ${moduleId} / ${mode}`);
   if (mode === 'finished') {
     clearInterval(timer);
     process.exitCode = full ? 1 : 0;

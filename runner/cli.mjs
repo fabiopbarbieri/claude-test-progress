@@ -1,219 +1,219 @@
 #!/usr/bin/env node
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
-import { LANES, ACTIVE, namespace, files, readJson, atomicJson, acquireLock,
-  releaseLock, snapshots, revision, timestamp } from './state.mjs';
-import { groupState, killOwnedOrphan } from './process-identity.mjs';
-import { randomUUID, removePath, mergeEnvironment } from './runtime.mjs';
-import { frontendRuntime } from './frontend-runtime.mjs';
-import { windowsCommand } from './windows-shell.mjs';
-import { inspectWorkspace } from './workspace.mjs';
+import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock,
+  inspectState, revision, timestamp, validRecord, ownedClaim, jobFile } from './state.mjs';
+import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
+import { randomUUID, removePath } from './runtime.mjs';
+import { validModuleId } from './module-id.mjs';
+import { sanitizeText } from './module-presentation.mjs';
+import { discoverModules, prepareSelection, assertSourcesUnchanged } from './module-config.mjs';
+import { batchFiles, readBatch, changeBatch, PREPARE_MS, ABORT_MS, pause } from './module-batch.mjs';
+import { windowsLaunchCoordinator } from './windows-process.mjs';
 
 const runnerDirectory = path.dirname(fileURLToPath(import.meta.url));
-const collectorRuntime = { path: process.execPath, version: process.version,
-  source: process.env.TEST_PROGRESS_NODE_SOURCE || 'direct' };
+const collectorRuntime = { path: process.execPath, version: process.version, source: process.env.TEST_PROGRESS_NODE_SOURCE || 'direct' };
 let context;
-let workspace;
+let discovery;
+let actionResults;
 function argumentsOf(argv) {
   const action = argv[0];
-  if (!['start', 'status', 'cancel', 'logs', 'demo'].includes(action)) {
-    throw new Error('Ação esperada: start, status, cancel, logs ou demo');
-  }
-  const options = {};
+  if (!['start', 'list', 'status', 'cancel', 'logs'].includes(action)) throw new Error('Ação esperada: start, list, status, cancel ou logs');
+  const options = Object.create(null);
   for (let index = 1; index < argv.length; index += 2) {
     const option = argv[index];
-    if (!['--cwd', '--owner', '--lane', '--config'].includes(option) ||
-        options[option] !== undefined || !argv[index + 1] || argv[index + 1].startsWith('--')) {
-      throw new Error(`Argumento inválido: ${option}`);
-    }
+    if (!['--cwd', '--owner', '--module', '--config'].includes(option) || options[option] !== undefined ||
+        !argv[index + 1] || argv[index + 1].startsWith('--')) throw new Error(`Argumento inválido: ${option}`);
     options[option] = argv[index + 1];
   }
   if (!options['--cwd'] || !options['--owner']) throw new Error('Informe --cwd e --owner');
-  const lane = options['--lane'] ?? 'all';
-  if (!['all', ...LANES].includes(lane)) throw new Error('--lane precisa ser backend, frontend ou all');
-  return { action, options, lanes: lane === 'all' ? LANES : [lane] };
+  const target = options['--module'] || 'all';
+  if (target !== 'all' && !validModuleId(target)) throw new Error('--module precisa ser um ID seguro ou all');
+  return { action, options, target };
 }
-function configuration(cwd, inspection, lanes) {
-  const { config, metadata } = inspection;
-  if (!config) throw new Error(metadata.error ?? 'Configuração ausente: crie .claude/test-progress.json neste workspace.');
-  if (!lanes.length) throw new Error('Nenhuma suíte habilitada na configuração deste workspace.');
-  return Object.fromEntries(lanes.map((lane) => {
-    const item = config[lane];
-    if (item === false || item?.enabled === false) throw new Error(`A suíte ${lane} está desativada neste workspace.`);
-    if (item?.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`enabled precisa ser booleano em ${lane}`);
-    if (!item || !Array.isArray(item.command) || !item.command.length ||
-        item.command.some((arg) => typeof arg !== 'string' || arg.includes('\0')) || !item.command[0]) {
-      throw new Error(`command precisa ser uma lista de argumentos em ${lane}`);
-    }
-    const adapter = item.adapter ?? 'auto';
-    if (!['auto', 'events', lane === 'backend' ? 'maven' : 'karma'].includes(adapter)) {
-      throw new Error(`Adapter inválido em ${lane}`);
-    }
-    if (item.cwd !== undefined && typeof item.cwd !== 'string') throw new Error(`cwd inválido em ${lane}`);
-    const workingDirectory = fs.realpathSync(path.resolve(cwd, item.cwd ?? '.'));
-    if (!fs.statSync(workingDirectory).isDirectory()) throw new Error(`cwd não é diretório em ${lane}`);
-    const environment = item.env ?? {};
-    if (item.language !== undefined && (typeof item.language !== 'string' ||
-        !item.language.trim() || item.language.length > 40 || /[\x00-\x1f\x7f-\x9f]/.test(item.language))) {
-      throw new Error(`language precisa ser um nome de até 40 caracteres em ${lane}`);
-    }
-    if (!environment || Array.isArray(environment) || typeof environment !== 'object' ||
-        Object.entries(environment).some(([key, value]) => !key || key.includes('=') || key.includes('\0') ||
-          typeof value !== 'string' || value.includes('\0'))) throw new Error(`env inválido em ${lane}`);
-    const runtime = lane === 'frontend' ? frontendRuntime(workingDirectory, environment, item.command) : { env: environment };
-    return [lane, { command: item.command, cwd: workingDirectory, adapter,
-      ...(item.language ? { language: item.language.trim() } : {}), ...runtime }];
-  }));
+function initialSnapshot(config, runId, batchId, codeRevision) {
+  return { schemaVersion: 2, runId, moduleId: config.moduleId, label: config.label, batchId, source: 'config',
+    status: 'preparing', phase: 'preparing', unit: 'tests', total: null, resolved: 0, passed: 0, failed: 0, skipped: 0,
+    totalStable: false, percent: null, progressObserved: false, startedAt: timestamp(), updatedAt: timestamp(),
+    endedAt: null, exitCode: null, heartbeatAt: null, lastOutputAt: null, lastProgressAt: null, pid: null, workerPid: null,
+    command: config.command, cwd: config.cwd, adapter: config.adapter, runtime: config.runtime,
+    logPath: path.join(context.directory, `${config.moduleId}.${runId}.log`), revision: codeRevision, collectorRuntime,
+    ...(config.language ? { language: config.language } : {}), ...(config.nodeRuntime ? { nodeRuntime: config.nodeRuntime } : {}) };
 }
-async function start(context, lane, config, source, codeRevision, runId) {
-  const locations = files(context.directory, lane);
-  const jobPath = path.join(context.directory, `${lane}.${runId}.job.json`);
+async function start(selection, preparationStartedAt) {
+  if (!selection.ids.length) throw new Error('Nenhum módulo habilitado para iniciar.');
+  const initialState = inspectState(context.directory);
+  if (selection.ids.some(id => initialState.stateDiagnostics[id]?.some(item => item.blocking))) throw new Error('Módulo selecionado contém estado bloqueado; recuperação segura necessária.');
+  if (initialState.blocked) throw new Error('Namespace contém estado incompatível ou inseguro; novos starts bloqueados.');
+  const deadlineAt = new Date(preparationStartedAt + PREPARE_MS).toISOString();
+  if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preflight e preparação expirado antes da reserva.');
+  const batchId = randomUUID();
+  const loc = batchFiles(context.directory, batchId);
+  const entries = selection.ids.slice().sort().map((moduleId) => ({ moduleId, runId: randomUUID() }));
+  const reserved = [];
+  let coordinator;
+  let manifestCreated = false;
+  const acknowledgeRelease = () => {
+    actionResults = Object.fromEntries(entries.map((entry) => [entry.moduleId, { ok: true, runId: entry.runId, batchId, action: 'start' }]));
+  };
   try {
-    const snapshot = {
-      schema: 1, runId, lane, source, status: 'preparing', phase: 'preparing', unit: 'tests',
-      total: null, resolved: 0, passed: 0, failed: 0, skipped: 0,
-      totalStable: false, percent: null, progressObserved: false,
-      startedAt: timestamp(), updatedAt: timestamp(), endedAt: null, exitCode: null,
-      heartbeatAt: null, lastOutputAt: null, lastProgressAt: null,
-      pid: null, workerPid: null, command: config.command, cwd: config.cwd, adapter: config.adapter,
-      logPath: path.join(context.directory, `${lane}.${runId}.log`), revision: codeRevision,
-      collectorRuntime,
-      ...(config.language ? { language: config.language } : {}),
-      ...(config.nodeRuntime ? { nodeRuntime: config.nodeRuntime } : {}),
-    };
-    atomicJson(locations.snapshot, snapshot);
-    atomicJson(jobPath, { ...config, collectorRuntime, runId, lane, directory: context.directory });
-    const worker = spawn(process.execPath, [path.join(runnerDirectory, 'worker.mjs'), jobPath], {
-      detached: true, stdio: 'ignore', cwd: runnerDirectory,
-    });
-    await new Promise((resolve, reject) => {
-      worker.once('error', reject);
-      // The spawn event only exists since Node 14.17; a successful spawn already has its PID.
-      if (worker.pid) resolve();
-    });
-    // Only the worker updates its claim and snapshot; avoid races with an instant child exit.
-    worker.unref();
+    assertSourcesUnchanged(selection.revision);
+    for (const entry of entries) {
+      acquireLock(context.directory, entry.moduleId, entry.runId, { batchId });
+      reserved.push(entry);
+    }
+    // Namespace-wide legacy checks happen again after reserving, before preparing workers.
+    // Own newly reserved locks are expected to have no snapshots yet.
+    for (const entry of entries) ownedClaim(context.directory, entry.moduleId, entry.runId);
+    const revisions = new Map();
+    let testHooks = Object.create(null);
+    if (process.env.TEST_PROGRESS_INTERNAL_TEST_HOOKS) testHooks = JSON.parse(process.env.TEST_PROGRESS_INTERNAL_TEST_HOOKS);
+    for (const entry of entries) {
+      const config = selection.configurations[entry.moduleId];
+      if (!revisions.has(config.cwd)) revisions.set(config.cwd, revision(config.cwd));
+      atomicJson(files(context.directory, entry.moduleId).snapshot, initialSnapshot(config, entry.runId, batchId, revisions.get(config.cwd)));
+      atomicJson(jobFile(context.directory, entry.moduleId, entry.runId), { ...config, schemaVersion: 2, ...entry,
+        directory: context.directory, batchId, collectorRuntime, ...(testHooks[entry.moduleId] ? { testHooks: testHooks[entry.moduleId] } : {}) });
+    }
+    atomicJson(loc.manifest, { schemaVersion: 2, batchId, state: 'preparing', entries, launchIdentity: processIdentity(process.pid),
+      coordinatorIdentity: null, createdAt: timestamp(), deadlineAt });
+    manifestCreated = true;
+    atomicJson(loc.request, { schemaVersion: 2, batchId, directory: context.directory, revision: selection.revision });
+    let identity;
+    if (process.platform === 'win32') {
+      // Whitelist only NUL handles. Native PowerShell must receive EOF even
+      // while the detached coordinator and user command keep running.
+      identity = windowsLaunchCoordinator(process.execPath, loc.request);
+    } else {
+      coordinator = spawn(process.execPath, [path.join(runnerDirectory, 'module-batch-worker.mjs'), loc.request],
+        { detached: true, stdio: 'ignore', cwd: runnerDirectory, windowsHide: true });
+      await new Promise((resolve, reject) => { coordinator.once('error', reject); if (coordinator.pid) resolve(); });
+      identity = processIdentity(coordinator.pid);
+      coordinator.unref();
+    }
+    if (!identity) throw new Error('Identidade do coordenador não confirmada');
+    for (;;) {
+      const manifest = readBatch(context.directory, batchId);
+      if (manifest.state === 'released') {
+        acknowledgeRelease();
+        return;
+      }
+      if (manifest.state === 'aborted') throw new Error(manifest.error || 'Lote abortado antes da execução');
+      const alive = sameProcess(identity);
+      // A native identity query can outlive preparation. The durable barrier,
+      // reread after that query, decides whether launch has already succeeded.
+      const afterProbe = readBatch(context.directory, batchId);
+      if (afterProbe.state === 'released') { acknowledgeRelease(); return; }
+      if (afterProbe.state === 'aborted') throw new Error(afterProbe.error || 'Lote abortado antes da execução');
+      if (!alive) throw new Error('Coordenador perdido antes da liberação do lote');
+      if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preparação do lote expirado');
+      await pause();
+    }
   } catch (error) {
-    const snapshot = readJson(locations.snapshot);
-    if (snapshot?.runId === runId) atomicJson(locations.snapshot, {
-      ...snapshot, status: 'error', phase: 'worker-start-error', error: error.message,
-      endedAt: timestamp(), updatedAt: timestamp(),
-    });
-    removePath(jobPath, { force: true });
-    releaseLock(context.directory, lane, runId);
+    if (manifestCreated) {
+      try {
+        const final = changeBatch(context.directory, batchId, (value) => value.state === 'preparing' ?
+          { ...value, state: 'aborted', error: error.message, abortedAt: timestamp() } : value);
+        if (final.state === 'released') { acknowledgeRelease(); return; }
+      } catch { /* Retain unsafe gate. */ }
+    }
+    for (const entry of reserved) {
+      try {
+        const claim = ownedClaim(context.directory, entry.moduleId, entry.runId);
+        if (sameProcess(claim.coordinatorIdentity) || sameProcess(claim.workerIdentity)) {
+          atomicJson(files(context.directory, entry.moduleId).cancel, { schemaVersion: 2, ...entry, requestedAt: timestamp() });
+          continue;
+        }
+        if (claim.spawnAttemptAt) continue; // An unacknowledged spawn is an unknown tree.
+        const snapshot = readJson(files(context.directory, entry.moduleId).snapshot);
+        if (validRecord(snapshot, entry.moduleId, entry.runId)) atomicJson(files(context.directory, entry.moduleId).snapshot,
+          { ...snapshot, status: 'error', phase: 'batch-aborted', infrastructureFailure: true, error: error.message, endedAt: timestamp(), updatedAt: timestamp() });
+        releaseLock(context.directory, entry.moduleId, entry.runId);
+        removePath(jobFile(context.directory, entry.moduleId, entry.runId), { force: true });
+      } catch { /* Preserve uncertain ownership and continue processing other entries. */ }
+    }
+    // Observe an abort briefly; prepared commands still cannot pass the barrier.
+    const observation = Date.now() + ABORT_MS;
+    while (reserved.some((entry) => {
+      try { return Boolean(readJson(files(context.directory, entry.moduleId).claim)); } catch { return false; }
+    }) && Date.now() < observation) await pause(50);
     throw error;
   }
 }
-
-async function cancel(context, lanes) {
-  const state = snapshots(context.directory);
-  for (const lane of lanes) {
-    const snapshot = state[lane];
-    if (!snapshot) continue;
-    if (snapshot.recoveryRequired) {
-      const locations = files(context.directory, lane);
-      const claim = readJson(locations.claim);
-      if (claim?.runId !== snapshot.runId) throw new Error(`Bloqueio de ${lane} não corresponde à execução órfã; recuperação manual necessária.`);
-      const identity = snapshot.childIdentity ?? claim.childIdentity;
-      killOwnedOrphan(identity);
-      const deadline = Date.now() + 1500;
-      while (groupState(identity) !== 'empty' && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-      if (groupState(identity) !== 'empty') throw new Error(`O encerramento do grupo de ${lane} não foi confirmado; a lane continua bloqueada.`);
-      state[lane] = { ...snapshot, status: 'cancelled', phase: 'cancelled', recoveryRequired: false,
-        cancellable: false,
-        endedAt: timestamp(), updatedAt: timestamp(), cancellationRequestedAt: timestamp(),
-        totalStable: false, exitCode: null, error: 'Grupo órfão encerrado por recuperação segura; o código de saída do comando não foi observado.' };
-      atomicJson(locations.snapshot, state[lane]);
-      releaseLock(context.directory, lane, snapshot.runId);
-      removePath(path.join(context.directory, `${lane}.${snapshot.runId}.job.json`), { force: true });
-      removePath(path.join(context.directory, `${lane}.${snapshot.runId}.job.json.windows.json`), { force: true });
-      continue;
-    }
-    if (!ACTIVE.has(snapshot.status)) continue;
-    // A request is bound to a run ID inside this owner's namespace, never an arbitrary PID.
-    atomicJson(files(context.directory, lane).cancel, { runId: snapshot.runId, requestedAt: timestamp() });
-    // Return the request immediately; the worker publishes the acknowledgement on close.
-    state[lane] = { ...snapshot, phase: 'cancellation-requested', cancellationRequestedAt: timestamp() };
-  }
-  return state;
-}
-function logs(context, lanes) {
-  const state = snapshots(context.directory);
-  for (const lane of lanes) {
-    if (!state[lane]) continue;
-    let logTail = [];
+async function cancel(target, state) {
+  actionResults = Object.create(null);
+  for (const moduleId of target === 'all' ? [...new Set([...Object.keys(state.jobs), ...Object.keys(state.stateDiagnostics).filter(validModuleId)])].sort() : [target]) {
     try {
-      const log = fs.readFileSync(state[lane].logPath, 'utf8');
-      logTail = log.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096));
-      if (log === '') logTail = [];
-    } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    state[lane] = { ...state[lane], logTail };
+      const snapshot = state.jobs[moduleId];
+      if ((state.stateDiagnostics[moduleId]?.length && !snapshot?.recoveryRequired) || !snapshot) throw new Error(`Estado de ${moduleId} indisponível ou incompatível`);
+      if (snapshot.recoveryRequired) {
+        const claim = ownedClaim(context.directory, moduleId, snapshot.runId);
+        const identity = snapshot.childIdentity ?? claim.childIdentity;
+        killOwnedOrphan(identity);
+        const deadline = Date.now() + 1500;
+        while (groupState(identity) !== 'empty' && Date.now() < deadline) await pause(50);
+        if (groupState(identity) !== 'empty') throw new Error('Árvore não vazia confirmada; lock conservado');
+        atomicJson(files(context.directory, moduleId).snapshot, { ...snapshot, status: 'cancelled', phase: 'cancelled', recoveryRequired: false,
+          cancellable: false, endedAt: timestamp(), updatedAt: timestamp(), exitCode: null, totalStable: false });
+        releaseLock(context.directory, moduleId, snapshot.runId);
+        removePath(jobFile(context.directory, moduleId, snapshot.runId), { force: true });
+        if (process.platform === 'win32') removePath(`${jobFile(context.directory, moduleId, snapshot.runId)}.windows.json`, { force: true });
+      } else if (ACTIVE.has(snapshot.status)) {
+        ownedClaim(context.directory, moduleId, snapshot.runId);
+        atomicJson(files(context.directory, moduleId).cancel, { schemaVersion: 2, moduleId, runId: snapshot.runId, requestedAt: timestamp() });
+      }
+      actionResults[moduleId] = { ok: true, action: 'cancel', runId: snapshot.runId };
+    } catch (error) { actionResults[moduleId] = { ok: false, action: 'cancel', error: error.message }; }
   }
-  return state;
 }
-
+function logs(target, state) {
+  for (const moduleId of target === 'all' ? Object.keys(state.jobs) : [target]) {
+    const snapshot = state.jobs[moduleId];
+    if (!snapshot) continue;
+    try {
+      const expected = path.join(context.directory, `${moduleId}.${snapshot.runId}.log`);
+      if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
+      // The tail keeps 40 lines of at most 4096 characters; 256 KiB of bytes covers them.
+      const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
+      const clean = sanitizeText(contents);
+      state.jobs[moduleId] = { ...snapshot, logTail: clean ? clean.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096)) : [] };
+    } catch (error) { (state.stateDiagnostics[moduleId] || (state.stateDiagnostics[moduleId] = [])).push({ code: 'unsafe-log', message: error.message, blocking: true }); }
+  }
+}
+function envelope(state, ok, error) {
+  const modules = discovery?.modules || Object.create(null);
+  for (const [id, job] of Object.entries(state.jobs)) if (!modules[id]) modules[id] = { id, label: job.label || id, language: job.language || null,
+    order: Object.keys(modules).length, enabled: false, directoryPresent: false, origin: 'state', diagnostics: [] };
+  return { schemaVersion: 2, ok, modules, jobs: state.jobs,
+    workspace: { ...(discovery?.workspace || {}), moduleConfig: { ...(discovery?.workspace?.moduleConfig || { status: 'absent', schemaVersion: null, enabledIds: [] }), diagnostics: discovery?.diagnostics || [] }, stateBlocked: state.blocked },
+    stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}),
+    // The Mod reuses this Node for later queries instead of bootstrapping a shell each time.
+    collector: { path: collectorRuntime.path, source: collectorRuntime.source } };
+}
 async function main() {
   try {
     if (Number(process.versions.node.split('.')[0]) < 14) throw new Error('Node.js 14.0.0 ou superior é necessário');
-    const { action, options, lanes: requestedLanes } = argumentsOf(process.argv.slice(2));
+    const { action, options, target } = argumentsOf(process.argv.slice(2));
+    const preparationStartedAt = Date.now();
     context = namespace(options['--cwd'], options['--owner']);
-    const inspection = inspectWorkspace(context.cwd, options['--config']);
-    workspace = inspection.metadata;
-    const lanes = action === 'start' && (options['--lane'] ?? 'all') === 'all' ? workspace.configuredLanes : requestedLanes;
-    let state;
-    if (action === 'start' || action === 'demo') {
-      const config = action === 'demo' ? Object.fromEntries(lanes.map((lane) => [lane, {
-        command: [process.execPath, path.join(runnerDirectory, 'demo.mjs'), lane],
-        cwd: context.cwd, adapter: 'events', env: {},
-      }])) : configuration(context.cwd, inspection, lanes);
-      const revisionByCwd = new Map();
-      for (const lane of lanes) {
-        if (process.platform === 'win32') {
-          // Windows searches cwd before PATH. Bind plain Node to the selected binary.
-          const command = config[lane].nodeRuntime && /^node(?:\.exe)?$/i.test(config[lane].command[0]) ?
-            [config[lane].nodeRuntime.path, ...config[lane].command.slice(1)] : config[lane].command;
-          config[lane].windowsCommand = windowsCommand(command, config[lane].cwd,
-            mergeEnvironment(process.env, config[lane].env));
-        }
-        if (!revisionByCwd.has(config[lane].cwd)) revisionByCwd.set(config[lane].cwd, revision(config[lane].cwd));
-      }
-      // Reserve every selected lane before launching. mkdir is the inter-process gate.
-      const reserved = new Map();
-      const launched = new Set();
-      try {
-        snapshots(context.directory);
-        for (const lane of lanes) {
-          const runId = randomUUID();
-          acquireLock(context.directory, lane, runId);
-          reserved.set(lane, runId);
-        }
-        for (const lane of lanes) {
-          await start(context, lane, config[lane], action === 'demo' ? 'demo' : 'config', revisionByCwd.get(config[lane].cwd), reserved.get(lane));
-          launched.add(lane);
-        }
-      } catch (error) {
-        for (const [lane, runId] of reserved) {
-          if (launched.has(lane)) atomicJson(files(context.directory, lane).cancel, { runId, requestedAt: timestamp() });
-          else releaseLock(context.directory, lane, runId);
-        }
-        throw error;
-      }
-      state = snapshots(context.directory);
-    } else if (action === 'cancel') state = await cancel(context, lanes);
-    else if (action === 'logs') state = logs(context, lanes);
-    else state = snapshots(context.directory);
-    process.stdout.write(`${JSON.stringify({ schema: 1, ok: true, workspace, lanes: state })}\n`);
+    // Discovery enriches metadata only. State management remains available with removed/invalid configuration.
+    try { discovery = discoverModules(context, { configPath: options['--config'] }); } catch (error) { if (action === 'start' || action === 'list') throw error; }
+    let state = inspectState(context.directory);
+    if (action === 'start') { await start(prepareSelection(discovery, target), preparationStartedAt); state = inspectState(context.directory); }
+    else if (action === 'cancel') { await cancel(target, state); state = inspectState(context.directory); }
+    else if (action === 'logs') logs(target, state);
+    const ok = !actionResults || Object.values(actionResults).every((result) => result.ok);
+    if (!ok) process.exitCode = 1;
+    process.stdout.write(`${JSON.stringify(envelope(state, ok))}\n`);
   } catch (error) {
-    let lanes = { backend: null, frontend: null };
-    try { if (context) lanes = snapshots(context.directory); } catch { /* Keep the original error. */ }
+    let state = { jobs: Object.create(null), stateDiagnostics: Object.create(null), blocked: true };
+    try { if (context) state = inspectState(context.directory); } catch (stateError) {
+      state.stateDiagnostics['*'] = [{ code: 'unsafe-namespace', message: stateError.message, blocking: true }];
+    }
     process.stderr.write(`test-progress: ${error.message}\n`);
-    process.stdout.write(`${JSON.stringify({ schema: 1, ok: false, workspace, lanes, error: error.message })}\n`);
+    process.stdout.write(`${JSON.stringify(envelope(state, false, error.message))}\n`);
     process.exitCode = 1;
   }
 }
-
 main();
