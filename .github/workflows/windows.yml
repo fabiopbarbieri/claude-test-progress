@@ -24,6 +24,8 @@ jobs:
           - shell: powershell
             node: '14.0.0'
           - shell: pwsh
+            node: '14.0.0'
+          - shell: pwsh
             node: '24'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

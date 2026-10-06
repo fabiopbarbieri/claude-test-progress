@@ -172,7 +172,7 @@ watch/re-run cycles, multiple browsers or native Windows support.
 
 [Windows modules](../.github/workflows/windows.yml) is configured for Windows
 PowerShell 5.1 with collector Node 14.0.0 and PowerShell 7 with collector Node
-24, both with app Node 12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
+14.0.0 and 24, all with app Node 12.22.12. It invokes [check-windows.ps1](../scripts/check-windows.ps1) and
 [tests/windows/native.mjs](../tests/windows/native.mjs). **Neither a native run
 nor hosted CI success is evidenced in this delivery.** Parsing scripts or
 running Linux checks is not Windows acceptance.
