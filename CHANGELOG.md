@@ -3,6 +3,13 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Não lançado]
+
+### Mudança incompatível
+
+- O listener JUnit 5 passa a exigir Java 17+: compila com `--release 17` e não
+  carrega mais em apps com Java 11. A CI JUnit roda em Java 17 e 21.
+
 ## [0.2.0] - 2026-10-05
 
 ### Mudança incompatível
