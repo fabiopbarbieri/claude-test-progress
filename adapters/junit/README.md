@@ -4,7 +4,7 @@
 [Uso e atualização de caminhos](../../docs/USAGE.md) ·
 [Diagnóstico](../../docs/TROUBLESHOOTING.md)
 
-`local.claude.progress.TestProgressListener` usa JUnit Platform 1.11.3 e bytecode
+`local.claude.progress.TestProgressListener` usa JUnit Platform 1.14.4 e bytecode
 Java 17. Não inclui engine de testes, não executa testes e não altera o resultado
 da execução. A descoberta automática usa
 `META-INF/services/org.junit.platform.launcher.TestExecutionListener`.
@@ -19,7 +19,7 @@ bash ./build.sh
 
 Execute dentro de `adapters/junit`. O script baixa somente JARs necessários,
 com versões fixas, do Maven Central, caso ainda não existam em `build/deps`:
-launcher/engine/commons 1.11.3, opentest4j 1.3.0 e apiguardian-api 1.1.2.
+launcher/engine/commons 1.14.4, opentest4j 1.3.0 e apiguardian-api 1.1.2.
 Compila com `javac --release 17` e gera
 `build/test-progress-listener-0.3.0.jar`, sem embutir essas dependências.
 `build/` é ignorado pelo Git. As dependências devem existir no runtime do app.
@@ -54,7 +54,7 @@ Adicione ao `pom.xml` do app como dependência de **testes**:
 
 O app precisa usar o provider JUnit Platform do Surefire/Failsafe e ter seu
 launcher/engine compatível disponível. Alinhe a Platform à versão gerenciada pelo
-app (1.11.3 corresponde à linha JUnit 5.11.3); a integração não precisa alterar as versões
+app (1.14.4 corresponde à linha JUnit 5.14.4); a integração não precisa alterar as versões
 gerenciadas pelo app. Autoregistro de listeners deve permanecer habilitado. Não há suporte
 declarado para runner JUnit 4 tradicional nem aceite do engine Vintage.
 
@@ -107,7 +107,7 @@ para os gates e os limites da integração.
 
 ## Fontes primárias
 
-- [TestExecutionListener 5.11.3: eventos, paralelismo e containers ignorados](https://docs.junit.org/5.11.3/api/org.junit.platform.launcher/org/junit/platform/launcher/TestExecutionListener.html).
-- [TestPlan 5.11.3: contagem, filhos e descendentes](https://docs.junit.org/5.11.3/api/org.junit.platform.launcher/org/junit/platform/launcher/TestPlan.html).
-- [LauncherFactory 5.11.3: registro automático de listeners](https://docs.junit.org/5.11.3/api/org.junit.platform.launcher/org/junit/platform/launcher/core/LauncherFactory.html).
+- [TestExecutionListener 5.14.4: eventos, paralelismo e containers ignorados](https://docs.junit.org/5.14.4/api/org.junit.platform.launcher/org/junit/platform/launcher/TestExecutionListener.html).
+- [TestPlan 5.14.4: contagem, filhos e descendentes](https://docs.junit.org/5.14.4/api/org.junit.platform.launcher/org/junit/platform/launcher/TestPlan.html).
+- [LauncherFactory 5.14.4: registro automático de listeners](https://docs.junit.org/5.14.4/api/org.junit.platform.launcher/org/junit/platform/launcher/core/LauncherFactory.html).
 - [Maven Surefire: JUnit Platform](https://maven.apache.org/surefire/maven-surefire-plugin/examples/junit-platform.html).

@@ -3,6 +3,16 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Unreleased]
+
+### Alterado
+
+- JUnit 5: o listener passa a compilar contra JUnit Platform 1.14.4 (JUnit
+  5.14.4), e esse é o novo mínimo declarado; o CI deixa de cobrir 5.11–5.13.
+- Rails 8.0/8.1 validados com Minitest 5.27.0; o piso 5.20.0 segue no job
+  Rails 7.2.
+- CI: `actions/checkout` v7.0.1.
+
 ## [0.3.0] - 2026-10-05
 
 Primeira versão pública do Test Progress.

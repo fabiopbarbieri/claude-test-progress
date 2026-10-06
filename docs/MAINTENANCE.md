@@ -128,8 +128,8 @@ jobs without adding globally installed frameworks or new required branch checks:
 
 | Integration | App runtime | Collector runtime |
 | --- | --- | --- |
-| JUnit 5.11.3 / Surefire 3.6.0 | Temurin Java 17 | Node 14.0.0 |
-| JUnit 5.11.3 / Surefire 3.6.0 | Temurin Java 21 | Node 24 |
+| JUnit 5.14.4 / Surefire 3.6.0 | Temurin Java 17 | Node 14.0.0 |
+| JUnit 5.14.4 / Surefire 3.6.0 | Temurin Java 21 | Node 24 |
 | Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 |
 | Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
 

@@ -20,8 +20,8 @@ skip seguido de erro em teardown e falhas de load/boot. O total permanece
 desconhecido nos encerramentos incompletos.
 
 O workflow [Rails adapter](../../.github/workflows/rails.yml) cobre Linux com
-Rails 7.2.4/Ruby 3.3/Minitest 5.20.0, Rails 8.0.5.1/Ruby 3.4/Minitest 5.25.4
-e Rails 8.1.4/Ruby 3.4/Minitest 5.25.4. O estado de cada execução do GitHub Actions é a evidência de CI;
+Rails 7.2.4/Ruby 3.3/Minitest 5.20.0, Rails 8.0.5.1/Ruby 3.4/Minitest 5.27.0
+e Rails 8.1.4/Ruby 3.4/Minitest 5.27.0. O estado de cada execução do GitHub Actions é a evidência de CI;
 a presença do workflow não significa que uma execução passou.
 
 Aceite local observado: Linux, Ruby 3.4.10, Rails 8.1.3.1 e Minitest 5.20.0/5.25.4.

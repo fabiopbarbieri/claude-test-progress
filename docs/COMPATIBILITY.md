@@ -38,8 +38,8 @@ O sidecar de prova Windows tem formato próprio (`schema: 1`), independente do
 | [Python / pytest](../adapters/python/README.md) | Python 3.8+, pytest 7+ do app | Python 3.8 / pytest 8.3.5 / Node 14.0.0; Python 3.14 / pytest 9.1.1 / Node 24 | pytest 7 não está na CI; serial, xdist recusado |
 | [Python / unittest](../adapters/python/README.md) | Python 3.8+, biblioteca padrão | Mesmas combinações; sucesso, falha, skip e cancelamento | Runners distribuídos |
 | [Ruby / RSpec](../adapters/ruby/README.md) | Ruby 3.1+, RSpec Core 3.13.x | Ruby 3.1, 3.4 e 4.0; rspec-core 3.13.6, rspec 3.13.2, rspec-retry 0.6.2 | Watch, DRb, bisect e runners paralelos |
-| [Rails / Minitest](../adapters/rails/README.md) | Rails 7.2/8.0/8.1; Minitest >=5.20 e <6 | Rails 7.2.4 / Ruby 3.3 / Minitest 5.20.0; Rails 8.0.5.1 e 8.1.4 / Ruby 3.4 / Minitest 5.25.4 | Minitest 6; views/system usam `rack_test`, sem Selenium |
-| [JUnit 5](../adapters/junit/README.md) | Java 17+; JUnit Platform compatível no app | JUnit 5.11.3 / Platform 1.11.3 / Surefire 3.6.0 com Java 17 e 21 | Gradle, reactor multimódulo, Vintage, engines de terceiros e queda da JVM |
+| [Rails / Minitest](../adapters/rails/README.md) | Rails 7.2/8.0/8.1; Minitest >=5.20 e <6 | Rails 7.2.4 / Ruby 3.3 / Minitest 5.20.0; Rails 8.0.5.1 e 8.1.4 / Ruby 3.4 / Minitest 5.27.0 | Minitest 6; views/system usam `rack_test`, sem Selenium |
+| [JUnit 5](../adapters/junit/README.md) | Java 17+; JUnit 5.14+ (Platform 1.14+) no app | JUnit 5.14.4 / Platform 1.14.4 / Surefire 3.6.0 com Java 17 e 21 | Gradle, reactor multimódulo, Vintage, engines de terceiros e queda da JVM |
 | [Karma](../adapters/karma/README.md) | App com Karma, reporter CommonJS e browser | Angular 9.1.13 / Karma 5.2.3 (app Node 12.22.12) e Angular 18.2.14 / Karma 6.4.4 (app Node 22), Chrome headless | Watch, vários browsers e Windows nativo |
 | Fallback Maven / Karma | Logs nos formatos do [parser](../runner/progress.mjs) | Parser Maven exercitado no Quality | Formatos variam; Maven mantém total desconhecido durante a execução |
 

@@ -133,5 +133,5 @@ consulte sempre o status e o exit code do comando.
 
 - [Guia oficial: testes Rails e paralelismo](https://guides.rubyonrails.org/testing.html).
 - [Rails TestCommand: test, system e all](https://github.com/rails/rails/blob/v8.1.4/railties/lib/rails/commands/test/test_command.rb).
-- [Minitest: plugins e reporters](https://github.com/minitest/minitest/tree/v5.25.4).
+- [Minitest: plugins e reporters](https://github.com/minitest/minitest/tree/v5.27.0).
 - [Cenários executados e limites de plataforma](VALIDATION.md).
