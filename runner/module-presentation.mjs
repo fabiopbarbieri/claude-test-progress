@@ -127,8 +127,9 @@ export function compactPercent(job) {
   // A finished run's total is final, whatever the stream last claimed.
   return `${ACTIVE.has(job.status) && !job.totalStable ? '~' : ''}${percentage(job)}`;
 }
+// ⊘ renders flush against the next digit in common terminal fonts, so it keeps a space.
 export function compactCounts(job) {
-  return [['passed', '✓', 'success'], ['failed', '✗', 'error'], ['skipped', '⊘', 'inactive']]
+  return [['passed', '✓', 'success'], ['failed', '✗', 'error'], ['skipped', '⊘ ', 'inactive']]
     .filter(([key]) => (job?.[key] ?? 0) > 0).map(([key, glyph, color]) => ({ text: `${glyph}${job[key]}`, color }));
 }
 export function clock(ms) {

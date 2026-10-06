@@ -8,6 +8,15 @@ import { namespace, files, readJson, atomicJson } from '../../runner/state.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 const cli = fileURLToPath(new URL('../../runner/cli.mjs', import.meta.url));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+// The coordinator may still rewrite its batch manifest right after the last lock is
+// released, so a cleanup that races it retries instead of failing the suite.
+async function removeState(directory) {
+  for (let attempt = 0; ; attempt++) {
+    try { removePath(directory, { recursive: true, force: true }); return; }
+    catch (error) { if (error.code !== 'ENOTEMPTY' || attempt >= 40) throw error; }
+    await pause(50);
+  }
+}
 // Status polls drive the documented recovery path when the worker is already gone;
 // a lock that still survives is reported with the evidence needed to diagnose it.
 async function cancelAndAwaitRelease(args, context, fixture) {
@@ -107,7 +116,7 @@ async function atomicHeartbeatStress() {
     if (writer) { writer.kill('SIGTERM'); await writerResult; }
     try { collect('cancel'); } catch {}
     await pause(400);
-    removePath(context.directory, { recursive: true, force: true });
+    await removeState(context.directory);
     removePath(cwd, { recursive: true, force: true });
   }
 }
@@ -148,7 +157,7 @@ async function main() {
   } finally {
     spawnSync(process.execPath, args('cancel'), { encoding: 'utf8', timeout: 15000 });
     await pause(500);
-    removePath(context.directory, { recursive: true, force: true });
+    await removeState(context.directory);
     removePath(cwd, { recursive: true, force: true });
   }
 }
@@ -196,7 +205,7 @@ fs.readFileSync=function(file,...args){
     console.log('A durable release during a slow identity query wins over the obsolete preparation deadline: OK');
   } finally {
     await cancelAndAwaitRelease(args, context, 'slow-probe');
-    removePath(context.directory, { recursive: true, force: true });
+    await removeState(context.directory);
     removePath(cwd, { recursive: true, force: true });
   }
 }
@@ -237,7 +246,7 @@ fs.openSync=function(file,...args){
     console.log('Preparation expiry during final ownership confirmation aborts with zero command effects: OK');
   } finally {
     await cancelAndAwaitRelease(args, context, 'final-deadline');
-    removePath(context.directory, { recursive: true, force: true });
+    await removeState(context.directory);
     removePath(cwd, { recursive: true, force: true });
   }
 }
