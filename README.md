@@ -32,7 +32,7 @@ O plugin não instala runners, browsers ou runtimes.
 | Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
 | Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
 | Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |
-| Java / JUnit 5 | Fallback Maven ou listener opcional; consulte o alcance do gate real |
+| Java / JUnit 5 | Java 17+; fallback Maven ou listener opcional; consulte o alcance do gate real |
 | Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
 
 Veja [versões testadas e evidências por SHA](docs/COMPATIBILITY.md).

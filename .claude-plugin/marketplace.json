@@ -8,7 +8,7 @@
     {
       "name": "test-progress",
       "source": "./",
-      "description": "Progresso de testes Java, Angular e Python no Claude Code."
+      "description": "Progresso de testes por módulo no Claude Code: Java, Angular, Python, Rails e Ruby."
     }
   ]
 }

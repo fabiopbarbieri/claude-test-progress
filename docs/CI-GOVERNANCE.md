@@ -48,7 +48,7 @@ Prioridades sugeridas, usando fixtures próprias e sem credenciais:
 2. **Python:** descoberta/setup/teardown com falha, subtests, xfail/XPASS,
    failfast e zero testes; comparar exit code com execução nativa. Acrescentar
    pytest 7 para cobrir o mínimo declarado.
-3. **JUnit/Karma:** compilar o [listener](../adapters/junit/pom.xml) em Java 11
+3. **JUnit/Karma:** compilar o [listener](../adapters/junit/pom.xml) em Java 17
    e executar testes dinâmicos, contêiner ignorado e paralelismo. Rodar fixture
    Karma com o [reporter](../adapters/karma/reporter.cjs), incluindo ciclos e
    desconexão. Preservar uma combinação compatível com Angular 9.
@@ -82,15 +82,19 @@ Dois rulesets separados se aplicam a `refs/heads/main`:
   Push direto não tem exceção. Colaboradores propõem; o mantenedor integra.
 - [main-quality](https://github.com/fabiopbarbieri/claude-test-progress/rules/24473696):
   exige PR, os três checks Quality listados acima, branch atualizada com `main`
-  e conversas resolvidas; bloqueia force push e exclusão. Não tem bypass,
-  inclusive para o proprietário. A exceção de autorização não dispensa qualidade.
+  e conversas resolvidas; bloqueia force push e exclusão. Desde 05/10/2026,
+  `fabiopbarbieri` pode dispensar essas exigências somente ao mesclar uma PR
+  (`bypass_mode: pull_request`); push direto continua bloqueado.
 
 No painel de uma PR, a restrição de atualização aparece como
 `Cannot update this protected ref`. O mantenedor autorizado dispõe da opção
 `Merge without waiting for requirements to be met (bypass rules)` para liberar
-a regra de autorização antes de confirmar o merge. Essa exceção não libera os
-checks ou demais requisitos de `main-quality`, que não permite bypass.
-O controle foi observado na conta proprietária, sem marcar a opção nem fazer merge.
+a regra de autorização antes de confirmar o merge. A mesma opção também libera
+os checks e demais requisitos de `main-quality`. Usar só em PRs triviais
+(documentação, metadados), combinável com `[skip ci]` na mensagem do commit:
+o bypass também dispensa o scanner `Secrets`. O push resultante em `main` roda o
+CI completo, e a [preparação de release](RELEASING.md) exige esse CI verde no SHA
+escolhido, então um merge com bypass não chega a release sem os gates.
 
 Foram configuradas **zero aprovações obrigatórias** enquanto há um único
 mantenedor: o autor não pode aprovar sua própria PR. O descarte de aprovações

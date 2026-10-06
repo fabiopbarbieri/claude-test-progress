@@ -72,7 +72,7 @@ Não acrescente frameworks como dependências globais do plugin.
 | Python/pytest | `python3 scripts/check.py --smoke --pytest` | Instale pytest no Python do check; exemplo isolado abaixo. |
 | Ruby/RSpec | `python3 scripts/check-ruby.py` | Ruby 3.1+, RSpec Core 3.13.x e rspec-retry 0.6.2; use gems isoladas e as versões do [workflow Ruby](.github/workflows/ruby.yml). Veja o [adaptador](adapters/ruby/README.md). |
 | Rails/Minitest | `python3 scripts/check-rails.py` | Prepare Ruby, Bundler e gems da combinação do [workflow Rails](.github/workflows/rails.yml) em ambiente isolado. Inclui Rails, Minitest, mutex_m, Capybara e selenium-webdriver; o teste system usa `rack_test`, sem aceite de Selenium/browser. Veja o [adaptador](adapters/rails/README.md). |
-| Java/JUnit | `(cd adapters/junit && bash build.sh)` | JDK 11+ e curl; o build baixa dependências para `build/`. Compilação não comprova execução em Surefire. Veja o [listener](adapters/junit/README.md) e acrescente uma fixture pública para o comportamento alterado. |
+| Java/JUnit | `(cd adapters/junit && bash build.sh)` | JDK 17+ e curl; o build baixa dependências para `build/`. Compilação não comprova execução em Surefire. Veja o [listener](adapters/junit/README.md) e acrescente uma fixture pública para o comportamento alterado. |
 | Karma | `node --check adapters/karma/reporter.cjs` | Só verifica sintaxe. Para comportamento, use uma fixture isolada com Karma e browser compatíveis com a versão em teste, conforme o [reporter](adapters/karma/README.md). |
 | Mod, painel ou manifests/hooks | Comandos Claude abaixo | Use o CLI compatível com Mods; o mínimo Node do coletor não define o runtime do Claude. |
 
