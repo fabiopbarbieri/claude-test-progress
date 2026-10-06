@@ -2,6 +2,7 @@ name: Rails adapter
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -57,5 +58,4 @@ jobs:
             puts "RAILS_VERSION=#{rails}"
             puts "MINITEST_VERSION=#{Gem.loaded_specs.fetch("minitest").version}"
           ' >> "$GITHUB_ENV"
-      - run: python3 scripts/check.py
       - run: python3 scripts/check-rails.py

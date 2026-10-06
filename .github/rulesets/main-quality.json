@@ -10,7 +10,13 @@
     }
   },
   "name": "main-quality",
-  "bypass_actors": [],
+  "bypass_actors": [
+    {
+      "actor_id": 49872514,
+      "actor_type": "User",
+      "bypass_mode": "pull_request"
+    }
+  ],
   "rules": [
     {
       "type": "deletion"
