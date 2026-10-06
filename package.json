@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=14.0.0" },
-  "description": "Background test progress for Claude Code: JUnit, Karma, pytest and unittest.",
+  "description": "Background test progress per module for Claude Code: JUnit/Maven, Karma, pytest, unittest, Rails/Minitest and RSpec.",
   "license": "MIT",
   "repository": {
     "type": "git",
