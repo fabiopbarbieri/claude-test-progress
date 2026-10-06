@@ -20,7 +20,7 @@ A capa é uma ilustração; a interface real é um painel de terminal:
 ○ Worker     —                                    ▶
 ```
 
-`/test-progress` sem argumentos abre ou fecha o painel; `×` e Esc também fecham.
+`/test-progress` sem argumentos abre ou fecha o painel; `×`, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
 ```
 
 Acima do prompt, uma faixa de uma linha resume o que está rodando e as falhas
