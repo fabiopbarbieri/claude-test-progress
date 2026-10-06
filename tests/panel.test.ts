@@ -64,7 +64,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
     await $.command.run({ command: 'test-progress', args: '--text' });
     const ui = await $.ui.mount(pane(surface));
-    for (const value of ['✓2 ', '✗1 ', '⊘1 ', '~100%', '—', '╌╌╌╌╌╌╌╌╌╌╌╌']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
+    for (const value of ['✓2 ', '✗1 ', '⊘ 1 ', '~100%', '—', '╌╌╌╌╌╌╌╌╌╌╌╌']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: /executing-tests/ })).toBeUndefined();
     expect(await ui.find({ key: 'cancel-api' })).toMatchObject({ props: { label: '■' } });
     await ui.press({ key: 'start-all' });
