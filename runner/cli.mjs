@@ -173,7 +173,8 @@ function logs(target, state) {
     try {
       const expected = path.join(context.directory, `${moduleId}.${snapshot.runId}.log`);
       if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
-      const contents = readPrivate(expected, 2 * 1024 * 1024) || '';
+      // The tail keeps 40 lines of at most 4096 characters; 256 KiB of bytes covers them.
+      const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
       const clean = contents.replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
         .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
       state.jobs[moduleId] = { ...snapshot, logTail: clean ? clean.replace(/\n$/, '').split(/\r?\n/).slice(-40).map((line) => line.slice(-4096)) : [] };
@@ -186,7 +187,9 @@ function envelope(state, ok, error) {
     order: Object.keys(modules).length, enabled: false, directoryPresent: false, origin: 'state', diagnostics: [] };
   return { schemaVersion: 2, ok, modules, jobs: state.jobs,
     workspace: { ...(discovery?.workspace || {}), moduleConfig: { ...(discovery?.workspace?.moduleConfig || { status: 'absent', schemaVersion: null, enabledIds: [] }), diagnostics: discovery?.diagnostics || [] }, stateBlocked: state.blocked },
-    stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}) };
+    stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}),
+    // The Mod reuses this Node for later queries instead of bootstrapping a shell each time.
+    collector: { path: collectorRuntime.path, source: collectorRuntime.source } };
 }
 async function main() {
   try {

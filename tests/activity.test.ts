@@ -81,7 +81,7 @@ test('registration collision does not stop polling and repeated startup keeps on
   await ui.unmount();
 });
 
-test('polling refreshes idle catalogue and all jobs during selected logs; owner changes clear tails and return restores jobs', async ($, on) => {
+test('polling refreshes the catalogue and all jobs, re-reading only the live selected log; owner changes clear tails and return restores jobs', async ($, on) => {
   const clock = mock.clock(on); let owner = 'A'; let current = data();
   const calls: any[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
@@ -95,7 +95,7 @@ test('polling refreshes idle catalogue and all jobs during selected logs; owner 
   current.jobs.api = { ...running, logTail: ['owner A log'] };
   await $.command.run({ command: 'test-progress', args: 'logs api --text' });
   current.modules.extra = module('extra', 'Nova'); await clock.advance(1000);
-  expect(calls[calls.length - 1][2]).toBe('logs'); expect(calls[calls.length - 1].slice(-2)).toEqual(['--module', 'all']);
+  expect(calls[calls.length - 1][2]).toBe('logs'); expect(calls[calls.length - 1].slice(-2)).toEqual(['--module', 'api']);
   expect(await ui.find({ key: 'module-extra' })).toBeDefined();
   owner = 'B'; current = data({}, {}); await clock.advance(1000);
   expect(await ui.find({ type: 'Text', text: 'owner A log' })).toBeUndefined();
@@ -156,25 +156,61 @@ test('poll timer survives clear/resume/branch identity boundaries without implic
   expect(actions).toEqual(['status', 'status', 'status', 'status']);
 });
 
-test('poll and commands do not overlap a pending collector request', async ($, on) => {
+test('poll and commands never overlap; a command waits for a pending request instead of being rejected', async ($, on) => {
   const clock = mock.clock(on); let release: (() => void) | undefined; let pending = false;
-  const calls: string[] = []; let entered: (() => void) | undefined;
+  const calls: string[] = []; let entered: (() => void) | undefined; let inFlight = 0; let maxInFlight = 0;
   const started = new Promise<void>(resolve => { entered = resolve; });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.start', () => ({ cwd: '/work' })); on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
   on('command.register', () => ({ value: undefined }));
   on('process.run', async ($, e) => {
-    calls.push(e.argv[2]);
-    if (pending) { entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
-    return response();
+    calls.push(e.argv[2]); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    if (pending) { pending = false; entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
+    inFlight--; return response();
   });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   pending = true;
   const command = $.command.run({ command: 'test-progress', args: 'status --text' });
   await started; await clock.advance(2000);
-  const rejected = await $.command.run({ command: 'test-progress', args: 'start api --text' });
-  expect(rejected.text).toContain('ocupado'); expect(calls).toEqual(['status', 'status']);
+  const waiting = $.command.run({ command: 'test-progress', args: 'start api --text' });
+  expect(calls).toEqual(['status', 'status']);
   release?.(); await command;
+  expect((await waiting).text).not.toContain('ocupado');
+  expect(calls).toEqual(['status', 'status', 'start']); expect(maxInFlight).toBe(1);
+});
+
+test('idle workspaces poll every ten seconds and live jobs every second', async ($, on) => {
+  const clock = mock.clock(on); let current = data({ api: module() }, {}); const calls: string[] = [];
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { calls.push(e.argv[2]); return response(current); });
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  await clock.advance(9000); expect(calls).toEqual(['status']);
+  await clock.advance(1000); expect(calls).toEqual(['status', 'status']);
+  current = data();
+  await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  await clock.advance(2000); expect(calls).toEqual(['status', 'status', 'start', 'status', 'status']);
+});
+
+test('later queries reuse the bootstrapped collector Node and fall back once when it disappears', async ($, on) => {
+  const calls: any[] = []; let deny = false;
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => {
+    calls.push(e);
+    if (deny && e.argv[0] === '/opt/node/bin/node') return { deny: 'node removed' };
+    return response({ ...data(), collector: { path: '/opt/node/bin/node', source: 'nvm' } });
+  });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(calls[0].argv[0]).toBe('bash');
+  expect(calls[1].argv[0]).toBe('/opt/node/bin/node'); expect(calls[1].argv[1]).toMatch(/runner\/cli\.mjs$/);
+  expect(calls[1].argv[2]).toBe('status'); expect(calls[1].init.env).toEqual({ TEST_PROGRESS_NODE_SOURCE: 'nvm' });
+  deny = true;
+  const answer = await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(answer.text).toContain('runId=fixture-long-job');
+  expect(calls.slice(2).map(call => call.argv[0])).toEqual(['/opt/node/bin/node', 'bash']);
 });
 
 test('ownership taken after registration passes the full result to the new handler and polling stays alive', async ($, on) => {
