@@ -229,8 +229,9 @@ Inicie com `/test-progress start api --text` e consulte com
 `/test-progress status api --text`. O início passa por preflight de todos os
 selecionados e reserva todos os locks antes de executar comandos. Workers
 preparados aguardam uma barreira comum: preparação **30 s**, confirmação de
-lançamento **10 s**, aborto/encerramento **10 s**. A chamada start do Mod tem
-limite de **60 s**, separado da duração da suíte. Não há deadline da suíte.
+lançamento **10 s**, aborto/encerramento **10 s**; no Windows, cada módulo
+selecionado acrescenta 1 s à preparação (até 50 s) e à confirmação (até 40 s).
+A chamada start do Mod tem limite de **60 s**, separado da duração da suíte. Não há deadline da suíte.
 
 Se preparação/reserva falhar, nenhum comando é liberado. Falha de infraestrutura
 após a liberação solicita compensação dos demais participantes; encerramento

@@ -203,7 +203,8 @@ keeps its own `schema: 1`: it is a distinct proof protocol, independent of the
 app/browser from the Node 12 synthetic runtime scenario.
 
 Start coordination uses preparation 30 s, acknowledgement 10 s, abort 10 s and
-a 60 s Mod start call. It does not limit suite duration. Normal test failure does
+a 60 s Mod start call. On Windows each selected module adds 1 s to preparation
+(capped at 50 s) and to acknowledgement (capped at 40 s). It does not limit suite duration. Normal test failure does
 not abort peers; infrastructure failure can compensate the batch. Gates must
 check containment and preserve locks when termination cannot be proved.
 

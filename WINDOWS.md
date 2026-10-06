@@ -90,7 +90,7 @@ $env:TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = '20000'
 
 Aceita inteiros de 1000 a 30000; valor inválido gera erro, sem voltar ao
 padrão em silêncio. O limite vale por chamada, e uma operação faz várias. Por
-isso valores altos podem esbarrar no prazo de preparação do lote (30 s), que
+isso valores altos podem esbarrar no prazo de preparação do lote (30 s mais 1 s por módulo), que
 aborta o start sem executar comandos, e no tempo que o Mod espera pelo coletor
 (15 s em status/cancel/logs, 60 s em start). Se o Mod esgotar o tempo, consulte
 `status` antes de repetir a ação.
@@ -192,7 +192,9 @@ template, sem merge profundo. Discovery não publica command/env nem executa
 resolvedores; preflight valida somente selecionados e captura o comando Windows.
 
 O início conjunto reserva todos os módulos e aguarda barreira: preparação 30 s,
-confirmação 10 s e aborto 10 s; a chamada start do Mod tem limite de 60 s.
+confirmação 10 s e aborto 10 s; a chamada start do Mod tem limite de 60 s. No
+Windows, cada módulo selecionado acrescenta 1 s à preparação (até 50 s) e à
+confirmação (até 40 s), porque cada um inicia seu próprio broker PowerShell.
 A suíte não tem deadline. Falha normal de teste não aborta outros módulos;
 falha de infraestrutura pode compensar o lote. Sem término comprovado, os locks
 são conservados. Status/logs/cancel de jobs autenticados permanecem disponíveis

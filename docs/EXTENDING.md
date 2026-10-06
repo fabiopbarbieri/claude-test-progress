@@ -72,8 +72,8 @@ scopes tenham esse marcador: a correção do adapter é essencial.
 
 Watch acumula scopes de rodadas; oferecer a rodada atual exige identidade de
 ciclo e fica fora do contrato finito. O início conjunto usa preflight completo,
-reserva e barreira: preparação 30 s, confirmação 10 s, aborto 10 s, chamada do
-Mod 60 s. A suíte não tem deadline. Falha normal de teste não aborta os demais;
+reserva e barreira: preparação 30 s, confirmação 10 s (no Windows, +1 s por
+módulo, até 50 s e 40 s), aborto 10 s, chamada do Mod 60 s. A suíte não tem deadline. Falha normal de teste não aborta os demais;
 falha de infraestrutura após liberação pode pedir compensação. Um adapter não
 deve transformar erro de infraestrutura em testes inventados.
 

@@ -6,7 +6,7 @@ import { processIdentity, processIdentities, sameProcess, sameProcesses, groupSt
 import { removePath } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
-import { batchFiles, readBatch, changeBatch, compensation, ACK_MS, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
+import { batchFiles, readBatch, changeBatch, compensation, acknowledgementMs, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
 
 async function main() {
@@ -149,7 +149,7 @@ async function main() {
             const identity = snapshot.childIdentity ?? claim.childIdentity;
             if (canKillOwnedOrphan(identity)) killOwnedOrphan(identity);
           }
-        } else if (manifest.state === 'released' && !claim.spawnAcknowledgedAt && Date.now() > Date.parse(manifest.releasedAt) + ACK_MS) {
+        } else if (manifest.state === 'released' && !claim.spawnAcknowledgedAt && Date.now() > Date.parse(manifest.releasedAt) + acknowledgementMs(manifest.entries.length)) {
           cancelAll('Prazo de confirmação do spawn expirado');
         }
       } catch (error) {
@@ -248,7 +248,9 @@ async function main() {
       changeBatch(request.directory, request.batchId, (value) => ({ ...value, supervisionError: 'Observação do aborto terminou sem confirmar todas as árvores; locks conservados.' }));
       break;
     }
-    await pause(75);
+    // Each pass reads every entry's batch, snapshot and claim; on Windows every open is
+    // also scanned by the antivirus, so the loop runs less often there.
+    await pause(process.platform === 'win32' ? 500 : 75);
   }
   changeBatch(request.directory, request.batchId, (value) => ({ ...value, supervisionEndedAt: timestamp() }));
   removePath(requestPath, { force: true });

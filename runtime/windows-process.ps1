@@ -331,7 +331,8 @@ try {
                 $hostProcess.Cancel()
             }
         }
-        Start-Sleep -Milliseconds 50
+        # Each broker polls while its tree runs; 250 ms bounds both its idle CPU and the cancel latency.
+        Start-Sleep -Milliseconds 250
     }
     $proof.treeEmpty = $true
     $code = $hostProcess.ExitCode()

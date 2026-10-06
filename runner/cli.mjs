@@ -11,7 +11,7 @@ import { validModuleId } from './module-id.mjs';
 import { sanitizeText, readableTail } from './module-presentation.mjs';
 import { PREFIX } from './progress.mjs';
 import { discoverModules, prepareSelection, assertSourcesUnchanged } from './module-config.mjs';
-import { batchFiles, readBatch, changeBatch, PREPARE_MS, ABORT_MS, pause } from './module-batch.mjs';
+import { batchFiles, readBatch, changeBatch, preparationMs, ABORT_MS, pause } from './module-batch.mjs';
 import { windowsLaunchCoordinator } from './windows-process.mjs';
 
 const runnerDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -48,7 +48,7 @@ async function start(selection, preparationStartedAt) {
   const initialState = inspectState(context.directory);
   if (selection.ids.some(id => initialState.stateDiagnostics[id]?.some(item => item.blocking))) throw new Error('Módulo selecionado contém estado bloqueado; recuperação segura necessária.');
   if (initialState.blocked) throw new Error('Namespace contém estado incompatível ou inseguro; novos starts bloqueados.');
-  const deadlineAt = new Date(preparationStartedAt + PREPARE_MS).toISOString();
+  const deadlineAt = new Date(preparationStartedAt + preparationMs(selection.ids.length)).toISOString();
   if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preflight e preparação expirado antes da reserva.');
   const batchId = randomUUID();
   const loc = batchFiles(context.directory, batchId);

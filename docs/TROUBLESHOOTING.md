@@ -39,7 +39,9 @@ consulte novamente antes de outro start. Não existe `/test-progress doctor`.
 | Start passou de 60 s | Status do lote e participantes | Não presuma que parou nem inicie novamente sem consultar |
 | Suíte continua após reload/uninstall | Owner/estado original | Jobs são detached; encerre-os antes de trocar a instalação |
 
-Preparação tem limite de 30 s, confirmação de lançamento 10 s e aborto 10 s.
+Preparação tem limite de 30 s, confirmação de lançamento 10 s e aborto 10 s;
+no Windows, cada módulo selecionado acrescenta 1 s à preparação (até 50 s) e à
+confirmação (até 40 s).
 São limites do início, separados de qualquer duração de teste. A suíte não tem
 deadline. Logs/status/cancel não dependem de configuração de execução válida.
 

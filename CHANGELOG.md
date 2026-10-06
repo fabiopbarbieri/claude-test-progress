@@ -18,6 +18,18 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   Group Policy continua prevalecendo.
 - `scripts/bench-windows.ps1` mede latência do `status`, `start`/`cancel` e CPU
   com N módulos no Windows nativo.
+- Supervisão por eventos: o coordenador acompanha os workers que iniciou pelo
+  `ChildProcess` (o handle aberto impede reuso do PID), e cada worker percebe o
+  fim do coordenador pelo fechamento de um pipe no stdin. Com jobs parados, o
+  plugin não abre mais nenhum PowerShell.
+- `status`, `list` e `logs`: um job com heartbeat recente (até 15 s) e PID do
+  worker existente é lido como vivo sem PowerShell, e a verificação completa da
+  DACL é reusada por até 10 min; `start` e `cancel` sempre verificam. Com 3 jobs
+  e o painel consultando a cada 1 s, a CPU caiu de 63% (pwsh 7) e 98% (5.1)
+  para 2–3%, e o `status` de 1,2–3,3 s para ~80 ms.
+- Prazos de preparação e de confirmação do início crescem 1 s por módulo no
+  Windows (até 50 s e 40 s); o broker consulta a cada 250 ms e o coordenador a
+  cada 500 ms. Com pwsh 7, 20 módulos iniciam juntos em 7,5 s.
 
 ## [0.4.0] - 2026-10-06
 
