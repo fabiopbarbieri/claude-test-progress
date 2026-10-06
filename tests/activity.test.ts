@@ -132,7 +132,11 @@ test('AbovePrompt is one line: active first, at most three items, and it steps a
   current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' }, m3: { ...jobs.m3, status: 'failed', failed: 2 } });
   await $.command.run({ command: 'test-progress', args: '--text' });
   expect(await band.find({ type: 'Text', text: ' ✗2' })).toMatchObject({ props: { color: 'error' } });
+  // Using the pane acknowledges what it shows; drawing alone never writes.
   const ui = await $.ui.mount(pane);
+  await $.command.run({ command: 'test-progress', args: '--text' });
+  expect(await band.find({ type: 'Text', text: ' ✗2' })).toBeDefined();
+  await ui.press({ key: 'help' });
   await ui.unmount();
   await $.command.run({ command: 'test-progress', args: '--text' });
   expect(await band.find({ key: 'band' })).toBeUndefined();
@@ -253,4 +257,22 @@ test('unavailable ownership metadata passes through without parsing or collectin
   const answer = await $.command.run({ command: 'test-progress', args: 'start api --text' });
   expect(answer).toMatchObject({ text: 'host output', context: ['host context'] });
   expect(actions).toEqual([]);
+});
+
+test('a placed pane acknowledges failed runs and the band steps aside', async ($, on) => {
+  on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
+  const current = data({ api: module() }, { api: { ...running, status: 'failed', failed: 1 } });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  on('ui.panes', () => ({ value: [] }));
+  on('ui.open', () => ({ value: { isPlaced: true } }));
+  await $.command.run({ command: 'test-progress', args: '--text' });
+  const band = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
+    viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
+      bodyColumns: 80, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
+  expect(await band.find({ type: 'Text', text: ' ✗1' })).toBeDefined();
+  await $.command.run({ command: 'test-progress', args: '' });
+  expect(await band.find({ key: 'band' })).toBeUndefined();
+  await band.unmount();
 });

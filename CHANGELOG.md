@@ -11,6 +11,15 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   (adapter e runtime por stack, caminhos absolutos a partir do plugin) e diagnostica
   os sintomas do painel, deixando o início dos testes com a pessoa.
 
+### Mod
+
+- Hooks em `hooks/register.tsx` (JSX nativo do Claude Code, tipado por `claude-code`).
+- O que o painel e a faixa desenham fica em `$.state` (`test-progress.panel`), com
+  contrato em `types/index.d.ts`: um hot reload preserva seleção de log, runs vistos
+  e o Node do coletor, e as mudanças redesenham sem `$.ui.invalidate`.
+- O desenho não grava mais estado: abrir o painel (posicionado), usá-lo ou mantê-lo
+  visível durante o polling marca as execuções como vistas.
+
 ### Painel
 
 - Erros quebram linha em vez de truncar e terminam numa próxima ação
