@@ -16,8 +16,10 @@ coloque credenciais em argumentos ou exemplos versionados; não compartilhe logs
 ou screenshots sem revisão. `--text` leva o resumo/log para a conversa Claude.
 
 O estado usa diretório temporário privado por usuário/projeto/sessão: permissões
-0700/0600 no Linux e DACL privada na implementação Windows. A validação nativa
-Windows será feita quando o ambiente for disponibilizado. Os comandos dos testes e o build JUnit podem acessar a
+0700/0600 no Linux e DACL privada na implementação Windows. No Windows, o
+helper nativo `helper-<hash>.exe` é compilado localmente a partir de
+`runtime/*.cs` e executado só a partir dessa raiz privada verificada. O gate
+nativo roda em Windows 11 (VM) com PowerShell 5.1 e 7. Os comandos dos testes e o build JUnit podem acessar a
 rede; o coletor não implementa envio de telemetria ou logs a uma API.
 
 Este repositório usa histórico novo, revisão do conjunto exportado e Gitleaks

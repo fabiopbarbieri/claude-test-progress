@@ -30,6 +30,13 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 - Prazos de preparação e de confirmação do início crescem 1 s por módulo no
   Windows (até 50 s e 40 s); o broker consulta a cada 250 ms e o coordenador a
   cada 500 ms. Com pwsh 7, 20 módulos iniciam juntos em 7,5 s.
+- Helper nativo: depois da primeira verificação da raiz privada, o Windows
+  PowerShell 5.1 compila uma vez `WindowsProcessHost.cs` e `WindowsHelper.cs`
+  em `helper-<hash>.exe`, que executa as chamadas de controle e é o broker de
+  cada job (~15 MB e dezenas de ms, contra 67–81 MB e 0,3–1 s do PowerShell).
+  Sem compilação possível ou com o helper bloqueado (AppLocker/WDAC), o
+  PowerShell continua sendo usado; `TEST_PROGRESS_WINDOWS_HELPER=0` força esse
+  caminho.
 
 ## [0.4.0] - 2026-10-06
 

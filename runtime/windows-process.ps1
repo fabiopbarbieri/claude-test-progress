@@ -1,6 +1,6 @@
 ﻿param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('Run', 'Identity', 'IdentityMany', 'State', 'StateMany', 'Group', 'Kill', 'SecureDirectory', 'LaunchCoordinator')]
+    [ValidateSet('Run', 'Identity', 'IdentityMany', 'State', 'StateMany', 'Group', 'Kill', 'SecureDirectory', 'LaunchCoordinator', 'BuildHelper')]
     [string] $Action,
     [string] $JobFile,
     [int] $ProcessId,
@@ -11,6 +11,7 @@
     [string] $Directory,
     [string] $Child,
     [string] $CacheDirectory,
+    [string] $Output,
     [string] $Collector,
     [string] $Queries,
     [int] $SelfProcessId
@@ -19,6 +20,32 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+
+if ($Action -eq 'BuildHelper') {
+    # Windows PowerShell 5.1 carries the C# compiler that emits the native helper. It is
+    # written beside the cached host DLL under a content-keyed name and never replaced.
+    if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'The native helper is built by Windows PowerShell 5.1.' }
+    if ([string]::IsNullOrWhiteSpace($Output) -or -not [IO.Path]::IsPathRooted($Output) -or
+        [IO.Path]::GetFileName($Output) -cnotmatch '^helper-[0-9a-f]{16}\.exe$') { throw 'Invalid helper output path.' }
+    $folder = Get-Item -LiteralPath (Split-Path -Parent $Output) -Force
+    for ($ancestor = $folder; $null -ne $ancestor; $ancestor = $ancestor.Parent) {
+        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Reparse points are not allowed in a private state path.' }
+    }
+    if (-not [IO.File]::Exists($Output)) {
+        # Add-Type picks the PE kind from the extension, so the temporary name ends in .exe too.
+        $temporary = $Output.Substring(0, $Output.Length - 4) + '.' + [Guid]::NewGuid().ToString('N') + '.tmp.exe'
+        try {
+            Add-Type -Path @((Join-Path $PSScriptRoot 'WindowsProcessHost.cs'), (Join-Path $PSScriptRoot 'WindowsHelper.cs')) `
+                -OutputAssembly $temporary -OutputType ConsoleApplication -ReferencedAssemblies 'System.Web.Extensions'
+            # A concurrent build may publish the same key first; both outputs are equivalent.
+            try { [IO.File]::Move($temporary, $Output) } catch { if (-not [IO.File]::Exists($Output)) { throw } }
+        } finally {
+            if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+        }
+    }
+    [Console]::Out.WriteLine((@{ built = $true } | ConvertTo-Json -Compress))
+    exit 0
+}
 
 # Compiling WindowsProcessHost.cs costs most of a short control call. Reuse an assembly
 # compiled earlier into the private state root, keyed by source hash and runtime. Only a
