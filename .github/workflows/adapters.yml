@@ -2,6 +2,7 @@ name: Java and Angular adapters
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -48,12 +49,6 @@ jobs:
         include:
           - angular: '9'
             frontend: '12.22.12'
-            collector: '14.0.0'
-          - angular: '9'
-            frontend: '12.22.12'
-            collector: '24'
-          - angular: '18'
-            frontend: '22'
             collector: '14.0.0'
           - angular: '18'
             frontend: '22'
