@@ -149,13 +149,14 @@ Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do ap
 
 Todos os adapters podem ser usados por qualquer ID. Configurar um runner sem
 integração não cria contadores. Python, Ruby e Rails normalmente usam `inherit`
-e `events`; Angular/Karma normalmente usa `node-project` com reporter ou fallback.
+e `events`; Angular/Karma normalmente usa `node-project` com reporter ou fallback;
+Playwright Test usa `node-project` e `events` com o reporter.
 
 Modelos: [Módulos](../config.modules.example.json), [Templates](../config.registry.example.json),
 [Java + web](../config.example.json), [Angular 9](../config.angular9.example.json),
 [Python](../config.python.example.json), [Windows](../config.windows.example.json),
-[Python no Windows](../config.python.windows.example.json), [Ruby](../config.ruby.example.json)
-e [Rails](../config.rails.example.json). Ajuste comandos e caminhos ao seu app.
+[Python no Windows](../config.python.windows.example.json), [Ruby](../config.ruby.example.json),
+[Rails](../config.rails.example.json) e [Playwright](../config.playwright.example.json). Ajuste comandos e caminhos ao seu app.
 
 ### Templates pessoais opcionais
 

@@ -1,4 +1,4 @@
-name: Java and Angular adapters
+name: Java, Angular and Playwright adapters
 
 on:
   push:
@@ -71,3 +71,36 @@ jobs:
         env:
           ANGULAR_VERSION: ${{ matrix.angular }}
         run: python3 scripts/check-karma.py --angular "$ANGULAR_VERSION" --frontend-node "$FRONTEND_NODE"
+
+  playwright:
+    name: Playwright ${{ matrix.playwright }} (app Node ${{ matrix.frontend }}, collector Node ${{ matrix.collector }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - playwright: minimum
+            frontend: '18'
+            collector: '14.0.0'
+          - playwright: latest
+            frontend: '24'
+            collector: '24'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.frontend }}
+      - name: Record app Node
+        run: echo "FRONTEND_NODE=$(command -v node)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.collector }}
+      - name: Real Playwright Test and Chromium integration
+        env:
+          PLAYWRIGHT_VERSION: ${{ matrix.playwright }}
+          # Playwright before 1.52 still points at the retired azureedge hosts.
+          PLAYWRIGHT_DOWNLOAD_HOST: https://cdn.playwright.dev
+        run: python3 scripts/check-playwright.py --playwright "$PLAYWRIGHT_VERSION" --frontend-node "$FRONTEND_NODE" --install-browser

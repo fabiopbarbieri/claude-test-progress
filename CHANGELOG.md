@@ -3,6 +3,16 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Unreleased]
+
+### Adapters
+
+- Playwright Test: reporter opt-in `adapters/playwright/reporter.cjs` para
+  `@playwright/test` 1.44+, por `--reporter` ou pelo `playwright.config`. Conta
+  cada teste uma vez após retries (`flaky` e `test.fail()` esperado contam como
+  passed) e usa o total do plano desde o início. Gate real em Chromium headless
+  com `scripts/check-playwright.py`. `/test-progress paths` mostra o caminho.
+
 ## [0.5.0] - 2026-10-06
 
 Windows nativo leve e aceito: helper compilado, supervisão por eventos, `status`

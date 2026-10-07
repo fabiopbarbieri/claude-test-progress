@@ -181,3 +181,31 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+  - package-ecosystem: "npm"
+    directory: "/tests/dependencies/playwright/versions/minimum"
+    ignore:
+      # Frozen at the oldest supported Playwright Test; updating it would move
+      # the declared minimum instead of testing it.
+      - dependency-name: "*"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+  - package-ecosystem: "npm"
+    directory: "/tests/dependencies/playwright/versions/latest"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
