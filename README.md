@@ -56,6 +56,7 @@ O plugin não instala runners, browsers ou runtimes.
 | Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <7; `rack_test` não prova Selenium |
 | Java / JUnit 5 | Java 17+, JUnit 5.14+; fallback Maven ou listener opcional; consulte o alcance do gate real |
 | Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
+| Playwright Test | `@playwright/test` 1.44+ com reporter; Chromium headless na CI, sem fallback por logs |
 
 Veja [versões testadas](docs/COMPATIBILITY.md).
 O coletor usa seu próprio Node; `node-project` prepara o Node do aplicativo

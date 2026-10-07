@@ -40,6 +40,7 @@ python3 scripts/check-rails.py --ruby /caminho/para/ruby
 python3 scripts/check-junit.py --maven /caminho/para/mvn --node /caminho/para/node
 python3 scripts/check-karma.py --angular 9 --frontend-node /caminho/node12 --node /caminho/node24 --chrome /caminho/chrome
 python3 scripts/check-karma.py --angular 18 --frontend-node /caminho/node22 --node /caminho/node24 --chrome /caminho/chrome
+python3 scripts/check-playwright.py --playwright latest --frontend-node /caminho/node24 --node /caminho/node24 --install-browser
 ```
 
 As gems devem estar disponíveis no ambiente Ruby escolhido. Karma instala as
@@ -48,6 +49,14 @@ Karma, observa 50 resultados reais de TestBed e deixa o 51º pendente: exige
 `cancelled`, 50/51, nenhuma falha e `totalStable: false`. Os cenários normais
 preservam os transportes padrão. Rails valida views e system tests com
 `rack_test`; não comprova Selenium.
+
+Playwright instala a fixture com lockfile e, com `--install-browser`, baixa o
+Chromium da versão no diretório temporário. Antes da 1.52 o Playwright baixa de
+hosts azureedge desativados; use
+`PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.playwright.dev`.
+O gate confere pass, fail, skip, flaky com retry e `test.fail()` contra o
+relatório nativo, o opt-in pela flag `--reporter` e o cancelamento com um teste
+resolvido e outro pendente (1/2).
 
 ## Cobertura dos contratos
 
