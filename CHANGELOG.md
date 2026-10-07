@@ -19,6 +19,13 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   de 12 linhas; nas bordas o painel volta a rolar. `↓` volta ao fim, que segue
   a execução ao vivo. O cabeçalho mostra o trecho (`linhas 26–37 de 40`). O
   coletor passa a guardar as últimas 200 linhas legíveis do log (antes 40).
+- O log aberto no painel mostra as cores do runner (SGR: 16, 256 e truecolor,
+  negrito, esmaecido). Movimentos de cursor e outros controles continuam
+  descartados; `--text` segue sem cor.
+- O coletor pede cor por módulo: `FORCE_COLOR=1` sempre, `MAVEN_ARGS` com
+  `-Dstyle.color=always` para Maven 3.9+, `SPEC_OPTS` com `--force-color` para
+  RSpec; o adaptador Rails libera a cor do reporter do Rails. `NO_COLOR` ou um
+  `FORCE_COLOR` explícito desligam.
 
 ### Rails
 

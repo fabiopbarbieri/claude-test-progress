@@ -7,6 +7,8 @@
 `run.rb` executa o `bin/rails` do projeto e acrescenta snapshots de progresso aos
 logs. Usa o Ruby e as gems do próprio app, preservando o reporter Rails, filtros,
 seed, falhas, skips e código de saída. Não instala gems nem altera o app.
+Com `FORCE_COLOR` (o coletor define por padrão) e sem `NO_COLOR`, o reporter do
+Rails colore a saída mesmo sem TTY; `--no-color` continua valendo.
 
 O contrato desta integração é Rails **7.2, 8.0 e 8.1** com Minitest
 **>= 5.20 e < 7**. Minitest 7 é recusado com diagnóstico antes de executar testes.

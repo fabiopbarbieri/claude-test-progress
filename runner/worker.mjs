@@ -10,6 +10,7 @@ import { windowsProof, windowsCompletion } from './windows-proof.mjs';
 import { readBatch, requestCompensation, publishFinalSafe, pause } from './module-batch.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
 import { createLineDecoder, windowsAnsiEncoding } from './output-decoder.mjs';
+import { colorEnvironment } from './color.mjs';
 
 async function main() {
 
@@ -294,7 +295,7 @@ if (cancelling) {
     if (!validRecord(readJson(locations.snapshot), job.moduleId, job.runId)) throw new Error('Snapshot substituído antes do spawn');
     updateClaim(job.directory, job.moduleId, job.runId, { spawnAttemptAt: timestamp() });
 
-    const environment = mergeEnvironment(process.env, job.env);
+    const environment = colorEnvironment(mergeEnvironment(process.env, job.env), job.command, job.adapter);
     const launch = windows ? windowsSpawnSpec(jobPath, environment) :
       { file: job.command[0], args: job.command.slice(1), options: {} };
     child = spawn(launch.file, launch.args, {

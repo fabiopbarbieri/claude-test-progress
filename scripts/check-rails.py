@@ -127,6 +127,8 @@ end
 
 def run(ruby, app, args, adapted=True, extra_env=None):
     env = dict(os.environ, RAILS_ENV="test")
+    env.pop("FORCE_COLOR", None)
+    env.pop("NO_COLOR", None)
     env.update(extra_env or {})
     command = [ruby, str(ADAPTER) if adapted else "bin/rails"] + args
     result = subprocess.run(command, cwd=str(app), env=env, text=True,
@@ -216,6 +218,12 @@ def main():
         assert "native test output" in result.stdout
         assert "intentional fixture error" in result.stdout
         assert events[-1]["total"] == 4 and events[-1]["totalStable"]
+        # Rails colors only on a TTY; FORCE_COLOR asks for color through the pipe, NO_COLOR wins.
+        colored, unused = run(options.ruby, app, ["test", "test/models/outcomes_test.rb"], extra_env={"FORCE_COLOR": "1"})
+        assert "\x1b[32m.\x1b[0m" in colored.stdout and "\x1b[31m" in colored.stdout, colored.stdout
+        plain, unused = run(options.ruby, app, ["test", "test/models/outcomes_test.rb"], extra_env={"FORCE_COLOR": "1", "NO_COLOR": "1"})
+        assert "\x1b[3" not in plain.stdout.replace(PREFIX, ""), plain.stdout
+        print("force-color: OK", flush=True)
         check(options.ruby, app, "name-filter",
               ["test", "test/models/outcomes_test.rb", "-n", "test_a_pass"], [1, 0, 0], 0)
         check(options.ruby, app, "bundle-boot-selection",

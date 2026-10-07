@@ -123,7 +123,8 @@ Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
 | `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
 
 Acrescente `--text`, por exemplo `/test-progress status all --text`.
-No painel: `▶` inicia, `■` cancela, clicar no nome do módulo abre os logs sob ele e `?` mostra a legenda.
+No painel: `▶` inicia, `■` cancela, clicar no nome do módulo abre os logs sob ele, com as cores do runner, e `?` mostra a legenda.
+[Cores no log](docs/USAGE.md#cores-no-log): `NO_COLOR` no `env` do módulo desliga.
 [Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
 
 ## Atualizar ou remover
