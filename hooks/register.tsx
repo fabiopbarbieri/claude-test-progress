@@ -11,9 +11,10 @@ type Action = 'list' | 'start' | 'status' | 'logs' | 'cancel' | 'help' | 'paths'
 const PANE = 'claude-test-progress';
 const NARROW_COLUMNS = 60;
 const IDLE_POLL_TICKS = 10;
+const LOG_ROWS = 12;
 const empty = (): TestProgressPanel => ({ identity: '', generation: 0, sessionOwner: '', modules: {}, jobs: {},
   stateDiagnostics: {}, workspace: null, busy: false, lastError: '', registrationError: '', selectedLogs: null,
-  logTail: [], chooseLogs: false, showHelp: false, seenRuns: [], collector: null });
+  logTail: [], logTop: null, chooseLogs: false, showHelp: false, seenRuns: [], collector: null });
 // The host holds what the pane draws, so a hot reload keeps the selection, the seen runs and the collector Node.
 const panel = atom({ plugin: 'test-progress', key: 'panel' } as const, empty());
 // Working copy: hooks change it, then publish it; drawings read the host's value and redraw when it changes.
@@ -50,6 +51,12 @@ function displayNames() {
     return [id, (count[label] ?? 0) > 1 && label !== id ? `${label} (${id})` : label];
   }));
 }
+// The log shows a window of LOG_ROWS lines; with no top of its own it follows the end.
+function logWindow() {
+  const max = Math.max(0, p.logTail.length - LOG_ROWS);
+  return { top: p.logTop === null ? max : Math.min(Math.max(0, p.logTop), max), max };
+}
+const closeLogs = () => { p.selectedLogs = null; p.logTail = []; p.logTop = null; };
 const diagnostics = (id: string): TestProgressDiagnostic[] => [...(p.modules[id]?.diagnostics ?? []), ...(p.stateDiagnostics[id] ?? [])];
 function serialized<T>(task: () => Promise<T>): Promise<T> {
   queued += 1;
@@ -217,8 +224,8 @@ async function performNow($: $, action: Action, moduleId: string, expected: Expe
     await collect($, action, moduleId);
     if (action === 'logs') {
       const job = p.jobs[moduleId];
-      if (moduleId === 'all') { p.chooseLogs = true; p.selectedLogs = null; p.logTail = []; }
-      else if (job) { p.selectedLogs = { id: moduleId, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.chooseLogs = false; }
+      if (moduleId === 'all') { closeLogs(); p.chooseLogs = true; }
+      else if (job) { p.selectedLogs = { id: moduleId, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.logTop = null; p.chooseLogs = false; }
     }
   } catch (error) { p.lastError = errorText(error); }
   finally { p.busy = false; await publish($); }
@@ -239,6 +246,7 @@ const HELP = [
 ].join('\n');
 const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
   '▶ iniciar  ↻ reinicia os com erro  ■ cancelar  nome abre o log  × fecha o log  ~ total parcial',
+  'A roda do mouse rola o log aberto; ↓ volta ao fim.',
   'S/E/T: módulos com sucesso / com erro / total',
   '✓ passaram  ✗ falharam  ⊘ ignorados',
   '/test-progress help lista os comandos.'];
@@ -354,7 +362,7 @@ export const register: Register = on => {
     const local = (key: string, label: string, fn: () => void) => <Button key={key} label={label} plain onPress={guarded(fn)} />;
     const names = displayNames();
     const toggleLogs = (id: string) => guarded(async () => {
-      if (p.selectedLogs?.id === id && !p.chooseLogs) { p.selectedLogs = null; p.logTail = []; return; }
+      if (p.selectedLogs?.id === id && !p.chooseLogs) { closeLogs(); return; }
       await perform($, 'logs', id, expected);
     });
     // ▶/■ leads the row, in a fixed cell so names stay aligned when a module has neither.
@@ -388,21 +396,27 @@ export const register: Register = on => {
       if (selected?.id !== id) return [];
       const job = p.jobs[id];
       const changed = job?.runId !== selected.runId;
-      const lines = p.logTail.slice(-12);
-      const header = `log · run ${selected.runId.slice(0, 8)} · ${lines.length < p.logTail.length ? `últimas ${lines.length} de ${p.logTail.length}` : `${lines.length}`} ${lines.length === 1 ? 'linha' : 'linhas'}`;
+      const { top, max } = logWindow(), total = p.logTail.length;
+      const lines = p.logTail.slice(top, top + LOG_ROWS);
+      const range = total <= LOG_ROWS ? `${total} ${total === 1 ? 'linha' : 'linhas'}` :
+        top === max ? `últimas ${lines.length} de ${total} linhas` : `linhas ${top + 1}–${top + lines.length} de ${total}`;
+      const header = `log · run ${selected.runId.slice(0, 8)} · ${range}`;
       return [
         <Box key={`log-${id}`} flexDirection="column" paddingLeft={4}>
           <Box key="log-header" flexDirection="row" justifyContent="space-between">
             <Text key="log-title" color="inactive" wrap="truncate-end">{`│ ${header}`}</Text>
-            {local(`close-logs-${id}`, '×', () => { p.selectedLogs = null; p.logTail = []; })}
+            <Box key="log-actions" flexDirection="row" flexShrink={0} gap={1}>
+              {top < max ? local(`end-logs-${id}`, '↓', () => { p.logTop = null; }) : null}
+              {local(`close-logs-${id}`, '×', closeLogs)}
+            </Box>
           </Box>
           {changed && job ? <Box key="changed" flexDirection="row" gap={1}>
             <Text color="inactive">│ nova execução</Text>
             {button('select-current-logs', '↻', 'logs', id)}
           </Box> : null}
           {lines.length ? lines.map((line, i) => /\b(ERROR|FAIL(ED|URE)?)\b/.test(line) ?
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" color="error">{`│ ${line}`}</Text> :
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" dimColor>{`│ ${line}`}</Text>) :
+            <Text key={`log-${selected.runId}-${top + i}`} wrap="truncate-end" color="error">{`│ ${line}`}</Text> :
+            <Text key={`log-${selected.runId}-${top + i}`} wrap="truncate-end" dimColor>{`│ ${line}`}</Text>) :
             <Text key="empty" color="inactive">│ sem saída ainda</Text>}
         </Box>,
       ];
@@ -481,6 +495,16 @@ export const register: Register = on => {
       {p.registrationError ? <Text key="registration" color="error" wrap="wrap">{`Registro: ${p.registrationError}`}</Text> : null}
       {p.showHelp ? LEGEND.map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
     </Box>;
+  });
+  // With a log open, the wheel moves the log's own window; at its edges, and for the keys, the pane scrolls.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    await hydrate($);
+    if (!p.selectedLogs || e.origin.kind !== 'person' || !e.pointer) return next(e);
+    const { top, max } = logWindow(), to = Math.min(max, Math.max(0, top + e.by));
+    if (to === top) return next(e);
+    p.logTop = to === max ? null : to;
+    await publish($);
+    return {};
   });
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const existing = await next(e);

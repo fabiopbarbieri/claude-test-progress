@@ -5,6 +5,13 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+### Painel
+
+- Log com scroll: a roda do mouse sobre o painel rola o log aberto, numa janela
+  de 12 linhas; nas bordas o painel volta a rolar. `↓` volta ao fim, que segue
+  a execução ao vivo. O cabeçalho mostra o trecho (`linhas 26–37 de 40`). O
+  coletor passa a guardar as últimas 200 linhas legíveis do log (antes 40).
+
 ### Rails
 
 - Minitest 6 aceito (`>= 5.20 e < 7`); antes era recusado antes de executar
