@@ -41,6 +41,7 @@ O sidecar de prova Windows tem formato próprio (`schema: 1`), independente do
 | [Rails / Minitest](../adapters/rails/README.md) | Rails 7.2/8.0/8.1; Minitest >=5.20 e <7 | Rails 7.2.4 / Ruby 3.3 / Minitest 5.20.0; Rails 8.0.5.1 e 8.1.4 / Ruby 3.4 / Minitest 5.27.0; Rails 8.1.4 / Ruby 3.4 / Minitest 6.0.6 | Minitest 7; views/system usam `rack_test`, sem Selenium |
 | [JUnit 5](../adapters/junit/README.md) | Java 17+; JUnit 5.14+ (Platform 1.14+) no app | JUnit 5.14.4 / Platform 1.14.4 / Surefire 3.6.0 com Java 17 e 21 | Gradle, reactor multimódulo, Vintage, engines de terceiros e queda da JVM |
 | [Karma](../adapters/karma/README.md) | App com Karma, reporter CommonJS e browser | Angular 9.1.13 / Karma 5.2.3 (app Node 12.22.12) e Angular 18.2.14 / Karma 6.4.4 (app Node 22), Chrome headless | Watch, vários browsers e Windows nativo |
+| [Playwright Test](../adapters/playwright/README.md) | `@playwright/test` 1.44+ no app, reporter CommonJS e browsers do Playwright | Playwright 1.44.1 (app Node 18, coletor Node 14.0.0) e 1.63.0 (app Node 24, coletor Node 24), Chromium headless | `--ui`, watch, merge de shards, Firefox/WebKit e Windows nativo |
 | Fallback Maven / Karma | Logs nos formatos do [parser](../runner/progress.mjs) | Parser Maven exercitado no Quality | Formatos variam; Maven mantém total desconhecido durante a execução |
 
 Instalar Selenium WebDriver como dependência da fixture Rails **não** comprova
@@ -50,7 +51,7 @@ paralelismo de terceiros e retry/watch não ganham aceite por isso.
 
 Angular não determina sozinho o runner. O guia de [Angular 9](../ANGULAR9.md)
 separa o Node 10/12 do app e Node 14+ do coletor. O reporter só se aplica
-se o target realmente usar Karma. Jest, Vitest ou uma linguagem nova não devem
+se o target realmente usar Karma. Playwright usado como biblioteca (sem `playwright test`), Jest, Vitest ou uma linguagem nova não devem
 ser tratados como automaticamente integrados.
 
 ## Dependências

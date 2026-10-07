@@ -322,7 +322,8 @@ export const register: Register = on => {
     if (command.action === 'paths') return { text: [`Plugin: ${$.plugin.root}`,
       `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
-      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
+      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
+      `Playwright: ${$.plugin.root}/adapters/playwright/reporter.cjs`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
     // A bare /test-progress toggles: an open pane closes, a closed one refreshes and opens.
     if (!String(e.args ?? '').trim()) {
       try {
