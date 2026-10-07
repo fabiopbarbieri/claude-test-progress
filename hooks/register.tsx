@@ -257,6 +257,19 @@ function textLogs(moduleId: string) {
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
 }
+// Runs whose start already opened the pane once; closing it keeps it closed for that run.
+const autoOpened = new Set<string>();
+// A run starting that nobody has seen opens the pane without taking the keyboard.
+// The host may hold it until the terminal is wide enough; the band still reports meanwhile.
+async function autoOpen($: $) {
+  const fresh = Object.values(p.jobs).filter(job => ACTIVE.has(job.status) && !p.seenRuns.includes(job.runId) && !autoOpened.has(job.runId));
+  if (!fresh.length) return;
+  for (const job of fresh) autoOpened.add(job.runId);
+  try {
+    if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
+    await $.ui.open({ id: PANE, title: 'Test Progress' });
+  } catch { /* No pane in this surface: the band and the command remain. */ }
+}
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await hydrate($);
@@ -275,6 +288,7 @@ export const register: Register = on => {
           }
         } catch (error) { p.lastError = errorText(error); }
         if (await paneShown($)) acknowledge();
+        else await autoOpen($);
         await publish($);
       });
     });

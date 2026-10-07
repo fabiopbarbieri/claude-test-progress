@@ -80,6 +80,11 @@ todos os campos: [configurar seu projeto](docs/USAGE.md#configurar-seu-projeto).
 
 Acrescente `--text` para a saída em texto. No painel, `?` mostra a legenda.
 
+O painel também abre sozinho quando começa uma execução que você ainda não viu,
+inclusive as iniciadas pelo Claude via CLI. Ele não toma o teclado e, por ser
+aberto pelo mod, só aparece com o terminal largo o bastante (144 colunas, ou 110
+depois de você abri-lo uma vez); fechado, não reabre para a mesma execução.
+
 ## Atualizar ou remover
 
 **Encerre os jobs antes de trocar a instalação:** fechar o painel, recarregar ou
