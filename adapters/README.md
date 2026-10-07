@@ -27,6 +27,7 @@ O status final do comando continua sendo responsabilidade do runner.
 - [Rails / Minitest](rails/README.md)
 - [JUnit 5 / Maven](junit/README.md)
 - [Karma / Angular com Karma](karma/README.md)
+- [Playwright Test](playwright/README.md)
 - [Python / pytest e unittest](python/README.md)
 - [Ruby / RSpec](ruby/README.md)
 

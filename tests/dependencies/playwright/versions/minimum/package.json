@@ -1,0 +1,9 @@
+{
+  "name": "test-progress-playwright-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated browser integration fixture; not a plugin runtime dependency.",
+  "devDependencies": {
+    "@playwright/test": "1.44.1"
+  }
+}

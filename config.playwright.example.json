@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "modules": {
+    "e2e": {
+      "label": "E2E",
+      "language": "TypeScript",
+      "runtime": "node-project",
+      "command": [
+        "npx",
+        "--no-install",
+        "playwright",
+        "test",
+        "--reporter=list,/caminho/absoluto/claude-test-progress/adapters/playwright/reporter.cjs"
+      ],
+      "cwd": ".",
+      "adapter": "events",
+      "env": {}
+    }
+  }
+}

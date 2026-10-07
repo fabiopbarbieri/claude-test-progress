@@ -5,8 +5,20 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+### Adapters
+
+- Playwright Test: reporter opt-in `adapters/playwright/reporter.cjs` para
+  `@playwright/test` 1.44+, por `--reporter` ou pelo `playwright.config`. Conta
+  cada teste uma vez após retries (`flaky` e `test.fail()` esperado contam como
+  passed) e usa o total do plano desde o início. Gate real em Chromium headless
+  com `scripts/check-playwright.py`. `/test-progress paths` mostra o caminho.
+
 ### Painel
 
+- Log com scroll: a roda do mouse sobre o painel rola o log aberto, numa janela
+  de 12 linhas; nas bordas o painel volta a rolar. `↓` volta ao fim, que segue
+  a execução ao vivo. O cabeçalho mostra o trecho (`linhas 26–37 de 40`). O
+  coletor passa a guardar as últimas 200 linhas legíveis do log (antes 40).
 - O log aberto no painel mostra as cores do runner (SGR: 16, 256 e truecolor,
   negrito, esmaecido). Movimentos de cursor e outros controles continuam
   descartados; `--text` segue sem cor.

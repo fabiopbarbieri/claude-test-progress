@@ -1,6 +1,6 @@
 ---
 name: configure
-description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular ou um comando qualquer), ou quando o painel mostra erro, diagnóstico ou "sem eventos de progresso".
+description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular, Playwright Test ou um comando qualquer), ou quando o painel mostra erro, diagnóstico ou "sem eventos de progresso".
 ---
 
 # Test Progress: configurar e diagnosticar
@@ -22,6 +22,7 @@ Você edita a configuração; quem inicia testes é a pessoa. Os comandos `/test
    | Rails / Minitest | `[bundle, exec, ruby, <raiz>/adapters/rails/run.rb, test]` | `events` | `inherit` |
    | Maven / JUnit 5 | `[./mvnw, test]` | `maven`, ou `events` com o listener de `adapters/junit/README.md` | `inherit` |
    | Karma / Angular | `[node, ./node_modules/@angular/cli/bin/ng, test, --watch=false, --browsers=ChromeHeadless]` | `karma`, ou `events` com o reporter de `adapters/karma/README.md` | `node-project` |
+   | Playwright Test | `[npx, --no-install, playwright, test, --reporter=list,<raiz>/adapters/playwright/reporter.cjs]` | `events` | `node-project` |
    | Sem integração (script, lint, `claude plugin test`) | o próprio comando | `exit` | `inherit` |
 
    `exit` decide ✓/✗ pelo exit code, sem contagem. Use-o quando a suíte não tem adapter.

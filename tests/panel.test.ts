@@ -323,6 +323,37 @@ test('finished runs read as a result, errors wrap with a next step, and the log 
   await ui.unmount();
 });
 
+test('the wheel scrolls an open log within its tail, then hands the edges to the pane', async ($, on) => {
+  const current = data({ api: module('api') }, { api: job('api', { status: 'completed', phase: 'finished', exitCode: 0,
+    logTail: Array.from({ length: 40 }, (_, i) => `line ${i + 1}`) }) });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  let paneMoves = 0;
+  on('ui.scroll', () => { paneMoves += 1; return {}; });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  const wheel = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'claude-test-progress', offset: 0, by,
+    bodyRows: 20, contentRows: 20, origin: { kind: 'person' }, pointer: { column: 10, row: 5 } });
+  await ui.press({ key: 'logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 40 linhas/ })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '│ line 40' })).toBeDefined();
+  expect(await ui.find({ key: 'end-logs-api' })).toBeUndefined();
+  expect(await wheel(-3)).toEqual({});
+  expect(await ui.find({ type: 'Text', text: /linhas 26–37 de 40/ })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '│ line 40' })).toBeUndefined();
+  await wheel(-100);
+  expect(await ui.find({ type: 'Text', text: '│ line 1' })).toBeDefined();
+  // At the top the log has nothing more to give: the pane's own window takes the tick.
+  expect(paneMoves).toBe(0);
+  await wheel(-1);
+  expect(paneMoves).toBe(1);
+  expect(await ui.find({ type: 'Text', text: /linhas 1–12 de 40/ })).toBeDefined();
+  await ui.press({ key: 'end-logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 40 linhas/ })).toBeDefined();
+  await ui.unmount();
+});
+
 test('a bare command closes an open pane instead of reopening it', async ($, on) => {
   const closed: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));

@@ -122,9 +122,9 @@ read-only token restrictions on Dependabot/fork PRs. GitHub may still require a
 maintainer to approve a first-time fork's workflow; approve only after review.
 A successful ordinary PR is not evidence of an actual Dependabot/fork run.
 
-## Java and Angular integration gates
+## Java, Angular and Playwright integration gates
 
-[Java and Angular adapters](../.github/workflows/adapters.yml) adds selected-suite
+[Java, Angular and Playwright adapters](../.github/workflows/adapters.yml) adds selected-suite
 jobs without adding globally installed frameworks or new required branch checks:
 
 | Integration | App runtime | Collector runtime |
@@ -133,6 +133,8 @@ jobs without adding globally installed frameworks or new required branch checks:
 | JUnit 5.14.4 / Surefire 3.6.0 | Temurin Java 21 | Node 24 |
 | Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 |
 | Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
+| Playwright Test 1.44.1 (minimum, frozen) / Chromium | Node 18 | Node 14.0.0 |
+| Playwright Test 1.63.0 (latest, Dependabot minor/patch) / Chromium | Node 24 | Node 24 |
 
 The collector's minimum remains Node 14.0.0. An app has its own runtime: Angular
 9 uses its original Node 12 toolchain, while Angular 18 uses Node 22. This does

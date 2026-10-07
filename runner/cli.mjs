@@ -188,10 +188,10 @@ function logs(target, state) {
     try {
       const expected = path.join(context.directory, `${moduleId}.${snapshot.runId}.log`);
       if (snapshot.logPath !== expected) throw new Error('logPath não autenticado');
-      // The tail keeps 40 readable lines of at most 4096 characters, protocol lines and blank runs left out.
+      // The tail keeps 200 readable lines of at most 4096 characters, protocol lines and blank runs left out.
       const contents = readPrivate(expected, 2 * 1024 * 1024, { tail: 256 * 1024 }) || '';
       const clean = sanitizeLogText(contents);
-      state.jobs[moduleId] = { ...snapshot, logTail: clean ? readableTail(clean.split(/\r?\n/), PREFIX).slice(-40).map(trimLine) : [] };
+      state.jobs[moduleId] = { ...snapshot, logTail: clean ? readableTail(clean.split(/\r?\n/), PREFIX).slice(-200).map(trimLine) : [] };
     } catch (error) { (state.stateDiagnostics[moduleId] || (state.stateDiagnostics[moduleId] = [])).push({ code: 'unsafe-log', message: error.message, blocking: true }); }
   }
 }
