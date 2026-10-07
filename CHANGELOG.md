@@ -5,6 +5,11 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-06
+
+Adapter para Playwright Test, log do painel com scroll e cores do runner,
+Minitest 6 no Rails e README renovado.
+
 ### Documentação
 
 - README mais curto, com logo nova e imagem fiel do painel com projetos
