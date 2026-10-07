@@ -109,7 +109,7 @@ updates:
     ignore:
       - dependency-name: "rails"
         versions: [">= 8.1"]
-      # Supported range is Minitest >= 5.20 and < 6.
+      # Minitest 6 has its own job (rails81-minitest6).
       - dependency-name: "minitest"
         versions: [">= 6"]
     schedule:
@@ -130,6 +130,25 @@ updates:
         versions: [">= 8.2"]
       - dependency-name: "minitest"
         versions: [">= 6"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "bundler"
+    directory: "/tests/dependencies/rails81-minitest6"
+    ignore:
+      - dependency-name: "rails"
+        versions: [">= 8.2"]
+      # Minitest 6 job; 7+ is outside the supported range.
+      - dependency-name: "minitest"
+        versions: ["< 6", ">= 7"]
     schedule:
       interval: weekly
       day: monday

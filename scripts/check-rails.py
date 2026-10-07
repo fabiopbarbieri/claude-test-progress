@@ -34,7 +34,7 @@ require "rails/commands"
 ''')
     write(app, "Gemfile", '''source "https://rubygems.org"
 gem "rails", ENV.fetch("RAILS_VERSION", ">= 7.2")
-gem "minitest", ENV.fetch("MINITEST_VERSION", ">= 5.20"), "< 6"
+gem "minitest", ENV.fetch("MINITEST_VERSION", ">= 5.20"), "< 7"
 gem "mutex_m"
 gem "capybara", "~> 3.40"
 gem "selenium-webdriver", "~> 4.0"
@@ -44,6 +44,15 @@ gem "selenium-webdriver", "~> 4.0"
 end
 ENV["BUNDLE_GEMFILE"] = File.expand_path("../Gemfile", __dir__)
 require "bundler/setup"
+# Minitest 6 made plugin loading opt-in, and Rails parses options before
+# test_helper loads; Minitest 5 discovers the plugin on its own.
+if ENV["FIXTURE_PLUGIN"]
+  require "minitest"
+  if Minitest::VERSION.to_i >= 6
+    require_relative "../test/minitest/fixture_plugin"
+    Minitest.register_plugin :fixture
+  end
+end
 ''')
     write(app, "config/application.rb", '''require_relative "boot"
 require "rails"
@@ -223,7 +232,7 @@ end
 ''')
         result, unused = check(options.ruby, app, "native-plugin-discovery",
                                ["test", "test/models/outcomes_test.rb", "-n", "test_a_pass", "--fixture-flag"],
-                               [1, 0, 0], 0)
+                               [1, 0, 0], 0, {"FIXTURE_PLUGIN": "1"})
         assert "native fixture plugin enabled" in result.stdout
         check(options.ruby, app, "no-plugin-discovery",
               ["test", "test/integration/welcome_test.rb", "--no-plugins"], None, 0)

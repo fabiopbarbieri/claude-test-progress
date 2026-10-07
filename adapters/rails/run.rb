@@ -30,8 +30,8 @@ end
 require boot
 require "minitest"
 version = Gem::Version.new(Minitest::VERSION)
-unless version >= Gem::Version.new("5.20") && version < Gem::Version.new("6")
-  warn "test-progress: Minitest >= 5.20 e < 6 é necessário no ambiente do app"
+unless version >= Gem::Version.new("5.20") && version < Gem::Version.new("7")
+  warn "test-progress: Minitest >= 5.20 e < 7 é necessário no ambiente do app"
   exit 2
 end
 

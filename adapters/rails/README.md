@@ -9,7 +9,9 @@ logs. Usa o Ruby e as gems do próprio app, preservando o reporter Rails, filtro
 seed, falhas, skips e código de saída. Não instala gems nem altera o app.
 
 O contrato desta integração é Rails **7.2, 8.0 e 8.1** com Minitest
-**>= 5.20 e < 6**. Minitest 6 é recusado com diagnóstico antes de executar testes.
+**>= 5.20 e < 7**. Minitest 7 é recusado com diagnóstico antes de executar testes.
+No Minitest 6 o carregamento de plugins é opt-in (`Minitest.load`); o
+adaptador não muda isso e se instala sem depender da descoberta de plugins.
 O coletor continua precisando de seu próprio Node 14+. Veja o alcance observado
 em [VALIDATION](VALIDATION.md).
 

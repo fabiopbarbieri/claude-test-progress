@@ -13,6 +13,12 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
   passed) e usa o total do plano desde o início. Gate real em Chromium headless
   com `scripts/check-playwright.py`. `/test-progress paths` mostra o caminho.
 
+### Rails
+
+- Minitest 6 aceito (`>= 5.20 e < 7`); antes era recusado antes de executar
+  testes. Job de CI Rails 8.1 com Minitest 6.0.6. No Minitest 6 o carregamento
+  de plugins é opt-in, e o gate faz esse opt-in no boot da fixture.
+
 ## [0.5.0] - 2026-10-06
 
 Windows nativo leve e aceito: helper compilado, supervisão por eventos, `status`
