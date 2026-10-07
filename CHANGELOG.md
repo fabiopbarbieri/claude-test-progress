@@ -5,6 +5,11 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+### Documentação
+
+- README mais curto, com logo nova e imagem fiel do painel com projetos
+  fictícios no lugar da capa ilustrativa.
+
 ### Adapters
 
 - Playwright Test: reporter opt-in `adapters/playwright/reporter.cjs` para
