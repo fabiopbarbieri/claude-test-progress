@@ -3,7 +3,7 @@ import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
-  sanitizeText, sanitizeTail, statusGlyph, progressBar, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
+  sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
   configStatus } from '../runner/module-presentation.mjs';
 
 type $ = EngineInterface;
@@ -244,7 +244,7 @@ const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órf�
   '/test-progress help lista os comandos.'];
 function textLogs(moduleId: string) {
   const ids = moduleId === 'all' ? Object.keys(p.jobs).sort() : [moduleId];
-  return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${sanitizeTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
+  return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${plainTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
 }
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
@@ -383,6 +383,18 @@ export const register: Register = on => {
         ...(stopping ? [<Text key="stopping" color="inactive">parando…</Text>] : counts),
       ];
     };
+    // The runner's own colors win; a line without any keeps the dim tail and the red error guess.
+    const logLine = (line: string, key: string) => {
+      const spans = ansiSpans(line);
+      const text = spans.map(span => span.text).join('');
+      if (!spans.some(span => span.style)) return /\b(ERROR|FAIL(ED|URE)?)\b/.test(text) ?
+        <Text key={key} wrap="truncate-end" color="error">{`│ ${text}`}</Text> :
+        <Text key={key} wrap="truncate-end" dimColor>{`│ ${text}`}</Text>;
+      return <Text key={key} wrap="truncate-end">
+        <Text dimColor>{'│ '}</Text>
+        {spans.map((span, j) => span.style ? <Text key={`s${j}`} {...span.style}>{span.text}</Text> : <Text key={`s${j}`} dimColor>{span.text}</Text>)}
+      </Text>;
+    };
     const logBlock = (id: string) => {
       const selected = p.selectedLogs;
       if (selected?.id !== id) return [];
@@ -400,9 +412,7 @@ export const register: Register = on => {
             <Text color="inactive">│ nova execução</Text>
             {button('select-current-logs', '↻', 'logs', id)}
           </Box> : null}
-          {lines.length ? lines.map((line, i) => /\b(ERROR|FAIL(ED|URE)?)\b/.test(line) ?
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" color="error">{`│ ${line}`}</Text> :
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" dimColor>{`│ ${line}`}</Text>) :
+          {lines.length ? lines.map((line, i) => logLine(line, `log-${selected.runId}-${i}`)) :
             <Text key="empty" color="inactive">│ sem saída ainda</Text>}
         </Box>,
       ];

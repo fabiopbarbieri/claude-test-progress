@@ -73,7 +73,93 @@ export function sanitizeText(value) {
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b[@-_]/g, '')
     .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '').replace(/\t/g, '    ');
 }
-export const sanitizeTail = tail => Array.isArray(tail) ? tail.slice(-200).map(sanitizeText) : [];
+// Log lines keep their SGR color sequences for the panel; every other escape and control goes.
+const SGR = /\x1b\[[\d;:]*m/g;
+export function sanitizeLogText(value) {
+  const text = String(value ?? '').replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '');
+  let result = '', last = 0;
+  for (const match of text.matchAll(SGR)) {
+    result += sanitizeText(text.slice(last, match.index)) + match[0];
+    last = match.index + match[0].length;
+  }
+  return result + sanitizeText(text.slice(last));
+}
+export const sanitizeTail = tail => Array.isArray(tail) ? tail.slice(-200).map(sanitizeLogText) : [];
+export const plainTail = tail => Array.isArray(tail) ? tail.slice(-200).map(sanitizeText) : [];
+// Named colors follow the person's terminal palette; the 256-color cube and truecolor become hex.
+const NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+const named = index => (index < 8 ? NAMES[index] : `${NAMES[index - 8]}Bright`);
+const hex = (r, g, b) => `#${[r, g, b].map(part => Math.max(0, Math.min(255, part | 0)).toString(16).padStart(2, '0')).join('')}`;
+function palette(index) {
+  if (!(index >= 0 && index <= 255)) return undefined;
+  if (index < 16) return named(index);
+  if (index >= 232) { const level = 8 + (index - 232) * 10; return hex(level, level, level); }
+  const cube = index - 16, level = part => (part ? 55 + part * 40 : 0);
+  return hex(level(Math.floor(cube / 36)), level(Math.floor(cube / 6) % 6), level(cube % 6));
+}
+// Reads the extended color that starts at params[i] (38/48), returning it and how many params it used.
+function extended(params, i) {
+  if (params[i].length > 1) {
+    const parts = params[i];
+    if (parts[1] === 5) return [palette(parts[2]), 1];
+    if (parts[1] === 2) { const rgb = parts.slice(-3); return [rgb.length === 3 ? hex(...rgb) : undefined, 1]; }
+    return [undefined, 1];
+  }
+  const mode = params[i + 1]?.[0];
+  if (mode === 5) return [palette(params[i + 2]?.[0]), 3];
+  if (mode === 2) return [hex(params[i + 2]?.[0], params[i + 3]?.[0], params[i + 4]?.[0]), 5];
+  return [undefined, 1];
+}
+function applySgr(style, body) {
+  const params = (body === '' ? '0' : body).split(';').map(param => param.split(':').map(part => (part === '' ? 0 : Number(part))));
+  for (let i = 0; i < params.length;) {
+    const code = params[i][0];
+    if (code === 0) { for (const name of Object.keys(style)) delete style[name]; i++; continue; }
+    if (code === 38 || code === 48) {
+      const [color, used] = extended(params, i);
+      if (color) style[code === 38 ? 'color' : 'backgroundColor'] = color;
+      i += used; continue;
+    }
+    if (code === 1) style.bold = true;
+    else if (code === 2) style.dimColor = true;
+    else if (code === 3) style.italic = true;
+    else if (code === 4) style.underline = true;
+    else if (code === 7) style.inverse = true;
+    else if (code === 9) style.strikethrough = true;
+    else if (code === 22) { delete style.bold; delete style.dimColor; }
+    else if (code === 23) delete style.italic;
+    else if (code === 24) delete style.underline;
+    else if (code === 27) delete style.inverse;
+    else if (code === 29) delete style.strikethrough;
+    else if (code >= 30 && code <= 37) style.color = named(code - 30);
+    else if (code === 39) delete style.color;
+    else if (code >= 40 && code <= 47) style.backgroundColor = named(code - 40);
+    else if (code === 49) delete style.backgroundColor;
+    else if (code >= 90 && code <= 97) style.color = named(code - 90 + 8);
+    else if (code >= 100 && code <= 107) style.backgroundColor = named(code - 100 + 8);
+    i++;
+  }
+}
+// Splits a sanitized log line into runs of text and the SGR style each one carries (null when plain).
+export function ansiSpans(line) {
+  const text = String(line ?? '');
+  const spans = [], style = {};
+  let last = 0;
+  const push = value => {
+    if (!value) return;
+    const current = Object.keys(style).length ? { ...style } : null;
+    const previous = spans[spans.length - 1];
+    if (previous && JSON.stringify(previous.style) === JSON.stringify(current)) previous.text += value;
+    else spans.push({ text: value, style: current });
+  };
+  for (const match of text.matchAll(SGR)) {
+    push(text.slice(last, match.index));
+    applySgr(style, match[0].slice(2, -1));
+    last = match.index + match[0].length;
+  }
+  push(text.slice(last));
+  return spans;
+}
 // Compact panel and band vocabulary: one-column glyphs so terminal columns stay aligned.
 export function statusGlyph(job) {
   if (!job) return { glyph: '○', color: 'inactive' };
@@ -113,14 +199,16 @@ export function summaryCounts(ids, jobs) {
   return { passed, failed, total: ids.length };
 }
 // Protocol lines are the collector's input, not the person's log; runs of blank lines collapse to one.
+// A line holding only color sequences is as blank as an empty one.
+const blank = line => !line.replace(SGR, '').trim();
 export function readableTail(lines, prefix) {
   const kept = [];
   for (const line of lines) {
     if (line.includes(prefix)) continue;
-    if (!line.trim() && (!kept.length || !kept[kept.length - 1].trim())) continue;
+    if (blank(line) && (!kept.length || blank(kept[kept.length - 1]))) continue;
     kept.push(line);
   }
-  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
+  while (kept.length && blank(kept[kept.length - 1])) kept.pop();
   return kept;
 }
 export function compactPercent(job) {

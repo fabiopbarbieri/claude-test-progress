@@ -139,6 +139,19 @@ resolvedor somente no início dos módulos selecionados, respeita a `.nvmrc` do
 app e acrescenta o diretório do Node escolhido ao PATH do filho. Não instala
 Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do app.
 
+### Cores no log
+
+A saída do runner vai para um pipe, então o coletor pede cor a cada módulo:
+`FORCE_COLOR=1` para todos (Node/Karma, pytest, unittest no Python 3.13+);
+`MAVEN_ARGS=-Dstyle.color=always` quando o adapter é `maven` ou o comando é
+`mvn`/`mvnw` (Maven 3.9+); `SPEC_OPTS=--force-color` quando o comando chama
+`rspec`. Valores que você já tenha em `MAVEN_ARGS`/`SPEC_OPTS` são mantidos, e
+uma opção de cor já presente neles vence. O adaptador Rails liga as cores do
+reporter do Rails sob `FORCE_COLOR`. O painel desenha as cores (SGR) e descarta
+outros controles de terminal; `--text` e a CLI de texto mostram linhas sem cor.
+Para desligar num módulo, use `"env": {"NO_COLOR": "1"}`; um `NO_COLOR` ou
+`FORCE_COLOR` herdado do ambiente também desliga a política.
+
 | Adapter | Progresso |
 | --- | --- |
 | `auto` | Eventos e, na ausência deles, fallback de logs Maven/Karma |

@@ -100,6 +100,8 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(await ui.find({ type: 'Text', text: 'Clique no nome de um módulo para ver o log.' })).toBeDefined();
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ first' })).toBeDefined();
+  // The runner's red reaches the pane as a styled run.
+  expect(await ui.find({ type: 'Text', text: '│ first' })).toMatchObject({ children: [{ props: { dimColor: true } }, { props: { color: 'red' }, children: ['first'] }] });
   expect(await ui.find({ type: 'Text', text: /LOGS/ })).toBeUndefined();
   current.jobs.api = job('api', { runId: 'new-run', logTail: ['new output'] });
   await $.command.run({ command: 'test-progress', args: 'status --text' });
