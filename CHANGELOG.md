@@ -4,6 +4,16 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.8.0] - 2026-10-07
+
+### Funcionalidades
+
+- **panel:** open the pane on the first failed log once every run ends ([2e2b888](https://github.com/fabiopbarbieri/claude-test-progress/commit/2e2b888c5cb0564f69cd8545ce7ffc33bd05055d))
+
+### Correções
+
+- **skill:** trigger configure for operating modules and refused cancels ([709e83e](https://github.com/fabiopbarbieri/claude-test-progress/commit/709e83e8db2ddd05731b2223d6c73df98374d1c2))
+
 ## [0.7.0] - 2026-10-07
 
 ### Funcionalidades
