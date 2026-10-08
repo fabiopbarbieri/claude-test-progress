@@ -80,7 +80,8 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(readableTail(['a', '@@TEST_PROGRESS@@{}', '', '', 'b', ''], '@@TEST_PROGRESS@@')).toEqual(['a', '', 'b']);
   expect(summaryCounts(['a', 'b', 'c', 'd'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 },
     c: { status: 'completed', failed: 0 }, d: { status: 'completed', failed: 2 } })).toEqual({ passed: 1, failed: 2, total: 4 });
-  expect(outcomeText({ status: 'completed', total: 1 }).text).toBe('· 1 teste');
+  expect(outcomeText({ status: 'completed', total: 1 }).text).toBe('· 1');
+  expect(outcomeText({ status: 'completed', total: 0 }).text).toBe('-');
   expect(outcomeText({ status: 'completed', total: null, adapter: 'exit', exitCode: 0 }).text).toBe('exit 0');
   expect(outcomeText({ status: 'completed', total: null }).text).toBe('total desconhecido');
   expect(compactPercent({ total: 4, percent: 50, totalStable: true })).toBe('50%');

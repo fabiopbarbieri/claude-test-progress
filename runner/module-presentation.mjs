@@ -206,11 +206,11 @@ export function progressBar(job, cells = 12) {
 export function outcomeText(job) {
   if (job.status === 'error') return { text: 'erro', color: 'error' };
   if (job.status === 'cancelled') return { text: 'cancelado', color: 'inactive' };
-  if (job.total === 0) return { text: 'sem testes', color: 'inactive' };
+  if (job.total === 0) return { text: '-', color: 'inactive' };
   // Under `exit` without events the exit code is the whole result.
   if (job.total == null && job.adapter === 'exit' && Number.isInteger(job.exitCode)) return { text: `exit ${job.exitCode}`, color: 'inactive' };
   if (job.total == null) return { text: 'total desconhecido', color: 'inactive' };
-  return { text: `· ${job.total} ${job.total === 1 ? 'teste' : 'testes'}`, color: 'inactive' };
+  return { text: `· ${job.total}`, color: 'inactive' };
 }
 // A finished run that failed: a failed or errored status, or any failed test.
 export function finishedWithFailure(job) {
