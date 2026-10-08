@@ -1,4 +1,4 @@
-// Claude Code Mods 2.1.289+. No host Node APIs run inside the Mod sandbox.
+// Claude Code Mods 2.1.295+. No host Node APIs run inside the Mod sandbox.
 import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
@@ -268,6 +268,11 @@ async function autoOpen($: $) {
     !p.seenRuns.includes(job.runId) && !autoOpened.has(job.runId); });
   if (!failed.length) return;
   for (const id of failed) autoOpened.add(p.jobs[id]!.runId);
+  // A native notification reaches the person away from the terminal, or where the pane waits for width.
+  // Their own channel and Notification hooks decide; a refusal or a missing channel changes nothing here.
+  const names = displayNames();
+  const notice = failed.map(id => { const count = p.jobs[id]!.failed ?? 0; return `${names[id] ?? id} (${count ? `${count} ✗` : 'erro'})`; });
+  void Promise.resolve().then(() => $.ui.notify(`Falharam: ${notice.join(', ')}`, { title: 'Test Progress' })).catch(() => {});
   try {
     if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
     const first = failed[0]!;

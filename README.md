@@ -87,6 +87,10 @@ do primeiro módulo com falha, inclusive para execuções iniciadas pelo Claude 
 CLI. Ele não toma o teclado e, por ser aberto pelo mod, só aparece com o terminal
 largo o bastante (144 colunas); fechado, não reabre para as mesmas execuções.
 
+No mesmo momento sai uma notificação nativa ("Falharam: API (1 ✗)") pelo canal
+de notificação configurado no Claude Code, para avisar mesmo longe do terminal ou
+enquanto o painel espera largura.
+
 ## Atualizar ou remover
 
 **Encerre os jobs antes de trocar a instalação:** fechar o painel, recarregar ou
@@ -108,7 +112,7 @@ adapters. [Procedimento completo](docs/USAGE.md#atualizar-com-jobs-encerrados).
 
 ## Compatibilidade
 
-Claude Code **2.1.289+** e Node **14+** para o coletor. Linux e WSL são o caminho
+Claude Code **2.1.295+** e Node **14+** para o coletor. Linux e WSL são o caminho
 principal; Windows nativo tem [guia próprio](WINDOWS.md). O plugin não instala
 runners, browsers nem runtimes. Versões testadas por suíte:
 [compatibilidade](docs/COMPATIBILITY.md).

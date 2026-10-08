@@ -228,6 +228,12 @@ máximo uma vez por execução; execuções que passam não o abrem. O Claude Co
 mostra um painel aberto pelo mod com 144 colunas; até lá, a faixa acima do
 prompt mostra o progresso.
 
+No mesmo momento, uma notificação nativa lista os módulos com falha e quantos
+testes falharam (`Falharam: API (1 ✗), Web (erro)`), uma vez por execução,
+mesmo que o painel já exista ou espere largura. Ela usa o canal de
+`preferredNotifChannel` e os hooks `Notification` do Claude Code; sem canal,
+nada muda.
+
 Não há atalho `/test-progress id`: o início é sempre explícito. Status/logs/cancel consultam
 jobs autenticados mesmo se o módulo tiver sido removido ou a configuração estiver
 inválida. Um job removido do cadastro continua visível como órfão do cadastro;
