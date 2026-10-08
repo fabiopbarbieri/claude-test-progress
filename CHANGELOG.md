@@ -4,6 +4,22 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.0] - 2026-10-08
+
+### Funcionalidades
+
+- **mod:** sort the module list from the pane toolbar ([994584d](https://github.com/fabiopbarbieri/claude-test-progress/commit/994584dc7ff4dec350c1f93d0c4c74f9e35429b9))
+- **panel:** notify natively when every run ends with failures ([d50829d](https://github.com/fabiopbarbieri/claude-test-progress/commit/d50829dd850d48feaecfb8d9fe2113de7eb1455c))
+- **mod:** fit as many modules in the band as the line holds ([b8b7420](https://github.com/fabiopbarbieri/claude-test-progress/commit/b8b74208c71245bd3c173de58c467cc826210b06))
+
+### Correções
+
+- **windows:** keep the cwd spelling in native Node discovery ([61e07cd](https://github.com/fabiopbarbieri/claude-test-progress/commit/61e07cd63de2d40fdb97abf325013a0812b0af33))
+
+### Desempenho
+
+- **windows:** stream panel status and run one Node per batch ([44cfb8a](https://github.com/fabiopbarbieri/claude-test-progress/commit/44cfb8ae4bfab6e2959da5b306b81c4fa6f0ac3d))
+
 ## [0.9.0] - 2026-10-08
 
 ### Funcionalidades
