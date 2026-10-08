@@ -17,8 +17,8 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def command(argv, cwd=ROOT, timeout=30):
-    result = subprocess.run([str(arg) for arg in argv], cwd=str(cwd),
+def command(argv, cwd=ROOT, timeout=30, env=None):
+    result = subprocess.run([str(arg) for arg in argv], cwd=str(cwd), env=env,
                             capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         raise RuntimeError("{} failed:\n{}{}".format(argv[0], result.stdout, result.stderr))
@@ -157,5 +157,10 @@ if __name__ == "__main__":
     static_checks()
     for check in sorted((ROOT / "tests/collector").glob("*.mjs")):
         print(command(["node", check], timeout=90), end="", flush=True)
+    # Windows runs every worker inside its batch coordinator; exercise that path here too.
+    # The fault and race checks inject process-level failures and stay process-only.
+    inprocess = dict(os.environ, TEST_PROGRESS_WORKERS="inprocess")
+    for name in ["exit-adapter", "log-color", "module-batch", "module-state", "module-tree", "workspace"]:
+        print(command(["node", ROOT / "tests/collector" / (name + ".mjs")], timeout=90, env=inprocess), end="", flush=True)
     if options.smoke or options.pytest:
         smoke_checks(options.pytest)

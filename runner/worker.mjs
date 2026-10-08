@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Progress } from './progress.mjs';
 import { readJson, atomicJson, files, releaseLock, timestamp, ownedClaim, updateClaim, updateSnapshot, validRecord, jobFile, securePath } from './state.mjs';
@@ -12,11 +13,30 @@ import { SCHEMA_VERSION } from './schema.mjs';
 import { createLineDecoder, windowsAnsiEncoding } from './output-decoder.mjs';
 import { colorEnvironment } from './color.mjs';
 
-async function main() {
+// Platforms where the coordinator runs every worker of its batch in its own process.
+// Each worker process costs a whole Node runtime; on Windows that is ~50 MB per module.
+// The broker ends its tree when the worker's process ends, so a lost coordinator
+// still leaves no command running. TEST_PROGRESS_WORKERS=process|inprocess overrides.
+export function inProcessWorkers(environment = process.env, platform = process.platform) {
+  const mode = environment.TEST_PROGRESS_WORKERS;
+  if (mode === 'process' || mode === 'inprocess') return mode === 'inprocess';
+  return platform === 'win32';
+}
 
-const jobPath = process.argv[2];
+// Runs one module's worker until its final state is written. Standalone, it is the whole
+// process; in process, `hostAlive` answers whether the coordinator still supervises it and
+// the promise settles when this worker is done, as its process exit would.
+export function runWorker(jobPath, { inProcess = false, coordinatorPipe = false, hostAlive = () => true } = {}) {
+  let settle;
+  const done = new Promise((resolve) => { settle = resolve; });
+  const failures = { handler: null };
+  return { done: work(jobPath, { inProcess, coordinatorPipe, hostAlive }, settle, failures).then(() => done),
+    fail: (error) => failures.handler?.(error) };
+}
+
+async function work(jobPath, { inProcess, coordinatorPipe, hostAlive }, settle, failures) {
+
 // Windows: the coordinator holds our stdin pipe; its close means the coordinator ended.
-const coordinatorPipe = process.platform === 'win32' && process.argv[3] === '--coordinator-pipe';
 let coordinatorGone = false;
 if (coordinatorPipe) {
   process.stdin.on('error', () => { coordinatorGone = true; });
@@ -58,7 +78,10 @@ let lastPersistedAt = 0;
 let progressPending = false;
 const heartbeatIntervalMs = 5000;
 // Fast suites report many results per second; coalesce them into a few snapshot writes.
-const progressIntervalMs = 250;
+// On Windows each write and each control read is also scanned by the antivirus, and the
+// panel reads once a second, so both the writes and the control loop run less often.
+const progressIntervalMs = windows ? 500 : 250;
+const pollIntervalMs = windows ? 500 : 150;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
 const buffers = { stdout: '', stderr: '' };
@@ -157,25 +180,37 @@ let coordinatorSeenAt = -Infinity;
 let coordinatorAuthenticated = false;
 // The pipe answers only after one authenticated check that the recorded coordinator is alive.
 function coordinatorAlive(identity) {
+  if (inProcess) return hostAlive();
   if (coordinatorPipe && coordinatorAuthenticated) return !coordinatorGone;
   const alive = sameProcess(identity);
   if (alive && coordinatorPipe && !coordinatorGone) coordinatorAuthenticated = true;
   return alive && !coordinatorGone;
 }
+// In process or behind an authenticated pipe, the answer needs no manifest read.
+function coordinatorLost() {
+  if (inProcess) return !hostAlive();
+  if (coordinatorPipe && coordinatorAuthenticated) return coordinatorGone;
+  return !coordinatorAlive(readBatch(job.directory, job.batchId).coordinatorIdentity);
+}
 function checkCancellation(force = false) {
-  if (child?.pid && !ended && (force || !windows || coordinatorPipe || Date.now() - coordinatorSeenAt >= WINDOWS_LIVENESS_MS)) {
-    if (coordinatorAlive(readBatch(job.directory, job.batchId).coordinatorIdentity)) coordinatorSeenAt = Date.now();
+  if (child?.pid && !ended && (force || !windows || inProcess || coordinatorPipe || Date.now() - coordinatorSeenAt >= WINDOWS_LIVENESS_MS)) {
+    if (!coordinatorLost()) coordinatorSeenAt = Date.now();
     else {
       fatalError = fatalError ?? 'Coordenador perdido durante execução';
       compensate(fatalError);
       cancel('supervision-lost');
     }
   }
-  refreshWindowsProof();
+  // Once the contained broker resumed the command, only the final proof matters.
+  if (force || !acknowledged || snapshot.childIdentity?.managedBroker !== true) refreshWindowsProof();
   if (validRecord(readJson(locations.cancel), job.moduleId, job.runId)) cancel();
 }
 async function finish(code, signal) {
   if (ended) return;
+  try { await settleFinish(code, signal); }
+  finally { settle(); }
+}
+async function settleFinish(code, signal) {
   try { checkCancellation(true); }
   catch (error) { fatalError = fatalError ?? error.message; cancelling = true; }
   ended = true;
@@ -239,20 +274,24 @@ async function finish(code, signal) {
   }
 }
 
-process.on('SIGTERM', () => cancel());
-process.on('SIGINT', () => cancel());
-process.on('uncaughtException', (error) => {
-  fatalError = error.message;
-  compensate(fatalError);
-  if (child?.pid && !ended) cancel('worker-error');
-  else finish(null, null);
-});
-process.on('unhandledRejection', (error) => {
+// Any failure after setup ends this worker's own run, as an uncaught error ends its process.
+function fail(error) {
   fatalError = String(error?.message ?? error);
   compensate(fatalError);
   if (child?.pid && !ended) cancel('worker-error');
-  else finish(null, null);
-});
+  else finish(null, null).catch(() => { /* The final state keeps its lock. */ });
+}
+failures.handler = fail;
+// Callbacks of a worker in a shared process report to this worker, never to its siblings.
+const guard = (callback) => (...values) => {
+  try { return callback(...values); } catch (error) { fail(error); }
+};
+if (!inProcess) {
+  process.on('SIGTERM', () => cancel());
+  process.on('SIGINT', () => cancel());
+  process.on('uncaughtException', fail);
+  process.on('unhandledRejection', fail);
+}
 
 // Ready means all worker-local preparation succeeded, with no user command spawned.
 const hooks = job.testHooks || {};
@@ -303,14 +342,14 @@ if (cancelling) {
       detached: !windows, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
     // Install lifecycle handlers before any fallible filesystem write after spawn.
-    child.on('close', finish);
+    child.on('close', (code, signal) => { finish(code, signal).catch(fail); });
     child.on('error', (error) => {
       fatalError = `Não foi possível iniciar ${job.command[0]}: ${error.code ?? error.message}`;
       compensate(fatalError);
       try { log(`\nRunner: ${fatalError}\n`); } catch { /* Keep close handling independent of logs. */ }
     });
-    child.stdout.on('data', (chunk) => consume('stdout', chunk));
-    child.stderr.on('data', (chunk) => consume('stderr', chunk));
+    child.stdout.on('data', guard((chunk) => consume('stdout', chunk)));
+    child.stderr.on('data', guard((chunk) => consume('stderr', chunk)));
     // Persist identity immediately after spawn, before accepting stream events.
     // A crash before this write leaves an unknown orphan and deliberately keeps the lock.
     const childIdentity = processIdentity(child.pid);
@@ -323,28 +362,31 @@ if (cancelling) {
         acknowledged = true;
         updateClaim(job.directory, job.moduleId, job.runId, { spawnAcknowledgedAt: timestamp() });
       }
-      if (hooks.ackDelayMs) setTimeout(() => {
+      if (hooks.ackDelayMs) setTimeout(guard(() => {
         if (!ended) { acknowledged = true; updateClaim(job.directory, job.moduleId, job.runId, { spawnAcknowledgedAt: timestamp() }); }
-      }, hooks.ackDelayMs);
+      }), hooks.ackDelayMs);
       if (hooks.dieAfterAck) process.exit(93);
-      if (hooks.failAfterAckMs) setTimeout(() => { throw new Error('Falha injetada após ack'); }, hooks.failAfterAckMs);
+      if (hooks.failAfterAckMs) setTimeout(guard(() => { throw new Error('Falha injetada após ack'); }), hooks.failAfterAckMs);
     }
-    poll = setInterval(() => {
+    poll = setInterval(guard(() => {
       checkCancellation();
       // Silence is not failure: record worker activity without inventing test progress.
       if (!ended && (progressPending || Date.now() - lastPersistedAt >= heartbeatIntervalMs)) persist();
-    }, 150);
+    }), pollIntervalMs);
     persist();
   } catch (error) {
     fatalError = error.message;
     compensate(fatalError);
     if (child?.pid) cancel('worker-error');
-    else finish(null, null);
+    else await finish(null, null);
   }
 }
 
 }
-main().catch((error) => {
-  process.stderr.write(`worker: ${error.message}\n`);
-  process.exitCode = 1;
-});
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runWorker(process.argv[2], { coordinatorPipe: process.platform === 'win32' && process.argv[3] === '--coordinator-pipe' }).done.catch((error) => {
+    process.stderr.write(`worker: ${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

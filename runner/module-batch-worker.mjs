@@ -3,11 +3,16 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { readJson, atomicJson, files, ownedClaim, updateClaim, validRecord, jobFile, releaseLock, timestamp, ACTIVE, inspectState } from './state.mjs';
 import { processIdentity, processIdentities, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, killOwnedOrphan, WINDOWS_LIVENESS_MS } from './process-identity.mjs';
-import { removePath } from './runtime.mjs';
+import { removePath, LONG_LIVED_NODE_FLAGS } from './runtime.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { assertSourcesUnchanged } from './module-config.mjs';
 import { batchFiles, readBatch, changeBatch, compensation, acknowledgementMs, ABORT_MS, finalAcknowledged, pause } from './module-batch.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
+import { runWorker, inProcessWorkers } from './worker.mjs';
+
+// False once this coordinator stops supervising; in-process workers then lose their coordinator.
+let supervising = true;
+const inProcess = inProcessWorkers();
 
 async function main() {
   const requestPath = process.argv[2];
@@ -76,6 +81,10 @@ async function main() {
   // PID cannot be reused, and the exit event is the kernel's answer. Only an identity
   // that matches the authenticated launch identity takes this path.
   const workerProcesses = new Map();
+  // An in-process worker shares this process's identity; it is alive until its run settles.
+  function inProcessAlive(entry, identity) {
+    return sameIdentity(identity, coordinatorIdentity) && workerProcesses.get(entry.moduleId)?.exited === false;
+  }
   function launchedState(identity) {
     if (process.platform !== 'win32' || !identity) return null;
     for (const [moduleId, launch] of workerProcesses) {
@@ -103,14 +112,15 @@ async function main() {
     manifest = readBatch(request.directory, request.batchId);
     const queried = [];
     for (const entry of manifest.entries) {
-      if (finalAcknowledged(manifest, entry)) continue;
+      if (inProcess || finalAcknowledged(manifest, entry)) continue;
       try { queried.push(readJson(files(request.directory, entry.moduleId).claim)?.workerIdentity ?? null); }
       catch { queried.push(null); }
       queried.push(workerLaunches.get(entry.moduleId) ?? null);
     }
-    const present = queryLiveness(queried);
+    const present = queried.length ? queryLiveness(queried) : [];
     const liveness = new Map(queried.map((identity, index) => [JSON.stringify(identity), present[index]]));
-    const alive = identity => liveness.has(JSON.stringify(identity)) ? liveness.get(JSON.stringify(identity)) : sameProcess(identity);
+    const alive = (entry, identity) => inProcess ? inProcessAlive(entry, identity) :
+      liveness.has(JSON.stringify(identity)) ? liveness.get(JSON.stringify(identity)) : sameProcess(identity);
     let allSafe = true;
     for (const entry of manifest.entries) {
       try {
@@ -129,10 +139,10 @@ async function main() {
         if (claim.batchId !== request.batchId || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity)) throw new Error('Identidade de coordenação substituída');
         allSafe = false;
         if (snapshot.infrastructureFailure) cancelAll(snapshot.error || 'Falha de infraestrutura');
-        if (!alive(claim.workerIdentity)) {
+        if (!alive(entry, claim.workerIdentity)) {
           if (acknowledged(entry)) continue;
           const worker = workerLaunches.get(entry.moduleId);
-          if (worker && alive(worker)) continue; // Worker has not yet published its own identity.
+          if (worker && alive(entry, worker)) continue; // Worker has not yet published its own identity.
           if (snapshot.finalSafe === true && !snapshot.recoveryRequired && !ACTIVE.has(snapshot.status)) {
             const identity = snapshot.childIdentity ?? claim.childIdentity;
             if (groupState(identity) === 'empty') {
@@ -144,7 +154,8 @@ async function main() {
           cleanLostWorker(entry, claim, snapshot);
         } else if (stopping) {
           // A delayed preparation is safe to stop: no command can pass an aborted barrier.
-          if (!claim.spawnAttemptAt && Date.now() > observationDeadline - ABORT_MS + 500) process.kill(claim.workerIdentity.pid, 'SIGKILL');
+          // An in-process worker shares this process; it sees the aborted barrier itself.
+          if (!claim.spawnAttemptAt && !inProcess && Date.now() > observationDeadline - ABORT_MS + 500) process.kill(claim.workerIdentity.pid, 'SIGKILL');
           else if (claim.spawnAttemptAt && Date.now() > observationDeadline - 2500) {
             const identity = snapshot.childIdentity ?? claim.childIdentity;
             if (canKillOwnedOrphan(identity)) killOwnedOrphan(identity);
@@ -160,7 +171,21 @@ async function main() {
     return allSafe;
   }
   function sameIdentity(left, right) { return left && right && JSON.stringify(left) === JSON.stringify(right); }
+  // identities follow manifest.entries.
+  function workersLost(identities) {
+    if (inProcess) return manifest.entries.some((entry, index) => !inProcessAlive(entry, identities[index]));
+    return queryLiveness(identities).some(value => !value);
+  }
   process.on('SIGTERM', () => { try { cancelAll('Coordenador interrompido'); } catch { /* Retain state. */ } });
+  if (inProcess) {
+    // An error no worker caught is a failure of the shared process: every run ends safely.
+    const failAll = (error) => {
+      for (const launch of workerProcesses.values()) if (!launch.exited) launch.worker.fail(error);
+      try { cancelAll(String(error?.message ?? error)); } catch { /* Retain state. */ }
+    };
+    process.on('uncaughtException', failAll);
+    process.on('unhandledRejection', failAll);
+  }
   try {
     assertSourcesUnchanged(request.revision);
     if (inspectState(request.directory, { recover: false }).blocked) throw new Error('Estado global incompatível durante preparação');
@@ -176,8 +201,17 @@ async function main() {
     const launched = [];
     const windows = process.platform === 'win32';
     for (const entry of manifest.entries) {
+      if (inProcess) {
+        const launch = { exited: false, worker: null };
+        workerProcesses.set(entry.moduleId, launch);
+        workerLaunches.set(entry.moduleId, coordinatorIdentity);
+        launch.worker = runWorker(jobFile(request.directory, entry.moduleId, entry.runId), { inProcess: true, hostAlive: () => supervising });
+        launch.worker.done.catch((error) => { process.stderr.write(`worker ${entry.moduleId}: ${error.message}\n`); })
+          .then(() => { launch.exited = true; });
+        continue;
+      }
       // On Windows the worker's stdin is a private pipe: it closes when this coordinator ends.
-      const worker = spawn(process.execPath, [workerPath, jobFile(request.directory, entry.moduleId, entry.runId), ...(windows ? ['--coordinator-pipe'] : [])],
+      const worker = spawn(process.execPath, [...LONG_LIVED_NODE_FLAGS, workerPath, jobFile(request.directory, entry.moduleId, entry.runId), ...(windows ? ['--coordinator-pipe'] : [])],
         { detached: true, stdio: [windows ? 'pipe' : 'ignore', 'ignore', 'ignore'], cwd: path.dirname(workerPath), windowsHide: true });
       await new Promise((resolve, reject) => { worker.once('error', reject); if (worker.pid) resolve(); });
       launched.push({ entry, pid: worker.pid });
@@ -190,7 +224,7 @@ async function main() {
       }
       worker.unref();
     }
-    const launchedIdentities = processIdentities(launched.map(value => value.pid));
+    const launchedIdentities = launched.length ? processIdentities(launched.map(value => value.pid)) : [];
     for (const [index, value] of launched.entries()) {
       const identity = launchedIdentities[index];
       if (!identity) throw new Error('Identidade do worker não confirmada');
@@ -206,7 +240,7 @@ async function main() {
         identities.push(claim.workerIdentity ?? workerLaunches.get(entry.moduleId));
         if (!claim.readyAt || !claim.workerIdentity) ready = false;
       }
-      if (queryLiveness(identities).some(value => !value)) throw new Error('Worker perdido durante preparação');
+      if (workersLost(identities)) throw new Error('Worker perdido durante preparação');
       if (ready) break;
       if (stopping || Date.now() >= deadline) throw new Error('Prazo de preparação dos workers expirado');
       await pause();
@@ -223,7 +257,7 @@ async function main() {
             validRecord(readJson(files(request.directory, entry.moduleId).cancel), entry.moduleId, entry.runId)) throw new Error('Preparo mudou antes da liberação');
         identities.push(claim.workerIdentity);
       }
-      if (queryLiveness(identities).some(value => !value) || Date.now() >= deadline) throw new Error('Preparo ou prazo mudou antes da liberação');
+      if (workersLost(identities) || Date.now() >= deadline) throw new Error('Preparo ou prazo mudou antes da liberação');
       // The native query can take seconds. Revalidate ownership once more before
       // committing release; the query result never substitutes for the current claim.
       for (const [index, entry] of current.entries.entries()) {
@@ -258,4 +292,4 @@ async function main() {
 main().catch((error) => {
   process.stderr.write(`batch: ${error.message}\n`);
   process.exitCode = 1;
-});
+}).finally(() => { supervising = false; });

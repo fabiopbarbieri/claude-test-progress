@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { SCHEMA_VERSION } from './schema.mjs';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock,
   inspectState, revision, timestamp, validRecord, ownedClaim, jobFile } from './state.mjs';
 import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
-import { randomUUID, removePath } from './runtime.mjs';
+import { randomUUID, removePath, LONG_LIVED_NODE_FLAGS } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
 import { sanitizeLogText, readableTail } from './module-presentation.mjs';
 import { PREFIX } from './progress.mjs';
@@ -21,7 +22,7 @@ let discovery;
 let actionResults;
 function argumentsOf(argv) {
   const action = argv[0];
-  if (!['start', 'list', 'status', 'cancel', 'logs'].includes(action)) throw new Error('Ação esperada: start, list, status, cancel ou logs');
+  if (!['start', 'list', 'status', 'cancel', 'logs', 'watch'].includes(action)) throw new Error('Ação esperada: start, list, status, cancel, logs ou watch');
   const options = Object.create(null);
   for (let index = 1; index < argv.length; index += 2) {
     const option = argv[index];
@@ -98,7 +99,7 @@ async function start(selection, preparationStartedAt) {
       // while the detached coordinator and user command keep running.
       identity = windowsLaunchCoordinator(process.execPath, loc.request);
     } else {
-      coordinator = spawn(process.execPath, [path.join(runnerDirectory, 'module-batch-worker.mjs'), loc.request],
+      coordinator = spawn(process.execPath, [...LONG_LIVED_NODE_FLAGS, path.join(runnerDirectory, 'module-batch-worker.mjs'), loc.request],
         { detached: true, stdio: 'ignore', cwd: runnerDirectory, windowsHide: true });
       await new Promise((resolve, reject) => { coordinator.once('error', reject); if (coordinator.pid) resolve(); });
       identity = processIdentity(coordinator.pid);
@@ -195,6 +196,50 @@ function logs(target, state) {
     } catch (error) { (state.stateDiagnostics[moduleId] || (state.stateDiagnostics[moduleId] = [])).push({ code: 'unsafe-log', message: error.message, blocking: true }); }
   }
 }
+// Watch: one long-lived collector streams the status the Mod would otherwise poll by
+// starting a Node every second. Each line is a whole status envelope, written only when it
+// changed; --module adds that module's log tail. It ends on its own once nothing has been
+// active for WATCH_IDLE_MS, or when the Mod closes its pipe.
+const WATCH_INTERVAL_MS = 1000;
+const WATCH_IDLE_MS = 15000;
+async function watch(target, configPath) {
+  process.stdout.on('error', () => process.exit(0));
+  const tails = new Map();
+  let last = '';
+  let idleSince = null;
+  for (;;) {
+    let state;
+    try {
+      try { discovery = discoverModules(context, { configPath }); } catch { discovery = undefined; }
+      state = inspectState(context.directory);
+      const job = target !== 'all' && state.jobs[target];
+      if (job) {
+        // The tail is read again only when the log changed since the previous pass.
+        let stamp = null;
+        try { const info = fs.statSync(job.logPath); stamp = `${job.runId}:${info.size}:${info.mtimeMs}`; } catch { /* logs() reports it. */ }
+        const cached = tails.get(target);
+        if (stamp && cached?.stamp === stamp) state.jobs[target] = { ...job, logTail: cached.logTail };
+        else {
+          logs(target, state);
+          if (stamp && Array.isArray(state.jobs[target].logTail)) tails.set(target, { stamp, logTail: state.jobs[target].logTail });
+        }
+      }
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify(envelope({ jobs: Object.create(null), stateDiagnostics: { '*': [{ code: 'unsafe-namespace', message: error.message, blocking: true }] }, blocked: true }, false, error.message))}\n`);
+      process.exitCode = 1;
+      return;
+    }
+    const line = JSON.stringify(envelope(state, true));
+    if (line !== last) {
+      last = line;
+      if (!process.stdout.write(`${line}\n`)) await new Promise((resolve) => process.stdout.once('drain', resolve));
+    }
+    const active = Object.values(state.jobs).some((job) => ACTIVE.has(job.status) || job.recoveryRequired);
+    idleSince = active ? null : idleSince ?? Date.now();
+    if (idleSince !== null && Date.now() - idleSince >= WATCH_IDLE_MS) return;
+    await pause(WATCH_INTERVAL_MS);
+  }
+}
 function envelope(state, ok, error) {
   const modules = discovery?.modules || Object.create(null);
   for (const [id, job] of Object.entries(state.jobs)) if (!modules[id]) modules[id] = { id, label: job.label || id, language: job.language || null,
@@ -214,6 +259,7 @@ async function main() {
     context = namespace(options['--cwd'], options['--owner'], { reuseVerifiedAcl: !['start', 'cancel'].includes(action) });
     // Discovery enriches metadata only. State management remains available with removed/invalid configuration.
     try { discovery = discoverModules(context, { configPath: options['--config'] }); } catch (error) { if (action === 'start' || action === 'list') throw error; }
+    if (action === 'watch') { await watch(target, options['--config']); return; }
     let state = inspectState(context.directory);
     if (action === 'start') { await start(prepareSelection(discovery, target), preparationStartedAt); state = inspectState(context.directory); }
     else if (action === 'cancel') { await cancel(target, state); state = inspectState(context.directory); }

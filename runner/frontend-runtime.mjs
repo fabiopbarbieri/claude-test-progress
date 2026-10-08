@@ -2,12 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
-import { windowsPowerShell, POWERSHELL_FLAGS } from './windows-process.mjs';
+import { windowsNodeResolver } from './windows-process.mjs';
 import { mergeEnvironment } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
 
 const windows = process.platform === 'win32';
-const driver = fileURLToPath(new URL(windows ? '../runtime/resolve-node.ps1' : '../runtime/resolve-node.sh', import.meta.url));
+const driver = fileURLToPath(new URL('../runtime/resolve-node.sh', import.meta.url));
 const sources = new Set(['path', 'nvm', 'nvmrc-path', 'nvmrc-nvm']);
 
 function runtimeError(message, moduleId, code = 'NODE_RUNTIME_UNAVAILABLE') {
@@ -30,15 +30,24 @@ export function frontendRuntime(cwd, environment, command, { runtime = 'node-pro
   if (runtime !== 'node-project') throw runtimeError('O runtime do módulo não é suportado.', moduleId, 'INVALID_RUNTIME');
   const subject = validModuleId(moduleId) ? `o módulo ${moduleId}` : 'frontend';
   const inherited = mergeEnvironment(process.env, environment);
+  const resolve = (native) => {
+    const { file, args } = windows ? windowsNodeResolver(cwd, inherited, native) :
+      { file: 'bash', args: [driver, 'project', '--cwd', cwd] };
+    return { native: windows && path.win32.basename(file).startsWith('helper-'),
+      run: () => execFileSync(file, args, {
+        cwd, env: inherited, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 64 * 1024, timeout: 3000, killSignal: 'SIGKILL',
+      }) };
+  };
   let output;
   try {
-    const executable = windows ? windowsPowerShell(inherited) : 'bash';
-    const args = windows ? [...POWERSHELL_FLAGS, '-File', driver, '-Mode', 'project', '-Cwd', cwd] :
-      [driver, 'project', '--cwd', cwd];
-    output = execFileSync(executable, args, {
-      cwd, env: inherited, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      maxBuffer: 64 * 1024, timeout: 3000, killSignal: 'SIGKILL',
-    });
+    const resolver = resolve(true);
+    try { output = resolver.run(); }
+    catch (error) {
+      // A native helper that could not start at all (blocked by policy) falls back to PowerShell.
+      if (!resolver.native || error.code === 'ETIMEDOUT' || typeof error.status === 'number') throw error;
+      output = resolve(false).run();
+    }
   } catch (error) {
     throw resolverError(error, subject, moduleId);
   }

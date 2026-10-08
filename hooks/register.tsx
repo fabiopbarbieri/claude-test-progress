@@ -68,11 +68,80 @@ function serialized<T>(task: () => Promise<T>): Promise<T> {
   queue = run.catch(() => {});
   return run;
 }
+const liveJobs = () => Object.values(p.jobs).some(job => ACTIVE.has(job.status) || job.recoveryRequired);
 // Poll every second only while something can change without us: an unseen identity or a live job.
 function pollDue() {
-  const live = !p.workspace || Object.values(p.jobs).some(job => ACTIVE.has(job.status) || job.recoveryRequired);
+  const live = !p.workspace || liveJobs();
   if (live || ++idleTicks >= IDLE_POLL_TICKS) { idleTicks = 0; return true; }
   return false;
+}
+// While a job is live, one collector started once streams each status change (`watch`),
+// instead of a Node started every second. A watcher that stops answering, or one the host
+// cannot start, falls back to the per-second query.
+const WATCH_STALE_MS = 5000;
+const WATCH_RETRY_MS = 60000;
+type Watcher = { identity: string; logs: string; seenAt: number; stop: () => void };
+let watcher: Watcher | null = null, watchBlockedUntil = 0;
+function stopWatcher() {
+  const current = watcher;
+  watcher = null;
+  current?.stop();
+}
+function applyEnvelope(data: ReturnType<typeof validateEnvelope>) {
+  p.modules = data.modules; p.jobs = data.jobs; p.workspace = data.workspace; p.stateDiagnostics = data.stateDiagnostics;
+  const selected = p.selectedLogs && p.jobs[p.selectedLogs.id];
+  if (p.selectedLogs && selected?.runId === p.selectedLogs.runId && Array.isArray(selected.logTail)) p.logTail = sanitizeTail(selected.logTail);
+}
+async function applyWatched($: $, self: Watcher, line: string) {
+  if (watcher !== self) return;
+  await synchronizeIdentity($);
+  if (p.identity !== self.identity) { stopWatcher(); return; }
+  let data;
+  try { data = validateEnvelope(JSON.parse(line)); } catch { return; }
+  applyEnvelope(data);
+  p.lastError = data.ok ? '' : data.error ?? 'O coletor encerrou a observação.';
+  if (await paneShown($)) acknowledge();
+  else await autoOpen($);
+  await publish($);
+}
+// True while a watcher for this identity and log selection runs or was just started.
+function watch($: $, logs: string) {
+  const direct = p.collector?.identity === p.identity ? p.collector : null;
+  if (!direct || Date.now() < watchBlockedUntil) return false;
+  if (watcher?.identity === p.identity && watcher.logs === logs) return true;
+  stopWatcher();
+  const [cwd = '', owner = ''] = p.identity.split('\n');
+  let stream: ReturnType<$['process']['spawn']>;
+  try {
+    // A 1 MB young generation keeps this long-lived Node small (LONG_LIVED_NODE_FLAGS).
+    stream = $.process.spawn({ argv: [direct.path, '--max-semi-space-size=1', `${$.plugin.root}/runner/cli.mjs`, 'watch',
+      '--cwd', cwd, '--owner', owner, '--module', logs], env: { TEST_PROGRESS_NODE_SOURCE: direct.source } });
+  } catch { watchBlockedUntil = Date.now() + WATCH_RETRY_MS; return false; }
+  const self: Watcher = { identity: p.identity, logs, seenAt: Date.now(),
+    stop: () => { void stream.return({ code: null, signal: null }).catch(() => {}); } };
+  watcher = self;
+  void (async () => {
+    let buffer = '', lines = 0;
+    try {
+      for await (const chunk of stream) {
+        if (watcher !== self) break;
+        if (chunk.stream !== 'stdout') continue;
+        buffer += chunk.text;
+        for (let end = buffer.indexOf('\n'); end >= 0; end = buffer.indexOf('\n')) {
+          const line = buffer.slice(0, end);
+          buffer = buffer.slice(end + 1);
+          if (!line.trim()) continue;
+          lines++; self.seenAt = Date.now();
+          await serialized(() => applyWatched($, self, line));
+        }
+      }
+    } catch { /* The per-second query takes over. */ }
+    finally {
+      if (watcher === self) watcher = null;
+      if (!lines) watchBlockedUntil = Date.now() + WATCH_RETRY_MS;
+    }
+  })();
+  return true;
 }
 const validCollector = (value: { path?: unknown; source?: unknown } | undefined): value is { path: string; source: string } =>
   typeof value?.path === 'string' && !value.path.includes('\0') && (value.path.startsWith('/') || /^[a-z]:\\/i.test(value.path)) &&
@@ -175,9 +244,7 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   const data = validateEnvelope(raw);
   if (!direct && validCollector(data.collector)) p.collector = { identity: p.identity, path: data.collector.path, source: data.collector.source };
   // Error envelopes still carry the valid catalogue and persistent jobs.
-  p.modules = data.modules; p.jobs = data.jobs; p.workspace = data.workspace; p.stateDiagnostics = data.stateDiagnostics;
-  const selected = p.selectedLogs && p.jobs[p.selectedLogs.id];
-  if (p.selectedLogs && selected?.runId === p.selectedLogs.runId && Array.isArray(selected.logTail)) p.logTail = sanitizeTail(selected.logTail);
+  applyEnvelope(data);
   if (!data.ok || response.exitCode !== 0) {
     const actionErrors = Object.entries(data.actionResults ?? {}).filter(([, result]) => !result.ok)
       .map(([id, result]) => `${id}: ${result.error ?? 'ação recusada'}`).join('\n');
@@ -297,11 +364,14 @@ export const register: Register = on => {
       void serialized(async () => {
         try {
           await synchronizeIdentity($);
+          if (watcher && watcher.identity !== p.identity) stopWatcher();
           if (pollDue()) {
             // Every query returns the whole catalogue and all jobs; only a live selected run re-reads its log.
             const selected = p.selectedLogs, job = selected && p.jobs[selected.id];
             const live = !!selected && !!job && ACTIVE.has(job.status);
-            await collect($, live ? 'logs' : 'status', live ? selected.id : 'all');
+            const streaming = liveJobs() && watch($, live ? selected.id : 'all');
+            if (streaming && watcher && Date.now() - watcher.seenAt > WATCH_STALE_MS) stopWatcher();
+            if (!streaming || !watcher) await collect($, live ? 'logs' : 'status', live ? selected.id : 'all');
           }
         } catch (error) { p.lastError = errorText(error); }
         if (await paneShown($)) acknowledge();
@@ -325,6 +395,7 @@ export const register: Register = on => {
   });
   on('session.end', async ($, e, next) => {
     // Poll survives clear/resume/branch; workers and timer aren't cancelled here.
+    stopWatcher();
     await hydrate($);
     p = { ...empty(), generation: p.generation + 1, registrationError: p.registrationError, collector: p.collector, sort: p.sort };
     await publish($);

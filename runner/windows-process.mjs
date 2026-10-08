@@ -236,6 +236,12 @@ export function windowsLaunchCoordinator(collector, request) {
   if (!valid(identity)) throw new Error('Identidade do coordenador Windows não confirmada');
   return identity;
 }
+// The project's Node is chosen by the native helper when it runs, else by resolve-node.ps1.
+export function windowsNodeResolver(cwd, environment = process.env, native = true) {
+  const exe = native ? helper() : null;
+  return exe ? { file: exe, args: ['-Action', 'ResolveNode', '-Mode', 'project', '-Cwd', cwd] } :
+    { file: windowsPowerShell(environment), args: [...POWERSHELL_FLAGS, '-File', fileURLToPath(new URL('../runtime/resolve-node.ps1', import.meta.url)), '-Mode', 'project', '-Cwd', cwd] };
+}
 export function windowsSpawnSpec(jobPath, environment = process.env) {
   if (!path.win32.isAbsolute(jobPath)) throw new Error('Arquivo de execução Windows precisa ser absoluto');
   const exe = helper();

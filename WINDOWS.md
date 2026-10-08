@@ -74,6 +74,26 @@ $env:TEST_PROGRESS_POWERSHELL = (Get-Command pwsh.exe -CommandType Application).
 
 Essa variável fica no processo atual e seus filhos; não é gravada globalmente.
 
+### Processos e memória
+
+No Windows, um lote usa **um único Node**: o coordenador executa os workers de
+todos os módulos no próprio processo, em vez de um Node (~50 MB) por módulo.
+Cada módulo mantém seu broker e seu Job Object, e o broker observa o processo
+que o supervisiona (autenticado por PID, instante de criação e SID no claim):
+se esse processo terminar, o broker encerra o Job, e a árvore do teste não fica
+órfã. `TEST_PROGRESS_WORKERS=process` volta a um worker por módulo, como no
+Linux; `inprocess` força o modo compartilhado.
+
+Enquanto há job ativo, o painel recebe o estado de um coletor contínuo
+(`cli.mjs watch`), que lê o estado a cada segundo e só escreve quando algo
+muda, em vez de iniciar um Node por segundo. Sem jobs ativos por 15 s, ele
+encerra e o painel volta à consulta a cada 10 s. Se o watcher não iniciar ou
+parar de responder, o painel volta à consulta por segundo.
+
+A descoberta do Node de módulos `node-project` também roda no helper nativo,
+com as mesmas regras de `runtime/node-discovery.ps1`; o PowerShell só é usado se
+o helper não estiver disponível.
+
 As operações do coletor no Windows usam chamadas curtas de controle (diretório
 privado, identidade e estado de processos) e um broker por job. Depois da
 primeira verificação da raiz privada do estado, em TEMP, o Windows PowerShell
@@ -226,7 +246,9 @@ literais. Para scripts PowerShell próprios, configure o executável
 `powershell.exe` ou `pwsh.exe` com `-File` e o caminho do script.
 
 O broker coloca o comando e seus descendentes em um **Windows Job Object**,
-atribuído na criação do processo antes de executá-lo. O encerramento é
+atribuído na criação do processo antes de executá-lo. Ele também mantém um
+handle para o processo do worker que o supervisiona e encerra o Job se esse
+processo terminar; a prova registra então `supervisorLost`. O encerramento é
 confirmado quando não há processos ativos no Job. A prova fica em sidecar
 atômico privado; fechamento normal libera o módulo e conserva exit code.
 O sidecar de **prova Windows tem formato próprio (`schema: 1`)**, independente

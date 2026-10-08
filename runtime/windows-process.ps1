@@ -291,7 +291,8 @@ if ($Action -eq 'LaunchCoordinator') {
     }
     $runner = Join-Path (Split-Path -Parent $PSScriptRoot) 'runner'
     $coordinator = Join-Path $runner 'module-batch-worker.mjs'
-    Write-Control ([TestProgress.WindowsProcessHost]::StartDetached($Collector, [string[]]@($coordinator, $JobFile), $runner))
+    # Same flag as LONG_LIVED_NODE_FLAGS in runner/runtime.mjs.
+    Write-Control ([TestProgress.WindowsProcessHost]::StartDetached($Collector, [string[]]@('--max-semi-space-size=1', $coordinator, $JobFile), $runner))
     exit 0
 }
 if ((Get-Item -LiteralPath $JobFile).Length -gt 1048576) { throw 'Private job exceeds size limit.' }
@@ -326,8 +327,15 @@ $brokerIdentity = [TestProgress.WindowsProcessHost]::Identity($PID)
 $proof = @{ schema = 1; runId = $job.runId; brokerIdentity = $brokerIdentity;
     jobName = $JobName; contained = $false; resumed = $false; treeEmpty = $false; exitCode = $null; cancelled = $false }
 $hostProcess = $null
+$supervisor = $null
 $code = 125
 try {
+    # The worker that started this broker supervises the run; the tree ends with it.
+    $worker = $claim.workerIdentity
+    $workerPid = 0
+    # PowerShell 7 reads JSON integers as Int64.
+    if ($null -ne $worker -and ($worker.pid -is [int] -or $worker.pid -is [long]) -and $worker.pid -le [int]::MaxValue) { $workerPid = [int]$worker.pid }
+    $supervisor = New-Object TestProgress.SupervisorWatch($workerPid, [string]$worker.startTime, [string]$worker.owner)
     # The only stdout/stderr writer is the native command; proof stays in the sidecar.
     $hostProcess = New-Object TestProgress.WindowsProcessHost($job.windowsCommand.file, $commandArguments, $job.cwd, $JobName)
     $proof.contained = $true
@@ -350,6 +358,11 @@ try {
         Write-AtomicJson $sidecar $proof
     }
     while ($hostProcess.ActiveProcesses() -ne 0) {
+        if (-not $proof.cancelled -and $supervisor.Exited(0)) {
+            $proof.cancelled = $true
+            $proof.supervisorLost = $true
+            $hostProcess.Cancel()
+        }
         if (-not $proof.cancelled -and [IO.File]::Exists($cancelFile)) {
             Assert-PrivatePath $cancelFile
             $cancel = (Read-PrivateText $cancelFile) | ConvertFrom-Json
@@ -359,7 +372,7 @@ try {
             }
         }
         # Each broker polls while its tree runs; 250 ms bounds both its idle CPU and the cancel latency.
-        Start-Sleep -Milliseconds 250
+        if ($proof.cancelled) { Start-Sleep -Milliseconds 25 } else { $null = $supervisor.Exited(250) }
     }
     $proof.treeEmpty = $true
     $code = $hostProcess.ExitCode()
@@ -381,5 +394,6 @@ try {
     [Console]::Error.WriteLine('Windows broker: ' + $proof.error)
 } finally {
     if ($null -ne $hostProcess) { $hostProcess.Dispose() }
+    if ($null -ne $supervisor) { $supervisor.Dispose() }
 }
 exit $code
