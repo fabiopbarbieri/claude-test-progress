@@ -113,7 +113,10 @@ recuperação de estado.
 ## Antes de enviar
 
 Selecione apenas arquivos da sua mudança, revise o conteúdo staged e crie um
-commit de escopo. Exemplo para uma alteração neste guia:
+commit de escopo no formato Conventional Commits (gitmoji opcional). O tipo
+decide a próxima versão e o assunto vira a linha do changelog
+([regras](docs/RELEASING.md#pr-de-release-automático)): escreva-o para quem usa
+o plugin. Exemplo para uma alteração neste guia:
 
 ```bash
 git add CONTRIBUTING.md

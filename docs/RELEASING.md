@@ -2,8 +2,44 @@
 
 Roteiro para preparar e publicar uma versão `X.Y.Z` (exemplos com `0.3.0`). A
 publicação depende de revisão humana e de validação funcional no commit final.
-O workflow [Prepare release](../.github/workflows/release.yml) só verifica:
-não cria tags, releases, assets nem instala o plugin de usuários.
+O workflow [Release PR](../.github/workflows/release-pr.yml) propõe versão e
+changelog a partir dos commits; o [Prepare release](../.github/workflows/release.yml)
+só verifica. Nenhum dos dois cria tags, releases, assets nem instala o plugin de
+usuários.
+
+## PR de release automático
+
+A versão segue os commits desde o último bump do manifest, no formato
+Conventional Commits com gitmoji opcional (`✨ feat(panel): ...`):
+
+| Commits desde o último bump | Próxima versão |
+| --- | --- |
+| `!` no tipo ou nota `BREAKING CHANGE:` | minor durante `0.x`; major depois de `1.0` |
+| `feat` | minor |
+| `fix` ou `perf` | patch |
+| só `docs`, `chore`, `test`, `ci`, `refactor`... | nenhuma |
+
+A cada push na `main`, [scripts/release.py](../scripts/release.py) `prepare`
+atualiza `plugin.json`, `package.json`, as menções de versão no README e na
+matriz de compatibilidade e acrescenta a seção da versão no changelog. O workflow
+faz force-push disso na branch `release/next` e abre ou atualiza o PR
+`🔖 chore(release): X.Y.Z`, com as notas no corpo. O changelog é inteiramente
+gerado: `feat`, `fix`, `perf`, `docs` e mudanças incompatíveis, com links
+absolutos para os commits. Para corrigir uma entrada, corrija o fluxo de commits
+seguinte; não edite o changelog à mão.
+
+Para simular localmente sem alterar arquivos: `python3 scripts/release.py next`.
+`python3 scripts/release.py changelog` reconstrói o arquivo inteiro a partir dos
+bumps do histórico (0.1.0 e 0.2.0, nunca publicadas, entram em 0.3.0).
+
+PRs abertos com o `GITHUB_TOKEN` não disparam os checks obrigatórios. Configure o
+segredo `RELEASE_PR_TOKEN` (fine-grained PAT só deste repositório, com
+*Contents* e *Pull requests* em leitura e escrita). Sem ele, o workflow usa o
+`GITHUB_TOKEN`, o que exige ativar *Allow GitHub Actions to create and approve
+pull requests* e reabrir o PR para rodar a CI.
+
+O merge do PR de release continua sendo a decisão de distribuição descrita
+abaixo; os gates de integração valem para ele.
 
 ## Versão e distribuição
 
@@ -13,11 +49,10 @@ não cria tags, releases, assets nem instala o plugin de usuários.
   sufixos neste fluxo. Patch corrige comportamento preservando o contrato;
   minor acrescenta funcionalidades. Durante `0.x`, uma quebra exige novo minor e
   aviso explícito no changelog; depois de `1.0`, exige major.
-- Atualize o [changelog](../CHANGELOG.md) no mesmo PR com código que existe e
-  limites de aceite. Nunca reutilize uma versão já distribuída. As notas viram
-  o corpo da GitHub Release: use links absolutos para a tag
-  (`https://github.com/fabiopbarbieri/claude-test-progress/blob/test-progress--vX.Y.Z/...`);
-  o verificador recusa links relativos.
+- O [changelog](../CHANGELOG.md) vem do PR de release; limites de aceite e
+  quebras vão no corpo do commit (`BREAKING CHANGE:`). Nunca reutilize uma
+  versão já distribuída. As notas viram o corpo da GitHub Release e o
+  verificador recusa links relativos.
 - O catálogo mantém `test-progress-marketplace`, plugin `test-progress` e
   `source: "./"`, sem campo `version`. O repositório chama-se
   `claude-test-progress`; nenhuma dessas identidades é intercambiável.
@@ -107,10 +142,12 @@ roda os testes nativos do Mod no Claude CLI fixado; Windows executa os cenários
 nativos em PowerShell 5.1/7. A matriz adicional repete release/core em Node
 14.0.0 e Node 24.
 
-Os jobs têm somente `contents: read` e, no job que consulta CI, `actions: read`.
+Os jobs do Prepare release têm somente `contents: read` e, no job que consulta
+CI, `actions: read`.
 Actions são fixadas por SHA; o checkout não persiste credenciais. Inputs entram
 por variáveis de ambiente, não como código shell. Não existe gatilho de
-publicação em push/PR/tag nem job com permissão de escrita.
+publicação em push/PR/tag. O único job com escrita é o do Release PR, limitado à
+branch `release/next` e ao seu PR.
 [Segurança de Actions](https://docs.github.com/en/actions/reference/security/secure-use).
 
 O resumo verde significa **preparação técnica**, não aprovação de release.
@@ -133,8 +170,8 @@ claude plugin tag --dry-run
 ```
 
 `RELEASE_SHA` deve conter os 40 caracteres do commit aprovado; não use um
-nome de branch móvel. Finalize a data e o texto do changelog no PR antes de
-escolher esse SHA. Confira o plano da tag e a inexistência da tag remota:
+nome de branch móvel. A data do changelog é a da última atualização do PR de
+release. Confira o plano da tag e a inexistência da tag remota:
 `git ls-remote --tags origin refs/tags/test-progress--v0.3.0` deve retornar
 vazio. Se existir, pare; não force nem apague a tag.
 

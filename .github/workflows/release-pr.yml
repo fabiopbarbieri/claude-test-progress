@@ -1,0 +1,55 @@
+name: Release PR
+
+# Opens or refreshes the release PR from Conventional Commits on main.
+# It writes only the release/next branch and its PR: merging the PR is the
+# distribution decision; tags and GitHub Releases stay human (docs/RELEASING.md).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-pr
+  cancel-in-progress: true
+
+jobs:
+  release-pr:
+    if: github.repository == 'fabiopbarbieri/claude-test-progress'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      BRANCH: release/next
+      # A PAT makes the PR run the required checks; GITHUB_TOKEN events do not.
+      GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+      REPOSITORY: ${{ github.repository }}
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bump version and changelog from unreleased commits
+        id: prepare
+        run: echo "version=$(python3 scripts/release.py prepare)" >> "$GITHUB_OUTPUT"
+      - name: Push release branch and open or update the PR
+        if: steps.prepare.outputs.version != ''
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          python3 scripts/check-release.py --expected-version "$VERSION" --notes > "$RUNNER_TEMP/notes.md"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$BRANCH"
+          git commit -am "🔖 chore(release): $VERSION"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          title="🔖 chore(release): $VERSION"
+          if [ -n "$(gh pr list --repo "$REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$BRANCH" --repo "$REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/notes.md"
+          else
+            gh pr create --repo "$REPOSITORY" --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/notes.md"
+          fi
