@@ -3,6 +3,15 @@
 A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 `package.json` acompanha esse valor; o catálogo não declara outra versão.
 
+## [Unreleased]
+
+### Painel
+
+- `⇅` no toolbar alterna a ordem dos módulos: cadastro (padrão), nome, execução
+  mais recente primeiro e atenção (falhas e órfãos, depois em execução,
+  cancelados, aprovados e nunca executados). A escolha persiste entre sessões
+  do mesmo processo; `list` e `--text` mantêm a ordem do cadastro.
+
 ## [0.5.0] - 2026-10-06
 
 Windows nativo leve e aceito: helper compilado, supervisão por eventos, `status`

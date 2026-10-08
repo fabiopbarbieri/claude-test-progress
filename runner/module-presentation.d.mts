@@ -21,6 +21,12 @@ export function validateEnvelope(data: unknown): Envelope;
 export function parseCommand(raw: unknown): { action: 'list' | 'start' | 'status' | 'logs' | 'cancel' | 'help' | 'paths'; moduleId: string; text: boolean };
 export function visibleModuleIds(modules: Record<string, TestProgressModule>, jobs: Record<string, TestProgressJob>,
   diagnostics: Record<string, TestProgressDiagnostic[]>): string[];
+export type ModuleSort = 'order' | 'name' | 'recent' | 'attention';
+export const SORTS: ModuleSort[];
+export const sortLabels: Record<ModuleSort, string>;
+export function nextSort(sort: ModuleSort): ModuleSort;
+export function sortModuleIds(ids: string[], modules: Record<string, TestProgressModule>,
+  jobs: Record<string, TestProgressJob>, sort: ModuleSort): string[];
 export function moduleTitle(id: string, module: TestProgressModule | undefined): string;
 export function percentage(job: TestProgressJob): string;
 export function progressText(job: TestProgressJob): string;

@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing';
 import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
-  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryLine, outcomeText } from '../runner/module-presentation.mjs';
+  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryLine, outcomeText, sortModuleIds,
+  nextSort } from '../runner/module-presentation.mjs';
 
 test('titles preserve labels and IDs even when modules share a language or label', () => {
   expect(moduleTitle('api', { label: 'Suíte', language: 'Python' })).toBe('Suíte · api');
@@ -34,6 +35,23 @@ test('catalogue order plus retained recovery and state-only diagnostics exclude 
   const modules = { z: { enabled: true, order: 2 }, b: { enabled: true, order: 1 }, a: { enabled: true, order: 1 }, old: { enabled: false, order: 0 } };
   const jobs = { old: { status: 'completed' }, retired: { status: 'completed' }, lost: { status: 'error', recoveryRequired: true }, running: { status: 'running' } };
   expect(visibleModuleIds(modules, jobs, { locked: [{ blocking: true }], '*': [{ blocking: true }] })).toEqual(['a', 'b', 'z', 'locked', 'lost', 'running']);
+});
+
+test('orderings: catalogue, name, most recent run and what needs attention', () => {
+  const modules = { web: { label: 'Web' }, api: { label: 'api' }, e2e: { label: 'E2E' }, docs: { label: 'Docs' } };
+  const jobs = {
+    web: { status: 'completed', failed: 0, startedAt: '2026-10-08T10:00:00Z' },
+    api: { status: 'failed', failed: 2, startedAt: '2026-10-08T09:00:00Z' },
+    e2e: { status: 'running', startedAt: '2026-10-08T11:00:00Z' },
+  };
+  const ids = ['web', 'api', 'e2e', 'docs'];
+  expect(sortModuleIds(ids, modules, jobs, 'order')).toEqual(ids);
+  expect(sortModuleIds(ids, modules, jobs, 'name')).toEqual(['api', 'docs', 'e2e', 'web']);
+  expect(sortModuleIds(ids, modules, jobs, 'recent')).toEqual(['e2e', 'web', 'api', 'docs']);
+  expect(sortModuleIds(ids, modules, jobs, 'attention')).toEqual(['api', 'e2e', 'web', 'docs']);
+  // Ties keep the catalogue position.
+  expect(sortModuleIds(['b', 'a'], {}, {}, 'recent')).toEqual(['b', 'a']);
+  expect(['order', 'name', 'recent', 'attention'].map(nextSort)).toEqual(['name', 'recent', 'attention', 'order']);
 });
 
 test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros and clock', () => {

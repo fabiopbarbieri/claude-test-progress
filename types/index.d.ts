@@ -33,6 +33,8 @@ export type TestProgressJob = {
   percent?: number | null
   exitCode?: number | null
   elapsedMs?: number
+  startedAt?: string | null
+  endedAt?: string | null
   error?: string
   recoveryRequired?: boolean
   cancellable?: boolean
@@ -75,6 +77,8 @@ export type TestProgressPanel = {
   logTail: string[]
   chooseLogs: boolean
   showHelp: boolean
+  /** How the pane orders modules; kept across identities so a new session reads the same way. */
+  sort: 'order' | 'name' | 'recent' | 'attention'
   /** Runs the person has seen in the pane; the band keeps only unseen failures. */
   seenRuns: string[]
   collector: TestProgressCollector | null

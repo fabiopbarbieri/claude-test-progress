@@ -53,7 +53,32 @@ export function visibleModuleIds(modules, jobs, diagnostics) {
   for (const id of Object.keys(diagnostics)) if (id !== '*' && validModuleId(id) && diagnostics[id]?.length) retained.add(id);
   return [...enabled, ...[...retained].filter(id => !enabled.includes(id)).sort()];
 }
-export const moduleTitle = (id, module) => `${module?.label ?? id} · ${id}`;
+// Panel orderings, cycled by one toolbar button. `order` keeps the catalogue as visibleModuleIds returns it.
+export const SORTS = ['order', 'name', 'recent', 'attention'];
+export const sortLabels = { order: 'cadastro', name: 'nome', recent: 'recentes', attention: 'atenção' };
+export const nextSort = sort => SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length];
+const startedAt = job => { const at = Date.parse(job?.startedAt ?? ''); return Number.isFinite(at) ? at : -Infinity; };
+// What needs a look first: failures and orphans, live runs, cancellations, passes, then modules never run.
+function attention(job) {
+  if (!job) return 4;
+  if (job.recoveryRequired || job.status === 'error') return 0;
+  if (ACTIVE.has(job.status)) return 1;
+  if (job.status === 'failed' || (job.failed ?? 0) > 0) return 0;
+  return job.status === 'cancelled' ? 2 : 3;
+}
+export function sortModuleIds(ids, modules, jobs, sort) {
+  const name = id => modules[id]?.label ?? id;
+  const by = {
+    name: (a, b) => name(a).localeCompare(name(b), 'pt-BR', { sensitivity: 'base', numeric: true }),
+    // Most recent run first; modules without a run keep catalogue order at the end.
+    recent: (a, b) => startedAt(jobs[b]) - startedAt(jobs[a]),
+    attention: (a, b) => attention(jobs[a]) - attention(jobs[b]) || startedAt(jobs[b]) - startedAt(jobs[a]),
+  }[sort];
+  if (!by) return ids;
+  const position = new Map(ids.map((id, i) => [id, i]));
+  return [...ids].sort((a, b) => by(a, b) || position.get(a) - position.get(b));
+}
+export const moduleTitle =(id, module) => `${module?.label ?? id} · ${id}`;
 export function percentage(job) {
   return typeof job.percent === 'number' && Number.isFinite(job.percent) ? `${job.percent.toFixed(job.percent % 1 ? 1 : 0)}%` : '—';
 }

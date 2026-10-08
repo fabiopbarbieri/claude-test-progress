@@ -272,6 +272,34 @@ test('help toggles a short legend; empty workspace is one line', async ($, on) =
   await ui.unmount();
 });
 
+test('the sort button cycles orderings and keeps them across a redraw', async ($, on) => {
+  const current = data({ web: module('web', 0, { label: 'Web' }), api: module('api', 1, { label: 'API' }),
+    docs: module('docs', 2, { label: 'Docs' }) }, {
+    web: job('web', { status: 'completed', phase: 'finished', failed: 0, startedAt: '2026-10-08T10:00:00Z' }),
+    api: job('api', { status: 'failed', phase: 'finished', failed: 1, startedAt: '2026-10-08T09:00:00Z' }) });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  const order = async () => (await ui.findAll({ type: 'Text', text: /^(Web|API|Docs)$/ })).map(node => ({ Web: 'web', API: 'api', Docs: 'docs' })[node.text]);
+  expect(await ui.find({ key: 'sort' })).toMatchObject({ props: { label: '⇅' } });
+  expect(await order()).toEqual(['web', 'api', 'docs']);
+  await ui.press({ key: 'sort' });
+  expect(await ui.find({ key: 'sort' })).toMatchObject({ props: { label: '⇅ nome' } });
+  expect(await order()).toEqual(['api', 'docs', 'web']);
+  await ui.press({ key: 'sort' });
+  expect(await order()).toEqual(['web', 'api', 'docs']);
+  await ui.press({ key: 'sort' });
+  expect(await ui.find({ key: 'sort' })).toMatchObject({ props: { label: '⇅ atenção' } });
+  expect(await order()).toEqual(['api', 'web', 'docs']);
+  await ui.redraw(pane('terminal').props);
+  expect(await order()).toEqual(['api', 'web', 'docs']);
+  await ui.press({ key: 'sort' });
+  expect(await order()).toEqual(['web', 'api', 'docs']);
+  await ui.unmount();
+});
+
 test('finished runs read as a result, errors wrap with a next step, and the log closes from its header', async ($, on) => {
   const current = data({ api: module('api', 0, { label: 'API' }), web: module('web', 1, { label: 'Web' }) }, {
     api: job('api', { status: 'completed', phase: 'finished', total: 19, resolved: 19, passed: 19, failed: 0, skipped: 0,

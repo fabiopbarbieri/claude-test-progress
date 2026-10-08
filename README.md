@@ -10,7 +10,7 @@ independente da Anthropic. Versão **0.5.0**, licença **MIT**.
 A capa é uma ilustração; a interface real é um painel de terminal:
 
 ```text
-4 módulos · 1 rodando · 1 falha                 ▶ todos ? ×
+4 módulos · 1 rodando · 1 falha               ▶ todos ⇅ ? ×
 ● API        ━━━━━━━━━━━━  ~83%  ✓4 ✗1       0:57 ≡ ■
 ✓ Cobrança   ✓12 · 12 testes                 0:08 ≡ ▶
 ✗ Web        erro                            1:40 ≡ ▶
@@ -120,7 +120,8 @@ Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
 | `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
 
 Acrescente `--text`, por exemplo `/test-progress status all --text`.
-No painel: `▶` inicia, `■` cancela, `≡` abre os logs sob o módulo e `?` mostra a legenda.
+No painel: `▶` inicia, `■` cancela, `≡` abre os logs sob o módulo, `⇅` alterna a
+ordem (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
 [Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
 
 ## Atualizar ou remover
