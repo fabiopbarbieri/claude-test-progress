@@ -4,6 +4,12 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.9.0] - 2026-10-08
+
+### Funcionalidades
+
+- **skill:** add run-tests to start registered modules through the collector ([64358d2](https://github.com/fabiopbarbieri/claude-test-progress/commit/64358d20a672947f64a1d62fffcce8f1007ed634))
+
 ## [0.8.0] - 2026-10-07
 
 ### Funcionalidades
