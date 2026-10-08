@@ -277,31 +277,42 @@ test('a placed pane acknowledges failed runs and the band steps aside', async ($
   await band.unmount();
 });
 
-test('a run nobody has seen opens the pane once, without focus; closing it keeps it closed for that run', async ($, on) => {
-  const clock = mock.clock(on); const opened: any[] = []; let panes: any[] = [];
-  let current = data(undefined, {});
+test('when every run has ended, unseen failures open the pane once on the first failed log, without focus', async ($, on) => {
+  const clock = mock.clock(on); const opened: any[] = []; const logs: string[] = []; let panes: any[] = [];
+  const modules = { api: module(), web: module('web', 'Web') };
+  const failedApi = { ...running, status: 'failed', failed: 1, logTail: ['FAILED test_api - AssertionError'] };
+  let current = data(modules, {});
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
   on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', () => response(current));
+  on('process.run', ($, e) => { if (e.argv[2] === 'logs') logs.push(e.argv[e.argv.indexOf('--module') + 1]); return response(current); });
   on('ui.panes', () => ({ value: panes }));
-  on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: false, reason: 'narrow' } }; });
+  on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: true } }; });
+  on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
-  await clock.advance(10000); expect(opened).toEqual([]);
-  // Claude started the suite through the CLI: the next poll sees a live, unseen run.
-  current = data(); await clock.advance(10000);
+  // A failure mid-run, or one module done while another still runs, waits for the whole batch.
+  current = data(modules, { api: { ...running, failed: 1 }, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(10000);
+  current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(3000);
+  expect(opened).toEqual([]);
+  // Everything ended: one open, on the first failed module's log.
+  current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1', status: 'failed', failed: 2 } });
+  await clock.advance(1000);
   expect(opened).toHaveLength(1);
   expect(opened[0]).toMatchObject({ id: 'claude-test-progress', title: 'Test Progress' });
   expect(opened[0].focus).toBeUndefined();
-  // A waiting or closed pane isn't asked for again while the same run goes on.
-  await clock.advance(3000); expect(opened).toHaveLength(1);
-  // An open pane is left as it is, even for a new run.
+  expect(logs).toEqual(['api']);
+  const view = await $.ui.mount(pane);
+  expect(await view.find({ type: 'Text', text: /AssertionError/ })).toBeDefined();
+  await view.unmount();
+  // Closed again, it stays closed for those runs.
+  await clock.advance(20000); expect(opened).toHaveLength(1);
+  // An existing pane is left as it is, even for a new failure.
   panes = [{ id: 'claude-test-progress', title: 'Test Progress', isShown: false }];
-  current = data(undefined, { api: { ...running, runId: 'second' } }); await clock.advance(1000);
+  current = data(modules, { api: { ...failedApi, runId: 'second' } }); await clock.advance(10000);
   expect(opened).toHaveLength(1);
-  // Finished runs never open it.
-  panes = []; current = data(undefined, { api: { ...running, runId: 'third', status: 'completed' } });
+  // Passing runs never open it; a run that errors does.
+  panes = []; current = data(modules, { api: { ...running, runId: 'third', status: 'completed' } });
   await clock.advance(10000); expect(opened).toHaveLength(1);
-  current = data(undefined, { api: { ...running, runId: 'fourth' } }); await clock.advance(10000);
+  current = data(modules, { api: { ...running, runId: 'fourth', status: 'error' } }); await clock.advance(10000);
   expect(opened).toHaveLength(2);
 });

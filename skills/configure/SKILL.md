@@ -1,9 +1,9 @@
 ---
 name: configure
-description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular, Playwright Test ou um comando qualquer), ou quando o painel mostra erro, diagnóstico ou "sem eventos de progresso".
+description: Configura, opera e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular, Playwright Test ou um comando qualquer), ao iniciar, consultar, cancelar ou ler o log de um módulo do Test Progress, ou quando o painel mostra erro, diagnóstico, órfão ou "sem eventos de progresso".
 ---
 
-# Test Progress: configurar e diagnosticar
+# Test Progress: configurar, operar e diagnosticar
 
 **Raiz do plugin** = dois níveis acima do diretório base desta skill. Todo caminho de adapter no `command` é absoluto a partir dela: o JSON não interpola variáveis, `~` nem shell.
 
@@ -14,6 +14,8 @@ bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <dire
 ```
 
 No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
+
+Para rodar um módulo cadastrado, use `start` pela CLI, não o comando da suíte direto: só um run iniciado pelo coletor aparece no painel e na faixa acima do prompt.
 
 ## Cadastrar módulos
 
@@ -55,7 +57,7 @@ Trabalhe pelo sintoma que a pessoa relatar ou mostrar:
 | Sintoma no painel | Causa | Ação |
 | --- | --- | --- |
 | "sem eventos de progresso reconhecidos" | O comando não emite o que o adapter entende | Envolva o comando com o adapter da tabela, ou troque para `adapter: "exit"` |
-| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `cancel` pela CLI, depois `status`. Não apague locks nem estado: o encerramento não foi comprovado, e apagar libera um novo início com o processo antigo vivo |
+| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `cancel` pela CLI, depois `status`. Não apague locks nem estado: o encerramento não foi comprovado, e apagar libera um novo início com o processo antigo vivo. Se o `cancel` recusar (`cancellable: false`), mostre à pessoa o processo que sobrou e só o encerre com a confirmação dela; depois rode `status` |
 | "Configuração: …" ou diagnóstico no módulo | Campo inválido; a mensagem nomeia o campo | Corrija pela tabela de campos em `docs/USAGE.md` |
 | Módulo sem `▶` nem `■` | `enabled: false` | Remova `enabled: false` se a pessoa quiser rodá-lo |
 | `▶` apagado / "Início indisponível" | Diagnóstico no módulo ou no cadastro, `cwd` ausente ou run anterior órfão | Resolva o diagnóstico mostrado logo abaixo do módulo; no órfão, siga a linha acima |
