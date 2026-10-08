@@ -42,7 +42,9 @@ Instalação por terminal, clone SSH e `--plugin-dir`: [guia de uso](docs/USAGE.
 ## Configurar
 
 O jeito mais simples é pedir ao Claude: a skill `test-progress:configure`
-cadastra as suítes do projeto e explica erros do painel.
+cadastra as suítes do projeto e explica erros do painel. Depois, quando você
+pedir para rodar os testes, a skill `test-progress:run-tests` os inicia pelo
+coletor, para o run aparecer no painel.
 
 O cadastro fica em `.claude/test-progress.json`, no diretório em que você abriu
 a sessão. Exemplo para um app Maven com `mvnw` na raiz:

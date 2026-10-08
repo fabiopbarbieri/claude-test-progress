@@ -1,9 +1,9 @@
 ---
 name: configure
-description: Configura, opera e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular, Playwright Test ou um comando qualquer), ao iniciar, consultar, cancelar ou ler o log de um módulo do Test Progress, ou quando o painel mostra erro, diagnóstico, órfão ou "sem eventos de progresso".
+description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.claude/test-progress.json`, ao cadastrar uma suíte de testes no painel (pytest, unittest, RSpec, Rails/Minitest, Maven/JUnit, Karma/Angular, Playwright Test ou um comando qualquer), ou quando o painel mostra erro, diagnóstico, órfão ou "sem eventos de progresso". Para rodar módulos já cadastrados, use `test-progress:run-tests`.
 ---
 
-# Test Progress: configurar, operar e diagnosticar
+# Test Progress: configurar e diagnosticar
 
 **Raiz do plugin** = dois níveis acima do diretório base desta skill. Todo caminho de adapter no `command` é absoluto a partir dela: o JSON não interpola variáveis, `~` nem shell.
 
@@ -15,7 +15,7 @@ bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <dire
 
 No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
 
-Para rodar um módulo cadastrado, use `start` pela CLI, não o comando da suíte direto: só um run iniciado pelo coletor aparece no painel e na faixa acima do prompt.
+Para rodar um módulo cadastrado, siga `test-progress:run-tests`.
 
 ## Cadastrar módulos
 
