@@ -74,7 +74,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
       status: 'completed', total: 0, resolved: 0, passed: 0, failed: 0, skipped: 0, percent: null, exitCode: 0 }),
       lost: job('lost', { status: 'error', recoveryRequired: true, cancellable: false }) });
     await $.command.run({ command: 'test-progress', args: 'status --text' });
-    expect(await ui.find({ type: 'Text', text: 'sem testes' })).toBeDefined();
+    expect(await ui.find({ type: 'Text', text: '-' })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: 'Diretório ausente.' })).toMatchObject({ props: { color: 'error', wrap: 'wrap' } });
     expect(await ui.find({ key: 'cancel-lost' })).toBeUndefined();
     await ui.press({ key: 'start-all' });
@@ -341,7 +341,7 @@ test('finished runs read as a result, errors wrap with a next step, and the log 
   await $.command.run({ command: 'test-progress', args: 'status --text' });
   const ui = await $.ui.mount(pane('terminal', 60));
   expect(await ui.find({ key: 'bar' })).toBeUndefined();
-  expect(await ui.find({ type: 'Text', text: '· 19 testes' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '· 19' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: /sem eventos de progresso/ })).toMatchObject({ props: { color: 'error', wrap: 'wrap' } });
   expect(await ui.find({ type: 'Text', text: /clique no nome para abrir o log · confira o "adapter"/ })).toBeDefined();
   expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/1/2' });

@@ -105,7 +105,7 @@ test('polling refreshes the catalogue and all jobs, re-reading only the live sel
   await ui.unmount();
 });
 
-test('AbovePrompt is one line: active first, at most three items, and it steps aside once nothing is new', async ($, on) => {
+test('AbovePrompt is one line: active first, as many items as the width holds, and it steps aside once nothing is new', async ($, on) => {
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
   const modules = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, module(`m${i}`, `M${i}`)]));
   const jobs = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, { ...running, moduleId: `m${i}`, runId: `run${i}`, status: i === 11 ? 'running' : 'completed' }]));
@@ -120,9 +120,18 @@ test('AbovePrompt is one line: active first, at most three items, and it steps a
   expect(await band.find({ key: 'band' })).toMatchObject({ props: { flexDirection: 'row' } });
   expect(await band.find({ key: 'summary-m11' })).toBeDefined();
   expect(await band.find({ type: 'Text', text: ' ~50%' })).toBeDefined();
-  expect(await band.find({ key: 'summary-m0' })).toBeDefined();
-  expect(await band.find({ key: 'summary-m2' })).toBeUndefined();
-  expect(await band.find({ type: 'Text', text: '  ·  +9' })).toBeDefined();
+  // Labels sort as text (M0, M1, M10, M2…): 80 columns hold the active item and six passed ones.
+  expect(await band.find({ key: 'summary-m4' })).toBeDefined();
+  expect(await band.find({ key: 'summary-m5' })).toBeUndefined();
+  expect(await band.find({ type: 'Text', text: '  ·  +5' })).toBeDefined();
+  // A narrow terminal still shows the first item, with the rest counted.
+  const narrow = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
+    viewport: { columns: 30, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
+      bodyColumns: 30, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
+  expect(await narrow.find({ key: 'summary-m11' })).toBeDefined();
+  expect(await narrow.find({ key: 'summary-m0' })).toBeUndefined();
+  expect(await narrow.find({ type: 'Text', text: '  ·  +11' })).toBeDefined();
+  await narrow.unmount();
   expect(await band.find({ type: 'Text', text: /falha\(s\)|restante/ })).toBeUndefined();
   // Only finished, passing runs: nothing to report.
   current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' } });

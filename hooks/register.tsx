@@ -10,6 +10,8 @@ type $ = EngineInterface;
 type Action = 'list' | 'start' | 'status' | 'logs' | 'cancel' | 'help' | 'paths';
 const PANE = 'claude-test-progress';
 const NARROW_COLUMNS = 60;
+// Columns the band leaves free at the right, where the host draws its collapse control.
+const BAND_RESERVE = 6;
 const IDLE_POLL_TICKS = 10;
 const LOG_ROWS = 12;
 const empty = (): TestProgressPanel => ({ identity: '', generation: 0, sessionOwner: '', modules: {}, jobs: {},
@@ -636,23 +638,38 @@ export const register: Register = on => {
     const shown = [...active, ...unseenFailures, ...passed];
     const { Box, Text } = $.ui.resolve(e);
     const names = displayNames();
+    const parts = (id: string) => {
+      const job = p.jobs[id]!, { glyph, color } = statusGlyph(job), pct = compactPercent(job);
+      return { glyph, color, name: names[id] ?? id, orphan: !!job.recoveryRequired,
+        progress: job.recoveryRequired || !live(id) ? '' : pct === '—' ? ` ${job.resolved ?? 0}` : ` ${pct}`, dim: pct === '—',
+        failed: !job.recoveryRequired && (job.failed ?? 0) > 0 ? ` ✗${job.failed}` : '' };
+    };
     const item = (id: string) => {
-      const job = p.jobs[id]!, { glyph, color } = statusGlyph(job);
-      const pct = compactPercent(job);
+      const { glyph, color, name, orphan, progress, dim, failed } = parts(id);
       return <Box key={`summary-${id}`} flexDirection="row">
         <Text key="glyph" color={color}>{`${glyph} `}</Text>
-        <Text key="name">{names[id] ?? id}</Text>
-        {job.recoveryRequired ? <Text key="state" color="error">{' órfão'}</Text> :
-          live(id) ? (pct === '—' ? <Text key="resolved" dimColor>{` ${job.resolved ?? 0} resolvidos`}</Text> : <Text key="pct">{` ${pct}`}</Text>) : null}
-        {!job.recoveryRequired && (job.failed ?? 0) > 0 ? <Text key="failed" color="error">{` ✗${job.failed}`}</Text> : null}
+        <Text key="name">{name}</Text>
+        {orphan ? <Text key="state" color="error">{' órfão'}</Text> :
+          progress ? (dim ? <Text key="resolved" dimColor>{progress}</Text> : <Text key="pct">{progress}</Text>) : null}
+        {failed ? <Text key="failed" color="error">{failed}</Text> : null}
       </Box>;
     };
-    const children = shown.slice(0, 3).flatMap((id, i) => [...(i ? [<Text key={`sep-${i}`} dimColor>{'  ·  '}</Text>] : []), item(id)]);
+    // As many items as the line holds, leaving room for the host's own corner control and the "+N" tail.
+    const SEP = '  ·  ', width = (s: string) => [...s].length;
+    const itemWidth = (id: string) => { const x = parts(id); return 2 + width(x.name) + (x.orphan ? 6 : width(x.progress)) + width(x.failed); };
+    const room = (typeof e.props?.bodyColumns === 'number' ? e.props.bodyColumns : 80) - BAND_RESERVE;
+    let fit = 0, used = 0;
+    for (const id of shown) {
+      const end = used + (fit ? SEP.length : 0) + itemWidth(id), rest = shown.length - fit - 1;
+      if (fit && end + (rest ? width(`${SEP}+${rest}`) : 0) > room) break;
+      fit++; used = end;
+    }
+    const children = shown.slice(0, fit).flatMap((id, i) => [...(i ? [<Text key={`sep-${i}`} dimColor>{SEP}</Text>] : []), item(id)]);
     return <Box flexDirection="column">
       {existing ?? null}
       <Box key="band" flexDirection="row" overflow="hidden">
         {children}
-        {shown.length > 3 ? <Text key="more" dimColor>{`  ·  +${shown.length - 3}`}</Text> : null}
+        {shown.length > fit ? <Text key="more" dimColor>{`${SEP}+${shown.length - fit}`}</Text> : null}
       </Box>
     </Box>;
   });
