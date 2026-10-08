@@ -4,7 +4,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
   sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
-  configStatus } from '../runner/module-presentation.mjs';
+  configStatus, SORTS, sortLabels, nextSort, sortModuleIds } from '../runner/module-presentation.mjs';
 
 type $ = EngineInterface;
 type Action = 'list' | 'start' | 'status' | 'logs' | 'cancel' | 'help' | 'paths';
@@ -14,7 +14,7 @@ const IDLE_POLL_TICKS = 10;
 const LOG_ROWS = 12;
 const empty = (): TestProgressPanel => ({ identity: '', generation: 0, sessionOwner: '', modules: {}, jobs: {},
   stateDiagnostics: {}, workspace: null, busy: false, lastError: '', registrationError: '', selectedLogs: null,
-  logTail: [], logTop: null, chooseLogs: false, showHelp: false, seenRuns: [], collector: null });
+  logTail: [], logTop: null, chooseLogs: false, showHelp: false, sort: 'order', seenRuns: [], collector: null });
 // The host holds what the pane draws, so a hot reload keeps the selection, the seen runs and the collector Node.
 const panel = atom({ plugin: 'test-progress', key: 'panel' } as const, empty());
 // Working copy: hooks change it, then publish it; drawings read the host's value and redraw when it changes.
@@ -25,7 +25,11 @@ const errorText = (error: unknown) => String(error instanceof Error ? error.mess
 async function hydrate($: $) {
   if (hydrated) return;
   const held = await read($, panel);
-  if (!hydrated) { p = { ...empty(), ...held, busy: false }; hydrated = true; published = JSON.stringify(p); }
+  if (!hydrated) {
+    p = { ...empty(), ...held, busy: false };
+    if (!SORTS.includes(p.sort)) p.sort = 'order';
+    hydrated = true; published = JSON.stringify(p);
+  }
 }
 async function publish($: $) {
   hydrated = true;
@@ -126,9 +130,9 @@ async function synchronizeIdentity($: $) {
   const cwd = await $.session.cwd(), owner = await $.session.id();
   const key = `${cwd}\n${owner}`;
   if (p.identity !== key) {
-    // A new identity starts clean, but the collector Node it bootstrapped and the registration outcome stay.
+    // A new identity starts clean, but the collector Node it bootstrapped, the registration outcome and the ordering stay.
     p = { ...empty(), identity: key, generation: p.generation + 1, sessionOwner: owner,
-      registrationError: p.registrationError, collector: p.collector, busy: p.busy };
+      registrationError: p.registrationError, collector: p.collector, busy: p.busy, sort: p.sort };
   }
   return { cwd, owner, generation: p.generation };
 }
@@ -246,6 +250,7 @@ const HELP = [
 ].join('\n');
 const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
   '▶ iniciar  ↻ reinicia os com erro  ■ cancelar  nome abre o log  × fecha o log  ~ total parcial',
+  '⇅ ordena: cadastro → nome → recentes → atenção (falhas primeiro)',
   'A roda do mouse rola o log aberto; ↓ volta ao fim.',
   'S/E/T: módulos com sucesso / com erro / total',
   '✓ passaram  ✗ falharam  ⊘ ignorados',
@@ -321,7 +326,7 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     // Poll survives clear/resume/branch; workers and timer aren't cancelled here.
     await hydrate($);
-    p = { ...empty(), generation: p.generation + 1, registrationError: p.registrationError, collector: p.collector };
+    p = { ...empty(), generation: p.generation + 1, registrationError: p.registrationError, collector: p.collector, sort: p.sort };
     await publish($);
     return next(e);
   });
@@ -498,7 +503,7 @@ export const register: Register = on => {
         {logBlock(id)}
       </Box>;
     };
-    const ids = visible();
+    const ids = sortModuleIds(visible(), p.modules, p.jobs, p.sort);
     const configured = ['absent', 'valid'].includes(p.workspace?.moduleConfig?.status ?? 'absent');
     const counts = summaryCounts(ids, p.jobs);
     return <Box key="module-list" flexDirection="column">
@@ -518,6 +523,7 @@ export const register: Register = on => {
           {p.busy ? <Text key="busy" dimColor>…</Text> : null}
         </Box>
         <Box key="toolbar-actions" flexDirection="row" gap={1}>
+          {ids.length >= 2 ? local('sort', p.sort === 'order' ? '⇅' : `⇅ ${sortLabels[p.sort]}`, () => { p.sort = nextSort(p.sort); }) : null}
           {local('help', '?', () => { p.showHelp = !p.showHelp; })}
         </Box>
       </Box>
