@@ -4,6 +4,21 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.7.0] - 2026-10-07
+
+### Funcionalidades
+
+- **panel:** open the pane when an unseen run starts ([1a50d53](https://github.com/fabiopbarbieri/claude-test-progress/commit/1a50d538438ccfa449d20a21ef1ed0f410906be2))
+- **release:** automate semantic versioning and changelog via a release PR ([7c78589](https://github.com/fabiopbarbieri/claude-test-progress/commit/7c78589a025034d382553b5e2772cd8f93c414ca))
+
+### Correções
+
+- **skill:** run test-progress actions through the collector CLI ([1e88498](https://github.com/fabiopbarbieri/claude-test-progress/commit/1e88498d3dc2a945c03dd0e65759e1131312db62))
+
+### Documentação
+
+- **skill:** tighten test-progress:configure after audit ([22c143e](https://github.com/fabiopbarbieri/claude-test-progress/commit/22c143e74852e26d3ba4697a095fa555c0049762))
+
 ## [0.6.0] - 2026-10-06
 
 ### Funcionalidades
