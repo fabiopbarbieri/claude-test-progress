@@ -276,7 +276,7 @@ function assertResolverParity() {
     if (selector === null) removePath(path.join(project, '.nvmrc'), { force: true });
     else fs.writeFileSync(path.join(project, '.nvmrc'), `${selector}\n`);
     const expected = resolve(false), actual = resolve(true);
-    assert.deepStrictEqual(actual, expected, `Native Node discovery differs for .nvmrc ${selector}`);
+    assert.deepStrictEqual(actual, expected, `Native Node discovery differs for .nvmrc ${selector}: native ${JSON.stringify(actual)}, PowerShell ${JSON.stringify(expected)}`);
   }
   removePath(project, { recursive: true, force: true });
   // Remove each junction itself; a recursive removal must never reach the Node installs.

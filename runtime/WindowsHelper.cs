@@ -426,7 +426,23 @@ namespace TestProgress {
         }
         private static string Cwd(string cwd) {
             if (!Absolute(cwd) || !Directory.Exists(cwd)) throw new ArgumentException("--cwd deve indicar um diretório absoluto existente.");
-            return Path.GetFullPath(cwd);
+            return ProviderPath(cwd);
+        }
+        // As Resolve-Path reports it: separators, "." and ".." resolved, the spelling kept.
+        // Path.GetFullPath on .NET Framework would also expand 8.3 names (RUNNER~1).
+        private static string ProviderPath(string path) {
+            string normalized = path.Replace('/', '\\');
+            bool unc = normalized.StartsWith("\\\\", StringComparison.Ordinal);
+            string[] parts = normalized.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            int fixedParts = unc ? 2 : 1;
+            List<string> kept = new List<string>();
+            for (int index = 0; index < parts.Length; index++) {
+                if (index >= fixedParts && parts[index] == ".") continue;
+                if (index >= fixedParts && parts[index] == "..") { if (kept.Count > fixedParts) kept.RemoveAt(kept.Count - 1); continue; }
+                kept.Add(parts[index]);
+            }
+            string result = (unc ? "\\\\" : "") + String.Join("\\", kept);
+            return kept.Count == fixedParts && !unc ? result + "\\" : result;
         }
 
         private static List<string> Nvm2Roots() {
