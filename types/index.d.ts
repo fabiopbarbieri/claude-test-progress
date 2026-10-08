@@ -75,6 +75,8 @@ export type TestProgressPanel = {
   registrationError: string
   selectedLogs: { id: string; runId: string } | null
   logTail: string[]
+  /** First log line shown; null follows the end as the run writes. */
+  logTop: number | null
   chooseLogs: boolean
   showHelp: boolean
   /** How the pane orders modules; kept across identities so a new session reads the same way. */

@@ -97,9 +97,11 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(answer.text).toContain('LOGS · api · run-api\nfirst');
   expect(answer.text).toContain('LOGS · web · run-web\nsecond');
   const ui = await $.ui.mount(pane('terminal'));
-  expect(await ui.find({ type: 'Text', text: 'Escolha ≡ em um módulo.' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: 'Clique no nome de um módulo para ver o log.' })).toBeDefined();
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ first' })).toBeDefined();
+  // The runner's red reaches the pane as a styled run.
+  expect(await ui.find({ type: 'Text', text: '│ first' })).toMatchObject({ children: [{ props: { dimColor: true } }, { props: { color: 'red' }, children: ['first'] }] });
   expect(await ui.find({ type: 'Text', text: /LOGS/ })).toBeUndefined();
   current.jobs.api = job('api', { runId: 'new-run', logTail: ['new output'] });
   await $.command.run({ command: 'test-progress', args: 'status --text' });
@@ -108,7 +110,7 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(await ui.find({ key: 'select-current-logs' })).toMatchObject({ props: { label: '↻' } });
   await ui.press({ key: 'select-current-logs' });
   expect(await ui.find({ type: 'Text', text: '│ new output' })).toBeDefined();
-  // The same ≡ closes the tail without another collector call.
+  // The same name closes the tail without another collector call.
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ new output' })).toBeUndefined();
   await ui.unmount();
@@ -171,11 +173,35 @@ test('fallback text preserves jobs even when action result fails; closing never 
   expect(answer.text).toContain('runId=run-api'); expect(answer.text).toContain('Configuração inválida.');
   expect(answer.text).toContain('no room');
   const ui = await $.ui.mount(pane('desktop'));
-  // The × closes the pane only; it never cancels a run.
-  expect(await ui.find({ key: 'close' })).toMatchObject({ props: { label: '×', role: 'dismiss' } });
-  await ui.press({ key: 'close' });
+  // The host's own frame closes the pane; the panel draws no × of its own.
+  expect(await ui.find({ key: 'close' })).toBeUndefined();
   await ui.unmount();
-  expect(actions).toEqual(['status']); expect(closed).toEqual(['claude-test-progress']);
+  expect(actions).toEqual(['status']); expect(closed).toEqual([]);
+});
+
+test('toolbar counts S/E/T and reruns only the failed modules, one start each', async ($, on) => {
+  const current = data({ api: module('api', 0), web: module('web', 1), cli: module('cli', 2), docs: module('docs', 3) }, {
+    api: job('api', { status: 'failed', failed: 2 }), web: job('web', { status: 'error', failed: 0 }),
+    cli: job('cli', { status: 'completed', failed: 0 }) });
+  const calls: string[][] = [];
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { calls.push(e.argv.slice(2)); return response(current); });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/2/4', children: [
+    { props: { color: 'success' }, children: ['1'] }, { children: ['/'] }, { props: { color: 'error' }, children: ['2'] },
+    { children: ['/'] }, { props: { dimColor: true }, children: ['4'] }] });
+  expect(await ui.find({ key: 'start-all' })).toMatchObject({ props: { label: '▶ Todos' } });
+  expect(await ui.find({ key: 'start-failed' })).toMatchObject({ props: { label: '↻ Apenas com erro' } });
+  calls.length = 0;
+  await ui.press({ key: 'start-failed' });
+  expect(calls.map(argv => argv[0])).toEqual(['status', 'start', 'start']);
+  expect(calls.slice(1).map(argv => argv.slice(-1)[0])).toEqual(['api', 'web']);
+  current.jobs.api = job('api', { status: 'completed', failed: 0 }); current.jobs.web = job('web', { status: 'completed', failed: 0 });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(await ui.find({ key: 'start-failed' })).toBeUndefined();
+  await ui.unmount();
 });
 
 test('native start performs preflight then starts exactly the ID; cancelled callback refuses replacement run', async ($, on) => {
@@ -246,7 +272,8 @@ test('wide panes keep one line per module; narrow panes move progress to a secon
   await $.command.run({ command: 'test-progress', args: 'status --text' });
   const wide = await $.ui.mount(pane('terminal', 120));
   expect(await wide.find({ key: 'progress' })).toBeUndefined();
-  for (const value of ['API', 'Web', '83.3%', '✓4 ', '✗1 ', '0:57', '━━━━━━━━━━']) expect(await wide.find({ type: 'Text', text: value })).toBeDefined();
+  expect(await wide.find({ key: 'logs-api' })).toMatchObject({ props: { label: 'API' } });
+  for (const value of ['Web', '83.3%', '✓4 ', '✗1 ', '0:57', '━━━━━━━━━━']) expect(await wide.find({ type: 'Text', text: value })).toBeDefined();
   expect(await wide.find({ type: 'Text', text: '✗1 ' })).toMatchObject({ props: { color: 'error' } });
   expect(await wide.find({ type: 'Text', text: /^⊘/ })).toBeUndefined();
   await wide.unmount();
@@ -282,7 +309,9 @@ test('the sort button cycles orderings and keeps them across a redraw', async ($
   on('process.run', () => response(current));
   await $.command.run({ command: 'test-progress', args: 'status --text' });
   const ui = await $.ui.mount(pane('terminal'));
-  const order = async () => (await ui.findAll({ type: 'Text', text: /^(Web|API|Docs)$/ })).map(node => ({ Web: 'web', API: 'api', Docs: 'docs' })[node.text]);
+  // A module with a run shows its name as the log button; one without a run shows plain text.
+  const order = async () => [...new Set((await ui.findAll({ text: /^(Web|API|Docs)$/ }))
+    .map(node => ({ Web: 'web', API: 'api', Docs: 'docs' })[node.text ?? node.props?.label]))];
   expect(await ui.find({ key: 'sort' })).toMatchObject({ props: { label: '⇅' } });
   expect(await order()).toEqual(['web', 'api', 'docs']);
   await ui.press({ key: 'sort' });
@@ -314,12 +343,44 @@ test('finished runs read as a result, errors wrap with a next step, and the log 
   expect(await ui.find({ key: 'bar' })).toBeUndefined();
   expect(await ui.find({ type: 'Text', text: '· 19 testes' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: /sem eventos de progresso/ })).toMatchObject({ props: { color: 'error', wrap: 'wrap' } });
-  expect(await ui.find({ type: 'Text', text: /abre o log · confira o "adapter"/ })).toBeDefined();
-  expect(await ui.find({ type: 'Text', text: '1 falha' })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /clique no nome para abrir o log · confira o "adapter"/ })).toBeDefined();
+  expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/1/2' });
+  expect(await ui.find({ key: 'start-failed' })).toBeDefined();
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: /│ log · run run-api · 4 linhas/ })).toBeDefined();
   await ui.press({ key: 'close-logs-api' });
   expect(await ui.find({ type: 'Text', text: '│ OK' })).toBeUndefined();
+  await ui.unmount();
+});
+
+test('the wheel scrolls an open log within its tail, then hands the edges to the pane', async ($, on) => {
+  const current = data({ api: module('api') }, { api: job('api', { status: 'completed', phase: 'finished', exitCode: 0,
+    logTail: Array.from({ length: 40 }, (_, i) => `line ${i + 1}`) }) });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  let paneMoves = 0;
+  on('ui.scroll', () => { paneMoves += 1; return {}; });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('terminal'));
+  const wheel = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'claude-test-progress', offset: 0, by,
+    bodyRows: 20, contentRows: 20, origin: { kind: 'person' }, pointer: { column: 10, row: 5 } });
+  await ui.press({ key: 'logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 40 linhas/ })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '│ line 40' })).toBeDefined();
+  expect(await ui.find({ key: 'end-logs-api' })).toBeUndefined();
+  expect(await wheel(-3)).toEqual({});
+  expect(await ui.find({ type: 'Text', text: /linhas 26–37 de 40/ })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '│ line 40' })).toBeUndefined();
+  await wheel(-100);
+  expect(await ui.find({ type: 'Text', text: '│ line 1' })).toBeDefined();
+  // At the top the log has nothing more to give: the pane's own window takes the tick.
+  expect(paneMoves).toBe(0);
+  await wheel(-1);
+  expect(paneMoves).toBe(1);
+  expect(await ui.find({ type: 'Text', text: /linhas 1–12 de 40/ })).toBeDefined();
+  await ui.press({ key: 'end-logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 40 linhas/ })).toBeDefined();
   await ui.unmount();
 });
 

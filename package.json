@@ -1,10 +1,10 @@
 {
   "name": "claude-test-progress",
-  "version": "0.5.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=14.0.0" },
-  "description": "Background test progress per module for Claude Code: JUnit/Maven, Karma, pytest, unittest, Rails/Minitest and RSpec.",
+  "description": "Background test progress per module for Claude Code: JUnit/Maven, Karma, Playwright Test, pytest, unittest, Rails/Minitest and RSpec.",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -39,6 +39,7 @@ There is no automerge.
 | `rspec` | `rspec*` 3.14+ (contract is RSpec Core 3.13.x) |
 | `rails72` | Rails 7.3+ and every Minitest update (the job pins the 5.20.0 floor) |
 | `rails80` / `rails81` | Rails outside the job's series; Minitest 6+ |
+| `rails81-minitest6` | Rails 8.2+; Minitest outside 6.x |
 | `angular9` | Everything: frozen Node 12 / npm 6 toolchain with a lockfileVersion 1 lock |
 | `angular18` | Majors; TypeScript 5.6+; zone.js 0.15+ (Angular 18 peers) |
 
@@ -53,7 +54,7 @@ explicitly as fixture-only risk instead of suppressing them silently.
 | Maven | `adapters/junit/pom.xml`, `tests/dependencies/junit/pom.xml` | Listener build and disposable JUnit/Surefire application |
 | pip | `tests/dependencies/python38/requirements.txt`, `python314/requirements.txt` | Quality: Python 3.8 / Node 14.0.0 and Python 3.14 / Node 24 |
 | Bundler | `tests/dependencies/rspec/Gemfile` and lock | RSpec: Ruby 3.1, 3.4 and 4.0 |
-| Bundler | `tests/dependencies/rails72`, `rails80`, `rails81` Gemfiles and locks | Rails 7.2 / Ruby 3.3; Rails 8.0 and 8.1 / Ruby 3.4 |
+| Bundler | `tests/dependencies/rails72`, `rails80`, `rails81`, `rails81-minitest6` Gemfiles and locks | Rails 7.2 / Ruby 3.3; Rails 8.0 and 8.1 / Ruby 3.4; Rails 8.1 / Minitest 6 / Ruby 3.4 |
 | npm | `tests/dependencies/angular9` and `angular18` package manifests/locks | Angular CLI/Karma/browser fixtures; no npm updates for the dependency-free root package |
 
 The initial Python/Ruby framework versions match the previous inline installations.
@@ -121,9 +122,9 @@ read-only token restrictions on Dependabot/fork PRs. GitHub may still require a
 maintainer to approve a first-time fork's workflow; approve only after review.
 A successful ordinary PR is not evidence of an actual Dependabot/fork run.
 
-## Java and Angular integration gates
+## Java, Angular and Playwright integration gates
 
-[Java and Angular adapters](../.github/workflows/adapters.yml) adds selected-suite
+[Java, Angular and Playwright adapters](../.github/workflows/adapters.yml) adds selected-suite
 jobs without adding globally installed frameworks or new required branch checks:
 
 | Integration | App runtime | Collector runtime |
@@ -132,6 +133,8 @@ jobs without adding globally installed frameworks or new required branch checks:
 | JUnit 5.14.4 / Surefire 3.6.0 | Temurin Java 21 | Node 24 |
 | Angular 9.1.13 / CLI 9.1.15 / Karma 5.2.3 | Node 12.22.12 | Node 14.0.0 |
 | Angular 18.2.14 / CLI 18.2.21 / Karma 6.4.4 | Node 22 | Node 24 |
+| Playwright Test 1.44.1 (minimum, frozen) / Chromium | Node 18 | Node 14.0.0 |
+| Playwright Test 1.63.0 (latest, Dependabot minor/patch) / Chromium | Node 24 | Node 24 |
 
 The collector's minimum remains Node 14.0.0. An app has its own runtime: Angular
 9 uses its original Node 12 toolchain, while Angular 18 uses Node 22. This does

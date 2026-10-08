@@ -12,7 +12,8 @@ até a conclusão. Inclui testes Ruby, views e system; os limites
 observados estão em [VALIDATION](../adapters/rails/VALIDATION.md).
 
 Há integrações para [JUnit 5/Maven](../adapters/junit/README.md),
-[Karma](../adapters/karma/README.md) e
+[Karma](../adapters/karma/README.md),
+[Playwright Test](../adapters/playwright/README.md) e
 [pytest/unittest](../adapters/python/README.md). Pytest é serial; pytest-xdist
 não é suportado. Os fallbacks de logs reconhecem somente Maven e Karma.
 

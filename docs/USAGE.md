@@ -139,6 +139,19 @@ resolvedor somente no início dos módulos selecionados, respeita a `.nvmrc` do
 app e acrescenta o diretório do Node escolhido ao PATH do filho. Não instala
 Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do app.
 
+### Cores no log
+
+A saída do runner vai para um pipe, então o coletor pede cor a cada módulo:
+`FORCE_COLOR=1` para todos (Node/Karma, pytest, unittest no Python 3.13+);
+`MAVEN_ARGS=-Dstyle.color=always` quando o adapter é `maven` ou o comando é
+`mvn`/`mvnw` (Maven 3.9+); `SPEC_OPTS=--force-color` quando o comando chama
+`rspec`. Valores que você já tenha em `MAVEN_ARGS`/`SPEC_OPTS` são mantidos, e
+uma opção de cor já presente neles vence. O adaptador Rails liga as cores do
+reporter do Rails sob `FORCE_COLOR`. O painel desenha as cores (SGR) e descarta
+outros controles de terminal; `--text` e a CLI de texto mostram linhas sem cor.
+Para desligar num módulo, use `"env": {"NO_COLOR": "1"}`; um `NO_COLOR` ou
+`FORCE_COLOR` herdado do ambiente também desliga a política.
+
 | Adapter | Progresso |
 | --- | --- |
 | `auto` | Eventos e, na ausência deles, fallback de logs Maven/Karma |
@@ -149,13 +162,14 @@ Node nem muda o PATH global. O Node 14+ do coletor é independente do Node do ap
 
 Todos os adapters podem ser usados por qualquer ID. Configurar um runner sem
 integração não cria contadores. Python, Ruby e Rails normalmente usam `inherit`
-e `events`; Angular/Karma normalmente usa `node-project` com reporter ou fallback.
+e `events`; Angular/Karma normalmente usa `node-project` com reporter ou fallback;
+Playwright Test usa `node-project` e `events` com o reporter.
 
 Modelos: [Módulos](../config.modules.example.json), [Templates](../config.registry.example.json),
 [Java + web](../config.example.json), [Angular 9](../config.angular9.example.json),
 [Python](../config.python.example.json), [Windows](../config.windows.example.json),
-[Python no Windows](../config.python.windows.example.json), [Ruby](../config.ruby.example.json)
-e [Rails](../config.rails.example.json). Ajuste comandos e caminhos ao seu app.
+[Python no Windows](../config.python.windows.example.json), [Ruby](../config.ruby.example.json),
+[Rails](../config.rails.example.json) e [Playwright](../config.playwright.example.json). Ajuste comandos e caminhos ao seu app.
 
 ### Templates pessoais opcionais
 
@@ -206,6 +220,13 @@ As fontes privadas são revalidadas antes da reserva e da liberação da barreir
 | `/test-progress logs id` / `logs all` | Consulta logs dos selecionados |
 | `/test-progress cancel id` / `cancel all` | Solicita cancelamento da sessão |
 | `--text` | Alternativa textual no Mod |
+
+Quando nenhuma execução está mais ativa e alguma terminou com falha (teste
+falho, `failed` ou `error`) que você não viu no painel, ele abre sozinho no log
+do primeiro módulo com falha, na ordem do painel. Não toma o teclado e abre no
+máximo uma vez por execução; execuções que passam não o abrem. O Claude Code só
+mostra um painel aberto pelo mod com 144 colunas; até lá, a faixa acima do
+prompt mostra o progresso.
 
 Não há atalho `/test-progress id`: o início é sempre explícito. Status/logs/cancel consultam
 jobs autenticados mesmo se o módulo tiver sido removido ou a configuração estiver

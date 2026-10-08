@@ -1,66 +1,25 @@
 # Claude Test Progress
 
-![Capa ilustrativa do Claude Test Progress](docs/assets/cover.png)
+![Test Progress](docs/assets/logo.png)
 
-**Acompanhe seus testes no Claude Code enquanto eles rodam em segundo plano.**
-O plugin `test-progress` apresenta os módulos declarados no seu workspace,
-com contadores, estado e logs por ID. É um
-[Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.5.0**, licença **MIT**.
-A capa é uma ilustração; a interface real é um painel de terminal:
+**Acompanhe suas suítes de teste no Claude Code enquanto elas rodam em segundo plano.**
+Plugin `test-progress`, um [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
+independente da Anthropic. Versão **0.9.0**, licença **MIT**.
 
-```text
-4 módulos · 1 rodando · 1 falha               ▶ todos ⇅ ? ×
-● API        ━━━━━━━━━━━━  ~83%  ✓4 ✗1       0:57 ≡ ■
-✓ Cobrança   ✓12 · 12 testes                 0:08 ≡ ▶
-✗ Web        erro                            1:40 ≡ ▶
-  O comando terminou sem eventos de progresso reconhecidos;
-  nenhum teste foi confirmado.
-  → ≡ abre o log · confira o "adapter" do módulo
-○ Worker     —                                    ▶
-```
+![Painel do Test Progress com sete módulos de projetos fictícios](docs/assets/panel.png)
 
-`/test-progress` sem argumentos abre ou fecha o painel; `×`, Esc e `ctrl+x x` (com o painel em foco) também fecham. O Claude Code ainda não liga atalhos de teclado a slash commands, então abrir pelo teclado depende do comando.
-```
+- **Um painel para todas as suítes:** Maven/JUnit, Karma/Angular, Playwright,
+  pytest/unittest, RSpec, Rails/Minitest ou qualquer comando.
+- **Progresso ao vivo:** barra, percentual, ✓ passaram, ✗ falharam, ⊘ ignorados e tempo.
+- **Ações no próprio painel:** `▶` inicia, `■` cancela, `↻ Apenas com erro` reexecuta
+  só o que falhou e clicar no nome abre o log com as cores do runner.
+- **Resumo acima do prompt:** uma linha com o que está rodando e as falhas ainda não vistas.
 
-A skill `test-progress:configure` permite pedir ao Claude que cadastre as suítes
-do projeto ou explique um erro do painel.
+O topo do painel conta módulos com sucesso / com erro / total. O percentual é
+testes resolvidos / total conhecido; `~` indica total parcial, que ainda pode
+crescer. **100% não comprova sucesso**: confira estado, falhas e código de saída.
 
-Acima do prompt, uma faixa de uma linha resume o que está rodando e as falhas
-ainda não vistas; ela some quando não há nada novo.
-
-## Funcionalidades e limites
-
-- Cadastro de zero a vários módulos; somente o workspace ativa módulos.
-- Início explícito por ID ou `all`, consulta, logs e cancelamento por sessão.
-- Painel e resumo acima do prompt, com alternativa textual `--text`.
-- Runtime explícito: `inherit` ou `node-project`, independente do ID/linguagem.
-- Início conjunto com preflight completo e barreira entre todos os workers.
-
-Percentual é **testes resolvidos / total conhecido**, incluindo ignorados.
-Total desconhecido não é zero; total parcial pode crescer. **100% não comprova
-encerramento nem sucesso**: confira estado, falhas e código de saída. Não há
-cobertura de código, estimativa de tempo ou integração automática com uma CI.
-O plugin não instala runners, browsers ou runtimes.
-
-## Compatibilidade resumida
-
-| Base ou integração | Alcance e limite |
-| --- | --- |
-| Claude Code / coletor | Claude **2.1.289+**, Node **14+** para o coletor |
-| Linux / WSL / Windows | Linux é o caminho exercitado; WSL usa esse caminho; Windows nativo tem gate próprio e aceite em VM Windows 11, ainda sem máquina física |
-| Python | Python 3.8+, pytest 7+ ou unittest; integração serial |
-| Ruby / RSpec | Ruby 3.1+, RSpec Core 3.13.x; integração serial |
-| Rails / Minitest | Rails 7.2/8.0/8.1, Minitest >=5.20 e <6; `rack_test` não prova Selenium |
-| Java / JUnit 5 | Java 17+, JUnit 5.14+; fallback Maven ou listener opcional; consulte o alcance do gate real |
-| Angular / Karma | Reporter ou fallback; aceite em browser/app real é separado dos contratos |
-
-Veja [versões testadas](docs/COMPATIBILITY.md).
-O coletor usa seu próprio Node; `node-project` prepara o Node do aplicativo
-respeitando a `.nvmrc`. `inherit` preserva o ambiente sem descobrir Node do app.
-Linux/WSL usa Bash; descoberta nvm usa GNU `sort -V`. Windows usa PowerShell 5.1/7.
-
-## Instalar e configurar
+## Instalar
 
 Com acesso SSH ao GitHub configurado, rode no Claude Code **um comando por vez**
 (colados juntos, as linhas seguintes viram argumentos do primeiro):
@@ -78,13 +37,17 @@ Com acesso SSH ao GitHub configurado, rode no Claude Code **um comando por vez**
 ```
 
 Depois, `/test-progress help`, `/test-progress paths` e `/test-progress list`.
-
-O marketplace próprio se chama `test-progress-marketplace`. Um workspace sem
-cadastro pode ter zero módulos; listar ou abrir o painel não executa testes.
 Instalação por terminal, clone SSH e `--plugin-dir`: [guia de uso](docs/USAGE.md).
 
-Crie `.claude/test-progress.json` no diretório em que abriu a sessão. Exemplo
-para um app Maven que já possui `mvnw` executável na raiz, em Linux/WSL:
+## Configurar
+
+O jeito mais simples é pedir ao Claude: a skill `test-progress:configure`
+cadastra as suítes do projeto e explica erros do painel. Depois, quando você
+pedir para rodar os testes, a skill `test-progress:run-tests` os inicia pelo
+coletor, para o run aparecer no painel.
+
+O cadastro fica em `.claude/test-progress.json`, no diretório em que você abriu
+a sessão. Exemplo para um app Maven com `mvnw` na raiz:
 
 ```json
 {
@@ -95,60 +58,67 @@ para um app Maven que já possui `mvnw` executável na raiz, em Linux/WSL:
       "command": ["./mvnw", "test"],
       "cwd": ".",
       "adapter": "maven",
-      "runtime": "inherit",
-      "env": {}
+      "runtime": "inherit"
     }
   }
 }
 ```
 
-`command` é **argv**: um elemento por argumento, sem expansão de shell ou de
-`CLAUDE_PLUGIN_ROOT` no JSON. `cwd` é relativo ao workspace. Use os caminhos
-absolutos de `/test-progress paths` para os [adapters](adapters/README.md).
-Registry pessoal de templates é opcional; nunca ativa módulos sozinho.
-[Configuração e templates](docs/USAGE.md#configurar-seu-projeto) · [Windows](WINDOWS.md).
+`command` é argv (um item por argumento, sem shell). Para contar testes em
+outras suítes, use os [adapters](adapters/README.md) pelo caminho absoluto
+mostrado em `/test-progress paths`. Exemplos prontos, templates pessoais e
+todos os campos: [configurar seu projeto](docs/USAGE.md#configurar-seu-projeto).
 
 ## Comandos
 
 | Comando | Ação |
 | --- | --- |
-| `/test-progress` ou `/test-progress status [id\|all]` | Abre/atualiza o painel sem iniciar testes |
-| `/test-progress help` / `paths` | Ajuda / caminhos da instalação ativa |
-| `/test-progress list` | Lista módulos e diagnósticos sem resolver ferramentas |
-| `/test-progress start api` / `start all` | Inicia o módulo escolhido / todos os habilitados |
-| `/test-progress logs api` / `logs all` | Consulta logs por módulo |
-| `/test-progress cancel api` / `cancel all` | Solicita cancelamento na sessão responsável |
+| `/test-progress` | Abre ou fecha o painel, sem iniciar testes |
+| `/test-progress list` | Lista módulos e diagnósticos |
+| `/test-progress start <id>` / `start all` | Inicia um módulo / todos os habilitados |
+| `/test-progress logs <id>` | Mostra o log do módulo |
+| `/test-progress cancel <id>` / `cancel all` | Cancela a execução |
+| `/test-progress help` / `paths` | Ajuda / caminhos da instalação |
 
-Acrescente `--text`, por exemplo `/test-progress status all --text`.
-No painel: `▶` inicia, `■` cancela, `≡` abre os logs sob o módulo, `⇅` alterna a
-ordem (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
-[Suítes demoradas, owners e recuperação](docs/USAGE.md#testes-demorados-e-consultas-pelo-claude).
+Acrescente `--text` para a saída em texto. No painel, `⇅` alterna a ordem dos
+módulos (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
+
+Quando todas as execuções terminam e alguma falhou, o painel abre sozinho no log
+do primeiro módulo com falha, inclusive para execuções iniciadas pelo Claude via
+CLI. Ele não toma o teclado e, por ser aberto pelo mod, só aparece com o terminal
+largo o bastante (144 colunas); fechado, não reabre para as mesmas execuções.
 
 ## Atualizar ou remover
 
-**Encerre os jobs e confirme que não há recuperação pendente antes de trocar a
-instalação.** Fechar painel, reload ou uninstall não para processos detached nem
-comprova limpeza dos logs fora do cache. Após a confirmação de encerramento:
+**Encerre os jobs antes de trocar a instalação:** fechar o painel, recarregar ou
+desinstalar não para processos em segundo plano.
 
 ```bash
 claude plugin marketplace update test-progress-marketplace
 claude plugin update test-progress@test-progress-marketplace --scope user
 ```
 
-Para remover, em vez de atualizar:
+Para remover:
 
 ```bash
 claude plugin uninstall test-progress@test-progress-marketplace --scope user
 ```
 
-Ajuste o escopo instalado. Após atualizar, recarregue e reconsulte
-`/test-progress paths` para ajustar os caminhos dos adapters no app.
-[Procedimentos completos](docs/USAGE.md#atualizar-com-jobs-encerrados).
+Depois de atualizar, confira `/test-progress paths` e ajuste os caminhos dos
+adapters. [Procedimento completo](docs/USAGE.md#atualizar-com-jobs-encerrados).
+
+## Compatibilidade
+
+Claude Code **2.1.289+** e Node **14+** para o coletor. Linux e WSL são o caminho
+principal; Windows nativo tem [guia próprio](WINDOWS.md). O plugin não instala
+runners, browsers nem runtimes. Versões testadas por suíte:
+[compatibilidade](docs/COMPATIBILITY.md).
 
 ## Guias
 
-[Uso](docs/USAGE.md) · [Compatibilidade](docs/COMPATIBILITY.md) ·
-[Diagnóstico](docs/TROUBLESHOOTING.md) · [Windows](WINDOWS.md) · [Angular 9](ANGULAR9.md) ·
-[Validação](docs/VALIDATION.md) · [Segurança](SECURITY.md) ·
-[Contribuição](CONTRIBUTING.md) · [Extensões](docs/EXTENDING.md) ·
-[CI e governança](docs/CI-GOVERNANCE.md) · [Licença MIT](LICENSE).
+[Uso](docs/USAGE.md) · [Diagnóstico](docs/TROUBLESHOOTING.md) ·
+[Compatibilidade](docs/COMPATIBILITY.md) · [Windows](WINDOWS.md) ·
+[Angular 9](ANGULAR9.md) · [Validação](docs/VALIDATION.md) ·
+[Extensões](docs/EXTENDING.md) · [Contribuição](CONTRIBUTING.md) ·
+[CI e governança](docs/CI-GOVERNANCE.md) · [Segurança](SECURITY.md) ·
+[Licença MIT](LICENSE)

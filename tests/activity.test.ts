@@ -276,3 +276,43 @@ test('a placed pane acknowledges failed runs and the band steps aside', async ($
   expect(await band.find({ key: 'band' })).toBeUndefined();
   await band.unmount();
 });
+
+test('when every run has ended, unseen failures open the pane once on the first failed log, without focus', async ($, on) => {
+  const clock = mock.clock(on); const opened: any[] = []; const logs: string[] = []; let panes: any[] = [];
+  const modules = { api: module(), web: module('web', 'Web') };
+  const failedApi = { ...running, status: 'failed', failed: 1, logTail: ['FAILED test_api - AssertionError'] };
+  let current = data(modules, {});
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { if (e.argv[2] === 'logs') logs.push(e.argv[e.argv.indexOf('--module') + 1]); return response(current); });
+  on('ui.panes', () => ({ value: panes }));
+  on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: true } }; });
+  on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  // A failure mid-run, or one module done while another still runs, waits for the whole batch.
+  current = data(modules, { api: { ...running, failed: 1 }, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(10000);
+  current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(3000);
+  expect(opened).toEqual([]);
+  // Everything ended: one open, on the first failed module's log.
+  current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1', status: 'failed', failed: 2 } });
+  await clock.advance(1000);
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toMatchObject({ id: 'claude-test-progress', title: 'Test Progress' });
+  expect(opened[0].focus).toBeUndefined();
+  expect(logs).toEqual(['api']);
+  const view = await $.ui.mount(pane);
+  expect(await view.find({ type: 'Text', text: /AssertionError/ })).toBeDefined();
+  await view.unmount();
+  // Closed again, it stays closed for those runs.
+  await clock.advance(20000); expect(opened).toHaveLength(1);
+  // An existing pane is left as it is, even for a new failure.
+  panes = [{ id: 'claude-test-progress', title: 'Test Progress', isShown: false }];
+  current = data(modules, { api: { ...failedApi, runId: 'second' } }); await clock.advance(10000);
+  expect(opened).toHaveLength(1);
+  // Passing runs never open it; a run that errors does.
+  panes = []; current = data(modules, { api: { ...running, runId: 'third', status: 'completed' } });
+  await clock.advance(10000); expect(opened).toHaveLength(1);
+  current = data(modules, { api: { ...running, runId: 'fourth', status: 'error' } }); await clock.advance(10000);
+  expect(opened).toHaveLength(2);
+});

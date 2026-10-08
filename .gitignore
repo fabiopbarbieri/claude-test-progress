@@ -18,3 +18,4 @@ adapters/junit/target/
 coverage/
 .DS_Store
 Thumbs.db
+.orca/

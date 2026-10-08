@@ -3,7 +3,7 @@ import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
-  sanitizeText, sanitizeTail, statusGlyph, progressBar, outcomeText, summaryLine, compactPercent, compactCounts, clock,
+  sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
   configStatus, SORTS, sortLabels, nextSort, sortModuleIds } from '../runner/module-presentation.mjs';
 
 type $ = EngineInterface;
@@ -11,9 +11,10 @@ type Action = 'list' | 'start' | 'status' | 'logs' | 'cancel' | 'help' | 'paths'
 const PANE = 'claude-test-progress';
 const NARROW_COLUMNS = 60;
 const IDLE_POLL_TICKS = 10;
+const LOG_ROWS = 12;
 const empty = (): TestProgressPanel => ({ identity: '', generation: 0, sessionOwner: '', modules: {}, jobs: {},
   stateDiagnostics: {}, workspace: null, busy: false, lastError: '', registrationError: '', selectedLogs: null,
-  logTail: [], chooseLogs: false, showHelp: false, sort: 'order', seenRuns: [], collector: null });
+  logTail: [], logTop: null, chooseLogs: false, showHelp: false, sort: 'order', seenRuns: [], collector: null });
 // The host holds what the pane draws, so a hot reload keeps the selection, the seen runs and the collector Node.
 const panel = atom({ plugin: 'test-progress', key: 'panel' } as const, empty());
 // Working copy: hooks change it, then publish it; drawings read the host's value and redraw when it changes.
@@ -54,6 +55,12 @@ function displayNames() {
     return [id, (count[label] ?? 0) > 1 && label !== id ? `${label} (${id})` : label];
   }));
 }
+// The log shows a window of LOG_ROWS lines; with no top of its own it follows the end.
+function logWindow() {
+  const max = Math.max(0, p.logTail.length - LOG_ROWS);
+  return { top: p.logTop === null ? max : Math.min(Math.max(0, p.logTop), max), max };
+}
+const closeLogs = () => { p.selectedLogs = null; p.logTail = []; p.logTop = null; };
 const diagnostics = (id: string): TestProgressDiagnostic[] => [...(p.modules[id]?.diagnostics ?? []), ...(p.stateDiagnostics[id] ?? [])];
 function serialized<T>(task: () => Promise<T>): Promise<T> {
   queued += 1;
@@ -78,6 +85,8 @@ function startAllowed(id: string) {
     !diagnostics(id).length && !(job && ACTIVE.has(job.status)) && !job?.recoveryRequired;
 }
 const allAllowed = () => enabled().length > 0 && enabled().every(startAllowed);
+const failedIds = () => enabled().filter(id => finishedWithFailure(p.jobs[id]));
+const failedAllowed = () => failedIds().length > 0 && failedIds().every(startAllowed);
 // Opening or using the pane acknowledges the runs it shows, so the band can step aside.
 function acknowledge() {
   const seen = new Set(p.seenRuns);
@@ -181,6 +190,24 @@ type Expected = { generation: number; projection: string };
 function perform($: $, action: Action, moduleId = 'all', expected: Expected | null = null) {
   return serialized(() => performNow($, action, moduleId, expected));
 }
+// The collector starts one ID or all; a rerun of the failed modules starts each in turn after one check.
+function startFailed($: $, expected: Expected) {
+  return serialized(async () => {
+    await hydrate($);
+    p.busy = true; await publish($);
+    try {
+      await synchronizeIdentity($);
+      await collect($, 'status');
+      if (p.generation !== expected.generation || actionProjection() !== expected.projection) throw new Error('O cadastro ou a execução mudou. Revise os módulos antes de agir.');
+      p.busy = false;
+      const ids = failedIds(), allowed = failedAllowed();
+      p.busy = true;
+      if (!allowed) throw new Error('Início indisponível. Confira os diagnósticos e jobs ativos.');
+      for (const id of ids) await collect($, 'start', id);
+    } catch (error) { p.lastError = errorText(error); }
+    finally { p.busy = false; await publish($); }
+  });
+}
 async function performNow($: $, action: Action, moduleId: string, expected: Expected | null) {
   await hydrate($);
   p.busy = true; await publish($);
@@ -201,8 +228,8 @@ async function performNow($: $, action: Action, moduleId: string, expected: Expe
     await collect($, action, moduleId);
     if (action === 'logs') {
       const job = p.jobs[moduleId];
-      if (moduleId === 'all') { p.chooseLogs = true; p.selectedLogs = null; p.logTail = []; }
-      else if (job) { p.selectedLogs = { id: moduleId, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.chooseLogs = false; }
+      if (moduleId === 'all') { closeLogs(); p.chooseLogs = true; }
+      else if (job) { p.selectedLogs = { id: moduleId, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.logTop = null; p.chooseLogs = false; }
     }
   } catch (error) { p.lastError = errorText(error); }
   finally { p.busy = false; await publish($); }
@@ -222,16 +249,38 @@ const HELP = [
   'Cobertura de código e estimativa de tempo não são calculadas.',
 ].join('\n');
 const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órfão  ○ sem execução',
-  '▶ iniciar  ■ cancelar  ≡ logs  × fechar  ~ total parcial',
+  '▶ iniciar  ↻ reinicia os com erro  ■ cancelar  nome abre o log  × fecha o log  ~ total parcial',
   '⇅ ordena: cadastro → nome → recentes → atenção (falhas primeiro)',
+  'A roda do mouse rola o log aberto; ↓ volta ao fim.',
+  'S/E/T: módulos com sucesso / com erro / total',
   '✓ passaram  ✗ falharam  ⊘ ignorados',
   '/test-progress help lista os comandos.'];
 function textLogs(moduleId: string) {
   const ids = moduleId === 'all' ? Object.keys(p.jobs).sort() : [moduleId];
-  return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${sanitizeTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
+  return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${plainTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
 }
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
+}
+// Runs whose failure already opened the pane once; closing it keeps it closed for those runs.
+const autoOpened = new Set<string>();
+// Once nothing is running, unseen failures open the pane on the first failed module's log, without
+// taking the keyboard. Passing runs never open it. Runs only by the tick, inside its serialized task.
+// The host may hold the pane until the terminal is wide enough; the band still reports meanwhile.
+async function autoOpen($: $) {
+  if (Object.values(p.jobs).some(job => ACTIVE.has(job.status))) return;
+  const failed = visible().filter(id => { const job = p.jobs[id]; return !!job && finishedWithFailure(job) &&
+    !p.seenRuns.includes(job.runId) && !autoOpened.has(job.runId); });
+  if (!failed.length) return;
+  for (const id of failed) autoOpened.add(p.jobs[id]!.runId);
+  try {
+    if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
+    const first = failed[0]!;
+    await collect($, 'logs', first);
+    const job = p.jobs[first];
+    if (job) { p.selectedLogs = { id: first, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.logTop = null; p.chooseLogs = false; }
+    await $.ui.open({ id: PANE, title: 'Test Progress' });
+  } catch { /* No pane in this surface: the band and the command remain. */ }
 }
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -251,6 +300,7 @@ export const register: Register = on => {
           }
         } catch (error) { p.lastError = errorText(error); }
         if (await paneShown($)) acknowledge();
+        else await autoOpen($);
         await publish($);
       });
     });
@@ -298,7 +348,8 @@ export const register: Register = on => {
     if (command.action === 'paths') return { text: [`Plugin: ${$.plugin.root}`,
       `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
       `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
-      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
+      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
+      `Playwright: ${$.plugin.root}/adapters/playwright/reporter.cjs`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
     // A bare /test-progress toggles: an open pane closes, a closed one refreshes and opens.
     if (!String(e.args ?? '').trim()) {
       try {
@@ -337,17 +388,15 @@ export const register: Register = on => {
         onPress={guarded(async () => { if (allowed) await perform($, action, id, expected); })} />;
     const local = (key: string, label: string, fn: () => void) => <Button key={key} label={label} plain onPress={guarded(fn)} />;
     const names = displayNames();
-    const actions = (id: string) => {
+    const toggleLogs = (id: string) => guarded(async () => {
+      if (p.selectedLogs?.id === id && !p.chooseLogs) { closeLogs(); return; }
+      await perform($, 'logs', id, expected);
+    });
+    // ▶/■ leads the row, in a fixed cell so names stay aligned when a module has neither.
+    const runControl = (id: string) => {
       const module = p.modules[id], job = p.jobs[id];
-      const open = p.selectedLogs?.id === id;
-      return [
-        ...(job ? [<Button key={`logs-${id}`} label="≡" plain dimColor={p.busy && !open} onPress={guarded(async () => {
-          if (open && !p.chooseLogs) { p.selectedLogs = null; p.logTail = []; return; }
-          await perform($, 'logs', id, expected);
-        })} />] : []),
-        ...(job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ? [button(`cancel-${id}`, '■', 'cancel', id)] :
-          module?.enabled ? [button(`start-${id}`, '▶', 'start', id, startAllowed(id))] : []),
-      ];
+      return <Box key="run" width={1}>{job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ? button(`cancel-${id}`, '■', 'cancel', id) :
+        module?.enabled ? button(`start-${id}`, '▶', 'start', id, startAllowed(id)) : null}</Box>;
     };
     const progress = (id: string, cells: number) => {
       const job = p.jobs[id];
@@ -369,26 +418,42 @@ export const register: Register = on => {
         ...(stopping ? [<Text key="stopping" color="inactive">parando…</Text>] : counts),
       ];
     };
+    // The runner's own colors win; a line without any keeps the dim tail and the red error guess.
+    const logLine = (line: string, key: string) => {
+      const spans = ansiSpans(line);
+      const text = spans.map(span => span.text).join('');
+      if (!spans.some(span => span.style)) return /\b(ERROR|FAIL(ED|URE)?)\b/.test(text) ?
+        <Text key={key} wrap="truncate-end" color="error">{`│ ${text}`}</Text> :
+        <Text key={key} wrap="truncate-end" dimColor>{`│ ${text}`}</Text>;
+      return <Text key={key} wrap="truncate-end">
+        <Text dimColor>{'│ '}</Text>
+        {spans.map((span, j) => span.style ? <Text key={`s${j}`} {...span.style}>{span.text}</Text> : <Text key={`s${j}`} dimColor>{span.text}</Text>)}
+      </Text>;
+    };
     const logBlock = (id: string) => {
       const selected = p.selectedLogs;
       if (selected?.id !== id) return [];
       const job = p.jobs[id];
       const changed = job?.runId !== selected.runId;
-      const lines = p.logTail.slice(-12);
-      const header = `log · run ${selected.runId.slice(0, 8)} · ${lines.length < p.logTail.length ? `últimas ${lines.length} de ${p.logTail.length}` : `${lines.length}`} ${lines.length === 1 ? 'linha' : 'linhas'}`;
+      const { top, max } = logWindow(), total = p.logTail.length;
+      const lines = p.logTail.slice(top, top + LOG_ROWS);
+      const range = total <= LOG_ROWS ? `${total} ${total === 1 ? 'linha' : 'linhas'}` :
+        top === max ? `últimas ${lines.length} de ${total} linhas` : `linhas ${top + 1}–${top + lines.length} de ${total}`;
+      const header = `log · run ${selected.runId.slice(0, 8)} · ${range}`;
       return [
-        <Box key={`log-${id}`} flexDirection="column" paddingLeft={2}>
+        <Box key={`log-${id}`} flexDirection="column" paddingLeft={4}>
           <Box key="log-header" flexDirection="row" justifyContent="space-between">
             <Text key="log-title" color="inactive" wrap="truncate-end">{`│ ${header}`}</Text>
-            {local(`close-logs-${id}`, '×', () => { p.selectedLogs = null; p.logTail = []; })}
+            <Box key="log-actions" flexDirection="row" flexShrink={0} gap={1}>
+              {top < max ? local(`end-logs-${id}`, '↓', () => { p.logTop = null; }) : null}
+              {local(`close-logs-${id}`, '×', closeLogs)}
+            </Box>
           </Box>
           {changed && job ? <Box key="changed" flexDirection="row" gap={1}>
             <Text color="inactive">│ nova execução</Text>
             {button('select-current-logs', '↻', 'logs', id)}
           </Box> : null}
-          {lines.length ? lines.map((line, i) => /\b(ERROR|FAIL(ED|URE)?)\b/.test(line) ?
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" color="error">{`│ ${line}`}</Text> :
-            <Text key={`log-${selected.runId}-${i}`} wrap="truncate-end" dimColor>{`│ ${line}`}</Text>) :
+          {lines.length ? lines.map((line, i) => logLine(line, `log-${selected.runId}-${top + i}`)) :
             <Text key="empty" color="inactive">│ sem saída ainda</Text>}
         </Box>,
       ];
@@ -398,10 +463,10 @@ export const register: Register = on => {
       const job = p.jobs[id];
       const problems = [...diagnostics(id).map(diagnosticText), ...(job?.error ? [job.error] : [])];
       if (!problems.length) return [];
-      const hint = job && p.selectedLogs?.id !== id ? '→ ≡ abre o log' + (job.phase === 'no-progress-observed' || /eventos de progresso/.test(job.error ?? '') ?
+      const hint = job && p.selectedLogs?.id !== id ? '→ clique no nome para abrir o log' + (job.phase === 'no-progress-observed' || /eventos de progresso/.test(job.error ?? '') ?
         ' · confira o "adapter" do módulo' : '') : '';
       return [
-        <Box key="problems" flexDirection="column" paddingLeft={2}>
+        <Box key="problems" flexDirection="column" paddingLeft={4}>
           {problems.slice(0, 2).map((item, i) => <Text key={`problem-${i}`} color="error" wrap="wrap">{item}</Text>)}
           {hint ? <Text key="hint" dimColor wrap="wrap">{hint}</Text> : null}
         </Box>,
@@ -413,45 +478,53 @@ export const register: Register = on => {
       const time = job ? clock(job.elapsedMs) : '';
       const live = !!job && ACTIVE.has(job.status);
       const head = [
-        <Box key="glyph" width={2}><Text color={color} bold>{glyph}</Text></Box>,
-        <Box key="name" flexGrow={1} flexShrink={1}><Text wrap="truncate" bold={!!module?.enabled} dimColor={!module?.enabled}>{names[id] ?? id}</Text></Box>,
+        <Box key="glyph" width={1}><Text color={color} bold>{glyph}</Text></Box>,
+        runControl(id),
+        // With a run, the name opens and closes its log.
+        <Box key="name" flexGrow={1} flexShrink={1} overflow="hidden">{job ?
+          <Button key={`logs-${id}`} label={names[id] ?? id} plain dimColor={!module?.enabled || p.busy && p.selectedLogs?.id !== id} onPress={toggleLogs(id)} /> :
+          <Text wrap="truncate" bold={!!module?.enabled} dimColor={!module?.enabled}>{names[id] ?? id}</Text>}</Box>,
       ];
       const tail = <Box key="tail" flexDirection="row" flexShrink={0} gap={1}>
         {time ? <Text key="time" dimColor>{time}</Text> : null}
-        {actions(id)}
       </Box>;
       // The name takes the free space, so results and actions stay right-aligned at any width.
       // Narrow: a finished result fits the name line; only a live bar takes a second one.
       const middle = <Box key="middle" flexDirection="row" flexShrink={0}>{progress(id, narrow ? 10 : 12)}</Box>;
       return <Box key={`module-${id}`} flexDirection="column">
         <Box key="line" flexDirection="row" gap={1}>{head}{narrow && live ? null : middle}{tail}</Box>
-        {narrow && live ? <Box key="progress" flexDirection="row" paddingLeft={2}>{progress(id, 10)}</Box> : null}
+        {narrow && live ? <Box key="progress" flexDirection="row" paddingLeft={4}>{progress(id, 10)}</Box> : null}
         {problemBlock(id)}
         {logBlock(id)}
       </Box>;
     };
     const ids = sortModuleIds(visible(), p.modules, p.jobs, p.sort);
     const configured = ['absent', 'valid'].includes(p.workspace?.moduleConfig?.status ?? 'absent');
-    const summary = summaryLine(ids, p.jobs);
+    const counts = summaryCounts(ids, p.jobs);
     return <Box key="module-list" flexDirection="column">
       <Box key="toolbar" flexDirection="row" justifyContent="space-between">
-        <Box key="summary" flexDirection="row">
-          {summary.flatMap((part, i) => [
-            ...(i ? [<Text key={`summary-sep-${i}`} dimColor>{' · '}</Text>] : []),
-            part.color ? <Text key={`summary-${i}`} color={part.color}>{part.text}</Text> : <Text key={`summary-${i}`} dimColor>{part.text}</Text>,
-          ])}
-          {p.busy ? <Text key="busy" dimColor>{' …'}</Text> : null}
+        <Box key="summary" flexDirection="row" gap={2}>
+          <Box key="counts" flexDirection="row">
+            <Text key="passed" color="success">{`${counts.passed}`}</Text>
+            <Text key="sep-1" dimColor>/</Text>
+            <Text key="failed" color="error">{`${counts.failed}`}</Text>
+            <Text key="sep-2" dimColor>/</Text>
+            <Text key="total" dimColor>{`${counts.total}`}</Text>
+          </Box>
+          {enabled().length >= 2 ? button('start-all', '▶ Todos', 'start', 'all', allAllowed()) : null}
+          {/* Button takes no color at rest; the whole label is the target and turns red under the pointer. Hidden while nothing failed. */}
+          {failedIds().length ? <Box key="failed-action"><Button key="start-failed" label="↻ Apenas com erro" plain hover={{ color: 'error' }}
+            dimColor={p.busy || !failedAllowed()} onPress={guarded(async () => { if (failedAllowed()) await startFailed($, expected); })} /></Box> : null}
+          {p.busy ? <Text key="busy" dimColor>…</Text> : null}
         </Box>
         <Box key="toolbar-actions" flexDirection="row" gap={1}>
-          {enabled().length >= 2 ? button('start-all', '▶ todos', 'start', 'all', allAllowed()) : null}
           {ids.length >= 2 ? local('sort', p.sort === 'order' ? '⇅' : `⇅ ${sortLabels[p.sort]}`, () => { p.sort = nextSort(p.sort); }) : null}
           {local('help', '?', () => { p.showHelp = !p.showHelp; })}
-          <Button key="close" label="×" plain role="dismiss" onPress={() => $.ui.close({ id: PANE })} />
         </Box>
       </Box>
       {ids.map(row)}
       {!ids.length && configured && !p.workspace?.error ? <Text key="empty" dimColor>Nenhum módulo em .claude/test-progress.json</Text> : null}
-      {p.chooseLogs ? <Text key="choose-logs" dimColor>Escolha ≡ em um módulo.</Text> : null}
+      {p.chooseLogs ? <Text key="choose-logs" dimColor>Clique no nome de um módulo para ver o log.</Text> : null}
       {p.selectedLogs && !ids.includes(p.selectedLogs.id) ? logBlock(p.selectedLogs.id) : null}
       {p.workspace?.error ? <Text key="config-error" color="error" wrap="wrap">{`Configuração: ${p.workspace.error}`}</Text> : null}
       {(p.workspace?.moduleConfig?.diagnostics ?? []).map((item, i) => <Text key={`config-${i}`} color="error" wrap="wrap">{`Configuração: ${diagnosticText(item)}`}</Text>)}
@@ -460,6 +533,16 @@ export const register: Register = on => {
       {p.registrationError ? <Text key="registration" color="error" wrap="wrap">{`Registro: ${p.registrationError}`}</Text> : null}
       {p.showHelp ? LEGEND.map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
     </Box>;
+  });
+  // With a log open, the wheel moves the log's own window; at its edges, and for the keys, the pane scrolls.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    await hydrate($);
+    if (!p.selectedLogs || e.origin.kind !== 'person' || !e.pointer) return next(e);
+    const { top, max } = logWindow(), to = Math.min(max, Math.max(0, top + e.by));
+    if (to === top) return next(e);
+    p.logTop = to === max ? null : to;
+    await publish($);
+    return {};
   });
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const existing = await next(e);

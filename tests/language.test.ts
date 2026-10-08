@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing';
-import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, moduleTitle,
-  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryLine, outcomeText, sortModuleIds,
+import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, plainTail, ansiSpans, moduleTitle,
+  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryCounts, outcomeText, sortModuleIds,
   nextSort } from '../runner/module-presentation.mjs';
 
 test('titles preserve labels and IDs even when modules share a language or label', () => {
@@ -28,7 +28,20 @@ test('collector envelope rejects unknown versions and malformed snapshots', () =
 test('unknown and zero totals differ and log controls are sanitized', () => {
   expect(progressText({ total: null, percent: null })).toBe('— [ total desconhecido ]');
   expect(progressText({ total: 0, percent: null })).toBe('— [ sem testes ]');
-  expect(sanitizeTail(['\u001b[31mvermelho\u001b[0m\r\u0000', '\u001b]8;;https://example.test\u0007link\u001b]8;;\u0007'])).toEqual(['vermelho', 'link']);
+  const tail = ['\u001b[31mvermelho\u001b[0m\r\u0000', '\u001b]8;;https://example.test\u0007link\u001b]8;;\u0007', '\u001b[1A\u001b[2Kok'];
+  // The panel keeps color (SGR) and drops cursor moves, links and controls; text surfaces get plain lines.
+  expect(sanitizeTail(tail)).toEqual(['\u001b[31mvermelho\u001b[0m', 'link', 'ok']);
+  expect(plainTail(tail)).toEqual(['vermelho', 'link', 'ok']);
+});
+
+test('color sequences become styled runs; reset, 256 colors and truecolor', () => {
+  expect(ansiSpans('plain')).toEqual([{ text: 'plain', style: null }]);
+  expect(ansiSpans('\u001b[1;32mOK\u001b[0m (3 tests)')).toEqual([{ text: 'OK', style: { bold: true, color: 'green' } }, { text: ' (3 tests)', style: null }]);
+  expect(ansiSpans('\u001b[91mE\u001b[39m \u001b[38;5;214mw\u001b[38;2;1;2;3mx\u001b[38:2::255:0:0my\u001b[m.')).toEqual([
+    { text: 'E', style: { color: 'redBright' } }, { text: ' ', style: null }, { text: 'w', style: { color: '#ffaf00' } },
+    { text: 'x', style: { color: '#010203' } }, { text: 'y', style: { color: '#ff0000' } }, { text: '.', style: null }]);
+  expect(ansiSpans('\u001b[2mdim\u001b[22m\u001b[44mbg\u001b[49m')).toEqual([{ text: 'dim', style: { dimColor: true } }, { text: 'bg', style: { backgroundColor: 'blue' } }]);
+  expect(readableTail(['a', '\u001b[0m', '\u001b[0m', 'b', '\u001b[0m'], '@@')).toEqual(['a', '\u001b[0m', 'b']);
 });
 
 test('catalogue order plus retained recovery and state-only diagnostics exclude retired modules', () => {
@@ -65,8 +78,8 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(progressBar({ total: 4, percent: 50 }, 4)).toEqual({ done: '━━', rest: '━━' });
   expect(progressBar({ total: null, percent: null }, 4)).toEqual({ done: '', rest: '╌╌╌╌' });
   expect(readableTail(['a', '@@TEST_PROGRESS@@{}', '', '', 'b', ''], '@@TEST_PROGRESS@@')).toEqual(['a', '', 'b']);
-  expect(summaryLine(['a', 'b'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 } }).map(part => part.text))
-    .toEqual(['2 módulos', '1 rodando', '1 falha']);
+  expect(summaryCounts(['a', 'b', 'c', 'd'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 },
+    c: { status: 'completed', failed: 0 }, d: { status: 'completed', failed: 2 } })).toEqual({ passed: 1, failed: 2, total: 4 });
   expect(outcomeText({ status: 'completed', total: 1 }).text).toBe('· 1 teste');
   expect(outcomeText({ status: 'completed', total: null, adapter: 'exit', exitCode: 0 }).text).toBe('exit 0');
   expect(outcomeText({ status: 'completed', total: null }).text).toBe('total desconhecido');
