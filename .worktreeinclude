@@ -1,0 +1,3 @@
+# Arquivos ignorados pelo Git que o Claude Code copia para novas worktrees (claude --worktree).
+# O Orca faz o mesmo via scripts/worktree-setup.sh (orca.yaml).
+.claude/test-progress.json
