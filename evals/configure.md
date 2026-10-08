@@ -26,7 +26,13 @@ Done looks like: o comando do módulo passa a usar o adapter da tabela, ou `adap
 Prompt: o módulo web aparece com "órfão: processo ainda vivo", resolve isso
 Should trigger: yes
 First file Claude should open: nenhum; roda `cancel` e depois `status` pela CLI
-Done looks like: cancela e confere com `status`, sem apagar locks nem arquivos de estado
+Done looks like: cancela e confere com `status`, sem apagar locks nem arquivos de estado; se o `cancel` recusar, mostra o processo que sobrou e pede confirmação antes de encerrá-lo
+
+### Iniciar um módulo
+Prompt: inicia o módulo lento do test-progress
+Should trigger: yes
+First file Claude should open: nenhum; roda `start lento` e depois `status` pela CLI
+Done looks like: o run aparece no painel e na faixa acima do prompt; o Claude não roda o pytest direto
 
 ### Fora do escopo
 Prompt: escreve um teste pytest para a função parse_date
