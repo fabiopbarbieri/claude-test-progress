@@ -7,7 +7,13 @@ description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.c
 
 **Raiz do plugin** = dois níveis acima do diretório base desta skill. Todo caminho de adapter no `command` é absoluto a partir dela: o JSON não interpola variáveis, `~` nem shell.
 
-Todo comando `/test-progress` (`list`, `start`, `status`, `logs`, `cancel`, `paths`) é seu: rode com `--text`, porque o modo texto devolve a resposta para você ler, e o painel não envia notificações ao modelo.
+O modelo não consegue chamar o slash command `/test-progress`; só a pessoa consegue. Rode as ações pela CLI do plugin, que usa o mesmo estado do painel desta sessão (cwd + id da sessão):
+
+```bash
+bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <diretório da sessão> --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
+```
+
+No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
 
 ## Cadastrar módulos
 
@@ -36,7 +42,7 @@ Todo comando `/test-progress` (`list`, `start`, `status`, `logs`, `cancel`, `pat
    No Windows, leia antes `<raiz>/WINDOWS.md`: o Maven vira `".\\mvnw.cmd"`, e `.cmd`/`.bat` seguem um contrato de argumentos restrito.
 3. Para qualquer campo além de `label`, `command`, `cwd`, `adapter`, `runtime` e `order` (`env`, `extends`, templates), leia antes a seção "Configurar seu projeto" de `<raiz>/docs/USAGE.md`.
 4. **Feito** quando estas três coisas forem verdade:
-   - `/test-progress list --text` mostra cada módulo sem diagnóstico. Ele valida JSON, `schemaVersion`, IDs e campos sem iniciar nada;
+   - `list` pela CLI devolve `workspace.moduleConfig.status: "valid"` e `diagnostics` vazio em cada módulo. Ele valida JSON, `schemaVersion`, IDs e campos;
    - todo caminho absoluto do `command` existe;
    - todo `cwd` existe a partir do diretório da sessão.
 
@@ -49,10 +55,10 @@ Trabalhe pelo sintoma que a pessoa relatar ou mostrar:
 | Sintoma no painel | Causa | Ação |
 | --- | --- | --- |
 | "sem eventos de progresso reconhecidos" | O comando não emite o que o adapter entende | Envolva o comando com o adapter da tabela, ou troque para `adapter: "exit"` |
-| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `/test-progress cancel <id> --text`, depois `status`. Não apague locks nem estado: o encerramento não foi comprovado, e apagar libera um novo início com o processo antigo vivo |
+| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `cancel` pela CLI, depois `status`. Não apague locks nem estado: o encerramento não foi comprovado, e apagar libera um novo início com o processo antigo vivo |
 | "Configuração: …" ou diagnóstico no módulo | Campo inválido; a mensagem nomeia o campo | Corrija pela tabela de campos em `docs/USAGE.md` |
 | Módulo sem `▶` nem `■` | `enabled: false` | Remova `enabled: false` se a pessoa quiser rodá-lo |
 | `▶` apagado / "Início indisponível" | Diagnóstico no módulo ou no cadastro, `cwd` ausente ou run anterior órfão | Resolva o diagnóstico mostrado logo abaixo do módulo; no órfão, siga a linha acima |
 | `~` antes do percentual | Total parcial; ele ainda pode crescer | Nada; é o normal durante a execução |
 
-Para ler a saída da suíte, rode `/test-progress logs <id> --text`. Ele traz as últimas linhas, sem as do protocolo. Para sintomas fora da tabela, siga `<raiz>/docs/TROUBLESHOOTING.md`.
+Para ler a saída da suíte, rode `logs` pela CLI e leia `jobs.<id>.logTail`. Para sintomas fora da tabela, siga `<raiz>/docs/TROUBLESHOOTING.md`.
