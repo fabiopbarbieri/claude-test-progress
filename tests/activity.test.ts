@@ -322,3 +322,44 @@ test('when every run has ended, unseen failures open the pane once on the first 
   expect(opened).toHaveLength(2);
   expect(notified.at(-1)).toMatchObject({ text: 'Falharam: API (erro)' });
 });
+
+test('a live job streams status from one watcher instead of a query per second, and polling resumes when it ends', async ($, on) => {
+  const clock = mock.clock(on); const actions: string[] = []; const spawned: string[][] = [];
+  const collector = { path: '/node/bin/node', source: 'path' };
+  let current: any = { ...data(), collector };
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
+  let emit: ((line: string) => void) | undefined, end: (() => void) | undefined;
+  on('process.spawn', async function* ($, e) {
+    spawned.push([...e.argv]);
+    const queue: string[] = []; let wake: (() => void) | undefined, ended = false;
+    emit = line => { queue.push(line); wake?.(); };
+    end = () => { ended = true; wake?.(); };
+    for (;;) {
+      while (queue.length) yield { stream: 'stdout' as const, text: `${queue.shift()}\n` };
+      if (ended) return { value: { code: 0, signal: null } };
+      await new Promise<void>(resolve => { wake = resolve; });
+    }
+  });
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  expect(actions).toEqual(['status']);
+  await clock.advance(1000);
+  expect(spawned).toHaveLength(1);
+  expect(spawned[0]).toEqual(['/node/bin/node', '--max-semi-space-size=1', expect.stringMatching(/runner\/cli\.mjs$/), 'watch', '--cwd', '/work', '--owner', 'owner', '--module', 'all']);
+  emit!(JSON.stringify({ ...data(), jobs: { api: { ...running, resolved: 2, percent: 100 } } }));
+  await clock.advance(3000);
+  expect(actions).toEqual(['status']);
+  const ui = await $.ui.mount(pane);
+  expect(await ui.find({ type: 'Text', text: /2\/2|100/ })).toBeDefined();
+  await ui.unmount();
+  // The run ends: the watcher reports it and exits; the panel goes back to idle polling.
+  emit!(JSON.stringify({ ...data(), jobs: { api: { ...running, status: 'completed', resolved: 2, percent: 100 } } }));
+  end!();
+  current = { ...data({ api: module() }, { api: { ...running, status: 'completed' } }), collector };
+  await clock.advance(10000);
+  expect(spawned).toHaveLength(1);
+  expect(actions.length).toBeGreaterThanOrEqual(2);
+  expect(actions.every(action => action === 'status')).toBe(true);
+});

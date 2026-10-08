@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { namespace, files, readJson, jobFile, atomicJson } from '../../runner/state.mjs';
 import { windowsProof } from '../../runner/windows-proof.mjs';
-import { windowsGroupState, windowsKillOwnedBroker, windowsSameProcess } from '../../runner/windows-process.mjs';
+import { windowsGroupState, windowsKillOwnedBroker, windowsSameProcess, windowsNodeResolver } from '../../runner/windows-process.mjs';
 import { readBatch } from '../../runner/module-batch.mjs';
 import { randomUUID, removePath } from '../../runner/runtime.mjs';
 
@@ -254,6 +254,36 @@ async function assertBoundedSharing() {
   await runCase('released-after-450ms', 450, true);
   await runCase('held-past-retry-budget', 1500, false);
 }
+// The native helper chooses the project's Node as runtime/node-discovery.ps1 does: same
+// descriptor for each selector, and a refusal wherever PowerShell refuses.
+function assertResolverParity() {
+  const native = windowsNodeResolver(app, process.env, true);
+  if (!path.win32.basename(native.file).startsWith('helper-')) { console.log('Native Node discovery parity skipped: helper unavailable'); return; }
+  const project = path.join(app, 'resolver project');
+  const nvmHome = path.join(app, 'resolver nvm');
+  fs.mkdirSync(project); fs.mkdirSync(nvmHome);
+  const versions = [process.execPath, projectNode].map(file => spawnSync(file, ['--version'], { encoding: 'utf8' }).stdout.trim());
+  [process.execPath, projectNode].forEach((file, index) => fs.symlinkSync(path.dirname(file), path.join(nvmHome, versions[index]), 'junction'));
+  const env = { ...process.env, NVM_HOME: nvmHome, NVM_SYMLINK: '' };
+  const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH');
+  env[pathKey] = path.dirname(projectNode) + ';' + env[pathKey];
+  const resolve = native => {
+    const spec = windowsNodeResolver(project, env, native);
+    const result = spawnSync(spec.file, spec.args, { cwd: project, env, encoding: 'utf8', timeout: 30000, windowsHide: true });
+    return result.status === 0 ? JSON.parse(result.stdout.replace(/^\uFEFF/, '').trim()) : { refused: true };
+  };
+  for (const selector of [null, versions[1], `v${versions[1].slice(1).split('.')[0]}`, 'lts/*', 'node', 'current', 'banana', '99.0.0']) {
+    if (selector === null) removePath(path.join(project, '.nvmrc'), { force: true });
+    else fs.writeFileSync(path.join(project, '.nvmrc'), `${selector}\n`);
+    const expected = resolve(false), actual = resolve(true);
+    assert.deepStrictEqual(actual, expected, `Native Node discovery differs for .nvmrc ${selector}`);
+  }
+  removePath(project, { recursive: true, force: true });
+  // Remove each junction itself; a recursive removal must never reach the Node installs.
+  for (const version of versions) fs.rmdirSync(path.join(nvmHome, version));
+  fs.rmdirSync(nvmHome);
+  console.log('Native Node discovery matches node-discovery.ps1 for PATH, nvm, LTS, current and refused selectors: OK');
+}
 async function main() {
   let safeToRemove = false;
   try {
@@ -329,6 +359,7 @@ async function main() {
     assert.strictEqual(collect('start', 'batch').ok, false);
     console.log('Native cmd literal quoting and preflight rejection of shell controls: OK');
 
+    assertResolverParity();
     const appVersion = spawnSync(projectNode, ['--version'], { encoding: 'utf8' }).stdout.trim();
     assert.notStrictEqual(appVersion, process.version, 'App and collector must use different Node versions');
     fs.writeFileSync(path.join(app, '.nvmrc'), appVersion + '\n');
@@ -362,8 +393,32 @@ async function main() {
     assertEmpty(compensated.brokerIdentity);
     console.log('Authenticated broker loss, Job Object tree cleanup and detached batch compensation: OK');
 
-    // Workers see their coordinator end through the stdin pipe it holds, without polling PowerShell.
+    // In process, the coordinator is also every worker: each broker watches it and ends its own
+    // tree when it is gone, so the next status proves the trees empty and frees the modules.
     start();
+    state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
+    const hostedApi = captureTree('api', state.jobs.api);
+    const hostedBilling = captureTree('billing', state.jobs.billing);
+    const host = readBatch(context.directory, state.jobs.api.batchId).coordinatorIdentity;
+    assert.deepStrictEqual(readJson(files(context.directory, 'api').claim).workerIdentity, host, 'Windows workers run inside their coordinator');
+    assert(windowsSameProcess(host), 'Coordinator identity must be authenticated before it is killed');
+    const hostKilledAt = Date.now();
+    process.kill(host.pid);
+    state = await waitFor(value => ['api', 'billing'].every(id => value.jobs[id].status === 'error' &&
+      value.jobs[id].recoveryRequired === false), 45000, ['api', 'billing']);
+    const brokerReaction = Date.now() - hostKilledAt;
+    assert(brokerReaction < 15000, `Brokers took ${brokerReaction} ms to end the trees of a lost coordinator`);
+    for (const id of ['api', 'billing']) assert.match(state.jobs[id].error, /árvore vazia confirmada/);
+    assertEmpty(hostedApi.brokerIdentity);
+    assertEmpty(hostedBilling.brokerIdentity);
+    assertPidsGone('api');
+    assertPidsGone('billing');
+    console.log(`In-process coordinator loss ended by the brokers in ${brokerReaction} ms; trees empty, modules free: OK`);
+
+    // One worker process per module, as TEST_PROGRESS_WORKERS=process selects.
+    const processWorkers = { ...process.env, TEST_PROGRESS_WORKERS: 'process' };
+    // Workers see their coordinator end through the stdin pipe it holds, without polling PowerShell.
+    start('all', processWorkers);
     state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
     const orphanedApi = captureTree('api', state.jobs.api);
     const orphanedBilling = captureTree('billing', state.jobs.billing);
@@ -381,7 +436,7 @@ async function main() {
     console.log(`Coordinator loss observed through the worker pipe in ${pipeReaction} ms; trees empty: OK`);
 
     // The coordinator sees a launched worker end through its exit event and aborts the batch.
-    start();
+    start('all', processWorkers);
     state = await waitFor(value => value.jobs.api.resolved === 1 && value.jobs.billing.resolved === 1);
     const lostWorkerTree = captureTree('api', state.jobs.api);
     const siblingTree = captureTree('billing', state.jobs.billing);

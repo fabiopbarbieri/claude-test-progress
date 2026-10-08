@@ -15,6 +15,36 @@ namespace TestProgress {
         public int sessionId;
     }
 
+    // A handle to the broker's supervising worker, opened once and authenticated by
+    // start time and owner: the PID cannot be reused while it is open, so its signal
+    // is the kernel's answer that the supervisor ended.
+    public sealed class SupervisorWatch : IDisposable {
+        private IntPtr handle;
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(IntPtr handle, uint timeout);
+        [DllImport("kernel32.dll", SetLastError = true)] private static extern bool CloseHandle(IntPtr handle);
+        public SupervisorWatch(int pid, string startTime, string owner) {
+            if (pid <= 0 || String.IsNullOrEmpty(startTime) || String.IsNullOrEmpty(owner))
+                throw new ArgumentException("The run claim has no supervising worker identity.");
+            handle = OpenProcess(0x00100000 | 0x1000, false, pid); // SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+            if (handle == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+            try {
+                WindowsIdentity current = WindowsProcessHost.Identity(pid);
+                if (current == null || current.startTime != startTime || current.owner != owner)
+                    throw new InvalidOperationException("The supervising worker identity does not match the run claim.");
+            } catch { Dispose(); throw; }
+        }
+        // Waits up to timeout milliseconds; true once the supervisor has exited.
+        public bool Exited(uint timeout) {
+            uint observed = WaitForSingleObject(handle, timeout);
+            if (observed == UInt32.MaxValue) throw new Win32Exception(Marshal.GetLastWin32Error());
+            return observed == 0;
+        }
+        public void Dispose() {
+            if (handle != IntPtr.Zero) { CloseHandle(handle); handle = IntPtr.Zero; }
+        }
+    }
+
     public sealed class WindowsProcessHost : IDisposable {
         private IntPtr job;
         private IntPtr process;

@@ -270,8 +270,9 @@ consulte o estado antes de tentar outro start.
 O worker grava heartbeat a cada 5 segundos, mesmo sem logs. Último heartbeat,
 última saída e último progresso são sinais distintos: atividade do executor
 não comprova avanço do teste. Silêncio não fabrica resultados nem sucesso.
-O painel atualiza na sessão aberta; isso não envia notificações autônomas ao
-modelo. Peça ao Claude para consultar enquanto a execução estiver ativa.
+O painel atualiza na sessão aberta; enquanto há job ativo, um único coletor
+contínuo envia as mudanças, sem iniciar um processo por segundo. Isso não envia
+notificações autônomas ao modelo. Peça ao Claude para consultar enquanto a execução estiver ativa.
 
 `completed` indica término com progresso reconhecido sem falhas; `failed`
 indica falha; `cancelled` indica cancelamento. `error` exige diagnóstico.

@@ -9,6 +9,12 @@ export function environmentValue(environment, name) {
   return key === undefined ? undefined : environment[key];
 }
 
+// Flags for every long-lived collector Node (coordinator, workers, watcher). Rereading
+// state and logs each pass makes short-lived garbage; a 1 MB young generation keeps a
+// watcher near 40 MB private instead of ~120 MB, at the same CPU. windows-process.ps1
+// and WindowsHelper.cs launch the Windows coordinator with the same flag.
+export const LONG_LIVED_NODE_FLAGS = Object.freeze(['--max-semi-space-size=1']);
+
 // Per-user root of the private collector state; the Windows host assembly cache lives here too.
 export function stateRoot() {
   return path.join(fs.realpathSync(os.tmpdir()), `claude-test-progress-${process.getuid?.() ?? 'user'}`);

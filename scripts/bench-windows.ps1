@@ -10,10 +10,10 @@ param(
 # Times the Mod's polling query (status) on native Windows: PowerShell bootstrap
 # versus direct Node, for each control engine, with $Modules configured modules.
 # -Start also times start all, status with every job active and cancel all (direct
-# path, as the Mod uses after its first bootstrap) plus machine CPU over three windows:
-# nothing running, jobs active without polling, and jobs active polled every second
-# as the Mod does. CPU comes from GetSystemTimes, so short PowerShell control calls
-# are counted too. The first status call of each variant is reported apart as cold. Results are relative to this machine; they are not acceptance.
+# path, as the Mod uses after its first bootstrap) plus machine CPU over four windows:
+# nothing running, jobs active without polling, jobs active polled every second as the
+# Mod did before its watcher, and the same jobs streamed by one `watch` collector.
+# CPU comes from GetSystemTimes, so short PowerShell control calls are counted too. The first status call of each variant is reported apart as cold. Results are relative to this machine; they are not acceptance.
 $ErrorActionPreference = 'Stop'
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'This benchmark requires native Windows.'
@@ -45,19 +45,30 @@ function Measure-Cpu([scriptblock] $Body) {
         seconds = [Math]::Round($watch.Elapsed.TotalSeconds, 1); value = $value }
 }
 
-# Live processes split into collector (runner, broker, control scripts) and the test commands.
+# Live processes split into collector (runner, native helper brokers, control scripts and
+# the consoles they own) and the test commands; private memory is what each one adds.
 function Get-ProcessInventory {
-    $all = @(Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='powershell.exe' OR Name='pwsh.exe' OR Name='conhost.exe'")
+    $all = @(Get-CimInstance Win32_Process)
+    $byId = @{}
+    foreach ($proc in $all) { $byId[[int]$proc.ProcessId] = $proc }
     $groups = [ordered]@{ collector = @(); test = @() }
+    $collector = @{}
     foreach ($proc in $all) {
         if ($proc.ProcessId -eq $PID -or -not $proc.CommandLine) { continue }
         if ($proc.CommandLine -like '*900000*') { $groups.test += $proc }
-        elseif ($proc.CommandLine -like ('*' + $root + '*')) { $groups.collector += $proc }
+        elseif ($proc.CommandLine -like ('*' + $root + '*') -or $proc.Name -like 'helper-*.exe') {
+            $groups.collector += $proc; $collector[[int]$proc.ProcessId] = $true
+        }
+    }
+    foreach ($proc in $all) {
+        if ($proc.Name -eq 'conhost.exe' -and $collector.ContainsKey([int]$proc.ParentProcessId)) { $groups.collector += $proc }
     }
     $summary = [ordered]@{}
     foreach ($group in $groups.GetEnumerator()) {
         $summary[$group.Key] = [ordered]@{ count = $group.Value.Count
-            workingSetMb = [Math]::Round((($group.Value | Measure-Object WorkingSetSize -Sum).Sum) / 1MB, 1) }
+            workingSetMb = [Math]::Round((($group.Value | Measure-Object WorkingSetSize -Sum).Sum) / 1MB, 1)
+            privateMb = [Math]::Round((($group.Value | Measure-Object PrivatePageCount -Sum).Sum) / 1MB, 1)
+            processes = @($group.Value | Group-Object Name | ForEach-Object { $_.Name + ' x' + $_.Count }) }
     }
     $summary
 }
@@ -178,6 +189,22 @@ try {
             }
             $results.Add([pscustomobject](@{ scenario = 'active-status'; path = 'direct'; engine = $engine.Key
                 activeMin = $script:activeMin; cpuPct = $polled.cpuPct; seconds = $polled.seconds } + (Get-Stats $samples)))
+            # The Mod's watcher instead: one collector streaming status for the same window.
+            Write-Host ('Measuring active status streamed by one watcher (' + $WindowSeconds + ' s) ...')
+            $stream = Join-Path ([IO.Path]::GetTempPath()) ('tp-bench-watch-' + [Guid]::NewGuid().ToString('N') + '.jsonl')
+            $watcher = Start-Process -FilePath $node -ArgumentList @(('"' + $cli + '"'), 'watch', '--cwd', ('"' + $busy + '"'), '--owner', $owner, '--module', 'all') `
+                -RedirectStandardOutput $stream -WindowStyle Hidden -PassThru
+            try {
+                Start-Sleep -Seconds 2
+                $streamed = Measure-Cpu { Start-Sleep -Seconds $WindowSeconds; Get-ProcessInventory }
+            } finally {
+                if (-not $watcher.HasExited) { $watcher.Kill() }
+                $watcher.WaitForExit()
+            }
+            $lines = @(Get-Content -LiteralPath $stream | Where-Object { $_ }).Count
+            Remove-Item -LiteralPath $stream -Force -ErrorAction SilentlyContinue
+            $results.Add([pscustomobject]@{ scenario = 'active-watch'; path = 'watch'; engine = $engine.Key
+                cpuPct = $streamed.cpuPct; seconds = $streamed.seconds; lines = $lines; processes = $streamed.value })
         } finally {
             Write-Host ('Measuring cancel all / PowerShell ' + $engine.Key + ' ...')
             $cancelled = Invoke-Timed $node (& $argv 'cancel')
@@ -196,7 +223,7 @@ try {
     foreach ($dir in $workspaces) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-$results | Format-Table scenario, path, engine, ok, coldMs, p50Ms, p95Ms, maxMs, ms, active, activeMin, cpuPct, seconds, settleMs, activeLeft -AutoSize | Out-String -Width 200 | Write-Host
+$results | Format-Table scenario, path, engine, ok, coldMs, p50Ms, p95Ms, maxMs, ms, active, activeMin, cpuPct, seconds, lines, settleMs, activeLeft -AutoSize | Out-String -Width 200 | Write-Host
 $os = Get-CimInstance Win32_OperatingSystem
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $sha = (& git -C $root rev-parse --short HEAD 2>$null)
