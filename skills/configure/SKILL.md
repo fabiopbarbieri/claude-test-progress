@@ -7,12 +7,24 @@ description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.c
 
 **Raiz do plugin** = dois níveis acima do diretório base desta skill. Todo caminho de adapter no `command` é absoluto a partir dela: o JSON não interpola variáveis, `~` nem shell.
 
-Você edita a configuração; quem inicia testes é a pessoa. Os comandos `/test-progress` são dela: peça que rode e leia o resultado que ela trouxer.
+O modelo não consegue chamar o slash command `/test-progress`; só a pessoa consegue. Rode as ações pela CLI do plugin, que usa o mesmo estado do painel desta sessão (cwd + id da sessão):
+
+```bash
+bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <diretório da sessão> --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
+```
+
+No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
 
 ## Cadastrar módulos
 
 1. Abra `.claude/test-progress.json` no **diretório da sessão** (o cwd atual, não a raiz Git). Se existir, preserve os módulos e as chaves que já estão lá.
-2. Para cada suíte, monte o módulo pela tabela. Use o Python ou Ruby do projeto (por exemplo `.venv/bin/python`) quando houver um.
+2. O arquivo tem esta forma. Cada chave de `modules` é o ID do módulo: 1 a 48 caracteres, minúscula no início, depois minúsculas, números ou `-`. `all` e nomes de dispositivo do Windows (`con`, `nul`, `com1`…) são reservados.
+
+   ```json
+   { "schemaVersion": 1, "modules": { "api": { "label": "API", "command": ["./mvnw", "test"], "cwd": ".", "adapter": "maven", "runtime": "inherit" } } }
+   ```
+
+   Para cada suíte, monte o módulo pela tabela. Use o Python ou Ruby do projeto (por exemplo `.venv/bin/python`) quando houver um.
 
    | Suíte | `command` (argv, um item por argumento) | `adapter` | `runtime` |
    | --- | --- | --- | --- |
@@ -26,14 +38,15 @@ Você edita a configuração; quem inicia testes é a pessoa. Os comandos `/test
    | Sem integração (script, lint, `claude plugin test`) | o próprio comando | `exit` | `inherit` |
 
    `exit` decide ✓/✗ pelo exit code, sem contagem. Use-o quando a suíte não tem adapter.
-3. Para qualquer campo além de `label`, `command`, `cwd`, `adapter`, `runtime` e `order` (`env`, `extends`, templates, limites de ID), leia antes a seção "Configurar seu projeto" de `<raiz>/docs/USAGE.md`.
-4. **Feito** quando estas quatro coisas forem verdade:
-   - `python3 -m json.tool .claude/test-progress.json` aceita o arquivo;
-   - `schemaVersion` é `1`;
+
+   No Windows, leia antes `<raiz>/WINDOWS.md`: o Maven vira `".\\mvnw.cmd"`, e `.cmd`/`.bat` seguem um contrato de argumentos restrito.
+3. Para qualquer campo além de `label`, `command`, `cwd`, `adapter`, `runtime` e `order` (`env`, `extends`, templates), leia antes a seção "Configurar seu projeto" de `<raiz>/docs/USAGE.md`.
+4. **Feito** quando estas três coisas forem verdade:
+   - `list` pela CLI devolve `workspace.moduleConfig.status: "valid"` e `diagnostics` vazio em cada módulo. Ele valida JSON, `schemaVersion`, IDs e campos;
    - todo caminho absoluto do `command` existe;
    - todo `cwd` existe a partir do diretório da sessão.
 
-   Então peça à pessoa `/test-progress list`. Ele mostra o catálogo e os diagnósticos sem iniciar nada.
+   Se alguma falhar, corrija e volte ao passo 2.
 
 ## Diagnosticar o painel
 
@@ -42,9 +55,10 @@ Trabalhe pelo sintoma que a pessoa relatar ou mostrar:
 | Sintoma no painel | Causa | Ação |
 | --- | --- | --- |
 | "sem eventos de progresso reconhecidos" | O comando não emite o que o adapter entende | Envolva o comando com o adapter da tabela, ou troque para `adapter: "exit"` |
-| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `■` no painel ou `/test-progress cancel <id>` |
+| `!` com "órfão: processo ainda vivo" | O processo sobreviveu ao fim do run | `cancel` pela CLI, depois `status`. Não apague locks nem estado: o encerramento não foi comprovado, e apagar libera um novo início com o processo antigo vivo |
 | "Configuração: …" ou diagnóstico no módulo | Campo inválido; a mensagem nomeia o campo | Corrija pela tabela de campos em `docs/USAGE.md` |
-| `▶` apagado / "Início indisponível" | Módulo desativado, com diagnóstico ou já rodando | Resolva o diagnóstico mostrado logo abaixo do módulo |
+| Módulo sem `▶` nem `■` | `enabled: false` | Remova `enabled: false` se a pessoa quiser rodá-lo |
+| `▶` apagado / "Início indisponível" | Diagnóstico no módulo ou no cadastro, `cwd` ausente ou run anterior órfão | Resolva o diagnóstico mostrado logo abaixo do módulo; no órfão, siga a linha acima |
 | `~` antes do percentual | Total parcial; ele ainda pode crescer | Nada; é o normal durante a execução |
 
-Para ler a saída da suíte, peça `/test-progress logs <id> --text`. Ele traz as últimas linhas, sem as do protocolo. Para sintomas fora da tabela, siga `<raiz>/docs/TROUBLESHOOTING.md`.
+Para ler a saída da suíte, rode `logs` pela CLI e leia `jobs.<id>.logTail`. Para sintomas fora da tabela, siga `<raiz>/docs/TROUBLESHOOTING.md`.
