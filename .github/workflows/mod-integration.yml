@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   native-mod:
-    name: Claude 2.1.289 native mod tests
+    name: Claude 2.1.295 native mod tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -30,14 +30,14 @@ jobs:
       # Official npm distribution; isolated prefix, no project/global dependency.
       # https://code.claude.com/docs/en/setup#install-with-npm
       - name: Install pinned Claude CLI in runner temporary directory
-        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact @anthropic-ai/claude-code@2.1.289
+        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact @anthropic-ai/claude-code@2.1.295
       # Native test kit needs no account, API key, model, or network call.
       # https://code.claude.com/docs/en/plugins/mods/test
       - name: Validate manifest and native mod behavior
         run: |
           export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-test-config"
           cli="$RUNNER_TEMP/claude-cli/node_modules/.bin/claude"
-          test "$("$cli" --version)" = '2.1.289 (Claude Code)'
+          test "$("$cli" --version)" = '2.1.295 (Claude Code)'
           "$cli" plugin validate . --strict
           "$cli" plugin validate .claude-plugin/plugin.json --strict
           "$cli" plugin test .

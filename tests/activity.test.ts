@@ -289,11 +289,12 @@ test('when every run has ended, unseen failures open the pane once on the first 
   on('ui.panes', () => ({ value: panes }));
   on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: true } }; });
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
+  const notified: any[] = []; on('ui.notify', ($, e) => { notified.push(e); return { value: { isSent: true, channel: 'kitty' } }; });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   // A failure mid-run, or one module done while another still runs, waits for the whole batch.
   current = data(modules, { api: { ...running, failed: 1 }, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(10000);
   current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1' } }); await clock.advance(3000);
-  expect(opened).toEqual([]);
+  expect(opened).toEqual([]); expect(notified).toEqual([]);
   // Everything ended: one open, on the first failed module's log.
   current = data(modules, { api: failedApi, web: { ...running, moduleId: 'web', runId: 'web-1', status: 'failed', failed: 2 } });
   await clock.advance(1000);
@@ -301,18 +302,23 @@ test('when every run has ended, unseen failures open the pane once on the first 
   expect(opened[0]).toMatchObject({ id: 'claude-test-progress', title: 'Test Progress' });
   expect(opened[0].focus).toBeUndefined();
   expect(logs).toEqual(['api']);
+  // One native notification names every failed module with its count.
+  expect(notified).toEqual([{ text: 'Falharam: API (1 ✗), Web (2 ✗)', title: 'Test Progress' }]);
   const view = await $.ui.mount(pane);
   expect(await view.find({ type: 'Text', text: /AssertionError/ })).toBeDefined();
   await view.unmount();
   // Closed again, it stays closed for those runs.
-  await clock.advance(20000); expect(opened).toHaveLength(1);
+  await clock.advance(20000); expect(opened).toHaveLength(1); expect(notified).toHaveLength(1);
   // An existing pane is left as it is, even for a new failure.
   panes = [{ id: 'claude-test-progress', title: 'Test Progress', isShown: false }];
   current = data(modules, { api: { ...failedApi, runId: 'second' } }); await clock.advance(10000);
   expect(opened).toHaveLength(1);
+  // The pane may wait for width or sit hidden; the notification still goes out.
+  expect(notified.at(-1)).toMatchObject({ text: 'Falharam: API (1 ✗)' });
   // Passing runs never open it; a run that errors does.
   panes = []; current = data(modules, { api: { ...running, runId: 'third', status: 'completed' } });
-  await clock.advance(10000); expect(opened).toHaveLength(1);
+  await clock.advance(10000); expect(opened).toHaveLength(1); expect(notified).toHaveLength(2);
   current = data(modules, { api: { ...running, runId: 'fourth', status: 'error' } }); await clock.advance(10000);
   expect(opened).toHaveLength(2);
+  expect(notified.at(-1)).toMatchObject({ text: 'Falharam: API (erro)' });
 });

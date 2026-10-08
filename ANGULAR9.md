@@ -11,7 +11,7 @@ No Windows nativo, use os comandos e a descoberta nvm-windows de
 
 | Componente | Runtime/contrato |
 | --- | --- |
-| Claude Code Mod | Claude 2.1.289+; hook executado pelo engine do Claude |
+| Claude Code Mod | Claude 2.1.295+; hook executado pelo engine do Claude |
 | Coletor externo | Node 14.0.0+; descoberta automática no PATH/nvm local |
 | Angular 9.0/9.1 | Matriz histórica: Node `^10.13.0 || ^12.11.0`; exemplo Node 12.22.12 |
 | Reporter | CommonJS, sem dependências; roda dentro do Karma do app |
