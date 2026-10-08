@@ -276,3 +276,32 @@ test('a placed pane acknowledges failed runs and the band steps aside', async ($
   expect(await band.find({ key: 'band' })).toBeUndefined();
   await band.unmount();
 });
+
+test('a run nobody has seen opens the pane once, without focus; closing it keeps it closed for that run', async ($, on) => {
+  const clock = mock.clock(on); const opened: any[] = []; let panes: any[] = [];
+  let current = data(undefined, {});
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  on('ui.panes', () => ({ value: panes }));
+  on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: false, reason: 'narrow' } }; });
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  await clock.advance(10000); expect(opened).toEqual([]);
+  // Claude started the suite through the CLI: the next poll sees a live, unseen run.
+  current = data(); await clock.advance(10000);
+  expect(opened).toHaveLength(1);
+  expect(opened[0]).toMatchObject({ id: 'claude-test-progress', title: 'Test Progress' });
+  expect(opened[0].focus).toBeUndefined();
+  // A waiting or closed pane isn't asked for again while the same run goes on.
+  await clock.advance(3000); expect(opened).toHaveLength(1);
+  // An open pane is left as it is, even for a new run.
+  panes = [{ id: 'claude-test-progress', title: 'Test Progress', isShown: false }];
+  current = data(undefined, { api: { ...running, runId: 'second' } }); await clock.advance(1000);
+  expect(opened).toHaveLength(1);
+  // Finished runs never open it.
+  panes = []; current = data(undefined, { api: { ...running, runId: 'third', status: 'completed' } });
+  await clock.advance(10000); expect(opened).toHaveLength(1);
+  current = data(undefined, { api: { ...running, runId: 'fourth' } }); await clock.advance(10000);
+  expect(opened).toHaveLength(2);
+});

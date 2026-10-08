@@ -5,6 +5,12 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ## [Unreleased]
 
+### Painel
+
+- Abre sozinho quando começa uma execução ainda não vista, inclusive pela CLI,
+  sem tomar o teclado e uma vez por execução. Depende de terminal largo (144
+  colunas, ou 110 após a primeira abertura manual).
+
 ## [0.6.0] - 2026-10-06
 
 Adapter para Playwright Test, log do painel com scroll e cores do runner,
