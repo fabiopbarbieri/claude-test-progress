@@ -221,11 +221,12 @@ As fontes privadas são revalidadas antes da reserva e da liberação da barreir
 | `/test-progress cancel id` / `cancel all` | Solicita cancelamento da sessão |
 | `--text` | Alternativa textual no Mod |
 
-Ao detectar uma execução ativa ainda não vista, o painel abre sozinho, sem foco
-do teclado e no máximo uma vez por execução; a detecção segue a consulta
-periódica (até 10 s sem jobs ativos). O Claude Code só mostra um painel aberto
-pelo mod com 144 colunas (110 depois de você abri-lo uma vez); até lá, a faixa
-acima do prompt mostra o progresso.
+Quando nenhuma execução está mais ativa e alguma terminou com falha (teste
+falho, `failed` ou `error`) que você não viu no painel, ele abre sozinho no log
+do primeiro módulo com falha, na ordem do painel. Não toma o teclado e abre no
+máximo uma vez por execução; execuções que passam não o abrem. O Claude Code só
+mostra um painel aberto pelo mod com 144 colunas; até lá, a faixa acima do
+prompt mostra o progresso.
 
 Não há atalho `/test-progress id`: o início é sempre explícito. Status/logs/cancel consultam
 jobs autenticados mesmo se o módulo tiver sido removido ou a configuração estiver

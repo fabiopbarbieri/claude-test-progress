@@ -257,16 +257,23 @@ function textLogs(moduleId: string) {
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
 }
-// Runs whose start already opened the pane once; closing it keeps it closed for that run.
+// Runs whose failure already opened the pane once; closing it keeps it closed for those runs.
 const autoOpened = new Set<string>();
-// A run starting that nobody has seen opens the pane without taking the keyboard.
-// The host may hold it until the terminal is wide enough; the band still reports meanwhile.
+// Once nothing is running, unseen failures open the pane on the first failed module's log, without
+// taking the keyboard. Passing runs never open it. Runs only by the tick, inside its serialized task.
+// The host may hold the pane until the terminal is wide enough; the band still reports meanwhile.
 async function autoOpen($: $) {
-  const fresh = Object.values(p.jobs).filter(job => ACTIVE.has(job.status) && !p.seenRuns.includes(job.runId) && !autoOpened.has(job.runId));
-  if (!fresh.length) return;
-  for (const job of fresh) autoOpened.add(job.runId);
+  if (Object.values(p.jobs).some(job => ACTIVE.has(job.status))) return;
+  const failed = visible().filter(id => { const job = p.jobs[id]; return !!job && finishedWithFailure(job) &&
+    !p.seenRuns.includes(job.runId) && !autoOpened.has(job.runId); });
+  if (!failed.length) return;
+  for (const id of failed) autoOpened.add(p.jobs[id]!.runId);
   try {
     if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
+    const first = failed[0]!;
+    await collect($, 'logs', first);
+    const job = p.jobs[first];
+    if (job) { p.selectedLogs = { id: first, runId: job.runId }; p.logTail = sanitizeTail(job.logTail); p.logTop = null; p.chooseLogs = false; }
     await $.ui.open({ id: PANE, title: 'Test Progress' });
   } catch { /* No pane in this surface: the band and the command remain. */ }
 }

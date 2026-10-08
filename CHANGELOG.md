@@ -7,9 +7,10 @@ A versão em `.claude-plugin/plugin.json` identifica o plugin distribuído.
 
 ### Painel
 
-- Abre sozinho quando começa uma execução ainda não vista, inclusive pela CLI,
-  sem tomar o teclado e uma vez por execução. Depende de terminal largo (144
-  colunas, ou 110 após a primeira abertura manual).
+- Abre sozinho quando todas as execuções terminam e alguma falhou sem ter sido
+  vista, inclusive as iniciadas pela CLI, já no log do primeiro módulo com falha.
+  Não toma o teclado e abre uma vez por execução; execuções que passam não o
+  abrem. Depende de terminal com pelo menos 144 colunas.
 
 ## [0.6.0] - 2026-10-06
 
