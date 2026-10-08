@@ -151,7 +151,7 @@ class CiTests(unittest.TestCase):
     def test_gates_cover_every_push_workflow(self):
         pushed = {path.name for path in (ROOT / ".github/workflows").glob("*.yml")
                   if "\n  push:" in path.read_text(encoding="utf-8")}
-        self.assertEqual(set(release.WORKFLOWS), pushed)
+        self.assertEqual(set(release.WORKFLOWS), pushed - set(release.NOT_GATES))
 
     def test_matching_success(self):
         self.assertEqual(self.check([self.run_record()]), "https://example.invalid/run/100")

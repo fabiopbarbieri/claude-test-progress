@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 WORKFLOWS = ("quality.yml", "ruby.yml", "rails.yml", "adapters.yml", "mod-integration.yml", "windows.yml")
+# Push workflows that automate release preparation rather than gate it.
+NOT_GATES = ("release-pr.yml",)
 
 
 def require(condition, message):
