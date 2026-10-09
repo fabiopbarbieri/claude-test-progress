@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock,
-  inspectState, revision, timestamp, validRecord, ownedClaim, jobFile } from './state.mjs';
+  inspectState, pruneHistory, revision, timestamp, validRecord, ownedClaim, jobFile } from './state.mjs';
 import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
 import { randomUUID, removePath, LONG_LIVED_NODE_FLAGS } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
@@ -106,6 +106,8 @@ async function start(selection, preparationStartedAt) {
       coordinator.unref();
     }
     if (!identity) throw new Error('Identidade do coordenador não confirmada');
+    // While the coordinator prepares, the new snapshots have replaced the runs they name.
+    try { pruneHistory(context.directory); } catch { /* History stays for the next start. */ }
     for (;;) {
       const manifest = readBatch(context.directory, batchId);
       if (manifest.state === 'released') {
