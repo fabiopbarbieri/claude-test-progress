@@ -4,6 +4,17 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.4] - 2026-10-09
+
+### Desempenho
+
+- **collector:** prune earlier runs from the session state ([937766f](https://github.com/fabiopbarbieri/claude-test-progress/commit/937766f28ba6e9c100aa3b198e3d33e5c8d80a04))
+- **collector:** start the Windows helper less often per batch ([6b5d788](https://github.com/fabiopbarbieri/claude-test-progress/commit/6b5d78824f4bff2cb8de2b61fb237d6d7d6d2d5d))
+
+### Documentação
+
+- **usage:** say a start removes earlier runs' logs ([1259179](https://github.com/fabiopbarbieri/claude-test-progress/commit/12591794a6ce2b9780610e4d5b1c76e3620831c0))
+
 ## [0.10.3] - 2026-10-09
 
 ### Correções
