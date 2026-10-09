@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { Progress } from './progress.mjs';
 import { readJson, atomicJson, files, releaseLock, timestamp, ownedClaim, updateClaim, updateSnapshot, validRecord, jobFile, securePath } from './state.mjs';
 import { processIdentity, sameProcess, groupState, canKillOwnedOrphan, killOwnedOrphan, WINDOWS_LIVENESS_MS } from './process-identity.mjs';
-import { removePath, mergeEnvironment } from './runtime.mjs';
+import { removePath, mergeEnvironment, readUpTo } from './runtime.mjs';
 import { windowsSpawnSpec } from './windows-process.mjs';
 import { windowsProof, windowsCompletion } from './windows-proof.mjs';
 import { readBatch, requestCompensation, publishFinalSafe, pause } from './module-batch.mjs';
@@ -102,15 +102,33 @@ function persist(overrides = {}) {
   lastPersistedAt = Date.now();
   progressPending = false;
 }
+// The log stays open from its first output until the final state. On Windows the antivirus
+// scans a written file again on every close, and suites print a line per test, so an open
+// and a close per chunk cost the antivirus more CPU than the whole collector.
+let logFd = null;
+let logClosed = false;
+function writeLog(bytes, position) {
+  for (let offset = 0; offset < bytes.length;) offset += fs.writeSync(logFd, bytes, offset, bytes.length - offset, position + offset);
+}
 function log(text) {
-  fs.appendFileSync(snapshot.logPath, text, { mode: 0o600 });
-  logBytes += Buffer.byteLength(text);
+  if (logClosed) return;
+  if (logFd === null) logFd = fs.openSync(snapshot.logPath, 'r+');
+  const bytes = Buffer.from(text);
+  writeLog(bytes, logBytes);
+  logBytes += bytes.length;
   if (logBytes > logLimit) {
-    const contents = fs.readFileSync(snapshot.logPath);
-    const tail = contents.subarray(Math.max(0, contents.length - logLimit / 2));
-    fs.writeFileSync(snapshot.logPath, tail, { mode: 0o600 });
+    const tail = readUpTo(logFd, logLimit / 2, logLimit / 2, logBytes - logLimit / 2);
+    writeLog(tail, 0);
+    fs.ftruncateSync(logFd, tail.length);
     logBytes = tail.length;
   }
+}
+function closeLog() {
+  logClosed = true;
+  if (logFd === null) return;
+  const fd = logFd;
+  logFd = null;
+  fs.closeSync(fd);
 }
 function consume(stream, chunk) {
   snapshot.lastOutputAt = timestamp();
@@ -208,7 +226,10 @@ function checkCancellation(force = false) {
 async function finish(code, signal) {
   if (ended) return;
   try { await settleFinish(code, signal); }
-  finally { settle(); }
+  finally {
+    try { closeLog(); } catch { /* The final state never depends on the log. */ }
+    settle();
+  }
 }
 async function settleFinish(code, signal) {
   try { checkCancellation(true); }
