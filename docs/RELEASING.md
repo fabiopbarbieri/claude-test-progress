@@ -26,7 +26,10 @@ faz force-push disso na branch `release/next` e abre ou atualiza o PR
 `🔖 chore(release): X.Y.Z`, com as notas no corpo. O changelog é inteiramente
 gerado: `feat`, `fix`, `perf`, `docs` e mudanças incompatíveis, com links
 absolutos para os commits. Para corrigir uma entrada, corrija o fluxo de commits
-seguinte; não edite o changelog à mão.
+seguinte; não edite o changelog à mão. Um commit com a linha
+`This reverts commit <sha>` (escrita pelo `git revert`; acrescente-a num revert
+manual) tira das notas e do cálculo da versão o commit revertido no mesmo
+intervalo.
 
 Para simular localmente sem alterar arquivos: `python3 scripts/release.py next`.
 `python3 scripts/release.py changelog` reconstrói o arquivo inteiro a partir dos

@@ -36,6 +36,20 @@ class BumpTests(unittest.TestCase):
         self.assertIsNone(semver.bump((0, 6, 0), [change("docs: a"), change("chore: b")]))
 
 
+class RevertTests(unittest.TestCase):
+    def test_reverted_commits_leave_the_notes_and_the_bump(self):
+        perf, fix = "1" * 40, "2" * 40
+        records = [(perf, "⚡️ perf(collector): slower snapshot", ""), (fix, "🐛 fix(collector): hold progress", ""),
+                   ("3" * 40, "⏪️ revert(collector): faster snapshot",
+                    "Why.\n\nThis reverts commit {}.\nThis reverts commit {}.\n".format(perf[:7], fix))]
+        self.assertEqual([c["type"] for c in semver.released(records)], ["revert"])
+        self.assertIsNone(semver.bump((0, 10, 2), semver.released(records)))
+
+    def test_git_revert_subject_is_skipped_with_its_target(self):
+        records = [("4" * 40, "✨ feat: a", ""), ("5" * 40, 'Revert "✨ feat: a"', "This reverts commit " + "4" * 40 + ".")]
+        self.assertEqual(semver.released(records), [])
+
+
 class SectionTests(unittest.TestCase):
     def test_groups_dedupes_and_links_absolutely(self):
         text = semver.section((0, 7, 0), "2026-10-07", [change("feat(panel): a"), change("feat(panel): a"),
