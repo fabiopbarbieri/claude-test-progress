@@ -23,6 +23,8 @@ FIRST_RELEASE = (0, 3, 0)
 HEADER = re.compile(r"^(?:\S+\s+)?([a-z]+)(?:\(([^)]*)\))?(!)?: (.+)$")
 # The note ends at the first blank line, before trailers such as Co-Authored-By.
 BREAKING = re.compile(r"^BREAKING[ -]CHANGE: *(.+?)(?:\n\s*\n|\Z)", re.M | re.S)
+# `git revert` writes this line; a manual revert adds it so the undone commit leaves the notes.
+REVERTS = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
 SECTIONS = (("breaking", "⚠ Mudanças incompatíveis"), ("feat", "Funcionalidades"),
             ("fix", "Correções"), ("perf", "Desempenho"), ("docs", "Documentação"))
 VERSION_MENTIONS = (("README.md", r"(Versão \*\*)([0-9.]+)(\*\*)"),
@@ -62,13 +64,19 @@ def parse_commit(sha, subject, body):
 
 def commits(revisions):
     log = git("log", "--no-merges", "--reverse", "--format=%H%x1f%s%x1f%b%x1e", *revisions)
+    return released([record.strip("\n").split("\x1f") for record in log.split("\x1e") if record.strip()])
+
+
+def released(records):
+    """Parsed (sha, subject, body) records, minus the commits a record in the range reverts."""
+    reverted = {sha for _, _, body in records for sha in REVERTS.findall(body)}
     parsed = []
-    for record in log.split("\x1e"):
-        if record.strip():
-            sha, subject, body = record.strip("\n").split("\x1f")
-            commit = parse_commit(sha, subject, body)
-            if commit:
-                parsed.append(commit)
+    for sha, subject, body in records:
+        if any(sha.startswith(prefix) for prefix in reverted):
+            continue
+        commit = parse_commit(sha, subject, body)
+        if commit:
+            parsed.append(commit)
     return parsed
 
 
