@@ -28,22 +28,7 @@ if ($pwsh) { $engines['7'] = $pwsh.Source } else { Write-Warning 'pwsh.exe not f
 $cli = Join-Path $root 'runner\cli.mjs'
 $workspaces = New-Object Collections.Generic.List[string]
 
-Add-Type -Namespace TestProgressBench -Name Cpu -MemberDefinition @'
-[DllImport("kernel32.dll")] public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
-'@
-
-# Percent of all logical CPUs busy while $Body runs; kernel time includes idle time.
-function Measure-Cpu([scriptblock] $Body) {
-    $i0 = 0L; $k0 = 0L; $u0 = 0L; $i1 = 0L; $k1 = 0L; $u1 = 0L
-    $null = [TestProgressBench.Cpu]::GetSystemTimes([ref]$i0, [ref]$k0, [ref]$u0)
-    $watch = [Diagnostics.Stopwatch]::StartNew()
-    $value = & $Body
-    $watch.Stop()
-    $null = [TestProgressBench.Cpu]::GetSystemTimes([ref]$i1, [ref]$k1, [ref]$u1)
-    $total = ($k1 - $k0) + ($u1 - $u0)
-    [pscustomobject]@{ cpuPct = [Math]::Round(100.0 * ($total - ($i1 - $i0)) / [Math]::Max([long]1, $total), 1)
-        seconds = [Math]::Round($watch.Elapsed.TotalSeconds, 1); value = $value }
-}
+. (Join-Path $PSScriptRoot 'bench\common.ps1')
 
 # Live processes split into collector (runner, native helper brokers, control scripts and
 # the consoles they own) and the test commands; private memory is what each one adds.
@@ -90,34 +75,6 @@ function New-Workspace {
         [IO.File]::WriteAllText((Join-Path $dir '.claude\test-progress.json'), $json, (New-Object Text.UTF8Encoding -ArgumentList $false))
     }
     $dir
-}
-
-function Invoke-Timed([string] $Exe, [string[]] $Arguments, [switch] $AllowFailure) {
-    # Under Stop, Windows PowerShell 5.1 turns a native stderr line into a terminating error.
-    $ErrorActionPreference = 'Continue'
-    $watch = [Diagnostics.Stopwatch]::StartNew()
-    $out = & $Exe @Arguments 2>&1
-    $watch.Stop()
-    $text = ($out | Where-Object { $_ -is [string] }) -join "`n"
-    $data = $null
-    try { $data = $text | ConvertFrom-Json } catch { }
-    $ok = $LASTEXITCODE -eq 0 -and $data -and $data.ok
-    $errors = ($out | Where-Object { $_ -isnot [string] } | ForEach-Object { $_.ToString() }) -join ' '
-    if (-not $ok -and -not $AllowFailure) {
-        $detail = (($out | Out-String).Trim() -replace '\s+', ' ')
-        throw ('Call failed (exit ' + $LASTEXITCODE + '): ' + $detail.Substring(0, [Math]::Min(400, $detail.Length)))
-    }
-    [pscustomobject]@{ ms = $watch.Elapsed.TotalMilliseconds; data = $data; ok = [bool]$ok
-        error = $(if ($ok) { $null } else { $errors.Substring(0, [Math]::Min(300, $errors.Length)) }) }
-}
-
-function Get-Stats($Samples) {
-    $warm = @($Samples | Select-Object -Skip 1 | Sort-Object)
-    $pick = { param($q) $warm[[Math]::Min($warm.Count - 1, [int][Math]::Ceiling($q * $warm.Count) - 1)] }
-    [ordered]@{
-        coldMs = [Math]::Round($Samples[0]); minMs = [Math]::Round($warm[0]); p50Ms = [Math]::Round((& $pick 0.5))
-        p95Ms = [Math]::Round((& $pick 0.95)); maxMs = [Math]::Round($warm[-1])
-    }
 }
 
 function Measure-Status([string] $Exe, [string[]] $Arguments) {
@@ -192,7 +149,8 @@ try {
             # The Mod's watcher instead: one collector streaming status for the same window.
             Write-Host ('Measuring active status streamed by one watcher (' + $WindowSeconds + ' s) ...')
             $stream = Join-Path ([IO.Path]::GetTempPath()) ('tp-bench-watch-' + [Guid]::NewGuid().ToString('N') + '.jsonl')
-            $watcher = Start-Process -FilePath $node -ArgumentList @(('"' + $cli + '"'), 'watch', '--cwd', ('"' + $busy + '"'), '--owner', $owner, '--module', 'all') `
+            # Same flag as the Mod's watcher (LONG_LIVED_NODE_FLAGS).
+            $watcher = Start-Process -FilePath $node -ArgumentList @('--max-semi-space-size=1', ('"' + $cli + '"'), 'watch', '--cwd', ('"' + $busy + '"'), '--owner', $owner, '--module', 'all') `
                 -RedirectStandardOutput $stream -WindowStyle Hidden -PassThru
             try {
                 Start-Sleep -Seconds 2
