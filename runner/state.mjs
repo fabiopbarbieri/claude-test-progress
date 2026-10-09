@@ -423,6 +423,8 @@ export function inspectState(directory, { recover = true } = {}) {
       try {
         if (!validRunId(control[1])) throw new Error('Identidade de controle do lote inválida');
         const manifest = readJson(path.join(directory, `batch.${control[1]}.json`));
+        // A finished batch drops its request before pruneHistory may remove its manifest.
+        if (!manifest && !securePath(path.join(directory, name), control[2] === 'mutation', true)) continue;
         if (!manifest || manifest.schemaVersion !== SCHEMA_VERSION || manifest.batchId !== control[1] || !Array.isArray(manifest.entries) ||
             !manifest.entries.length || manifest.entries.some(entry => !validId(entry.moduleId) || !validRunId(entry.runId))) throw new Error('Controle sem manifest autenticado');
         if (control[2] === 'mutation') { if (!securePath(path.join(directory, name), true, true)) continue; diagnose('*', 'Gate de controle do lote presente; nenhuma recuperação automática.', true); continue; }
@@ -449,6 +451,7 @@ export function inspectState(directory, { recover = true } = {}) {
     if (batchMatch) {
       try {
         const batch = readJson(path.join(directory, name));
+        if (batch === null && !securePath(path.join(directory, name), false, true)) continue;
         if (!batch || batch.schemaVersion !== SCHEMA_VERSION || batch.batchId !== batchMatch[1] || !validRunId(batch.batchId) ||
             !['preparing', 'released', 'aborted'].includes(batch.state) || !Array.isArray(batch.entries) ||
             batch.entries.some(entry => !validId(entry.moduleId) || !validRunId(entry.runId))) diagnose('*', 'Manifest do lote inválido.', true);
@@ -462,6 +465,46 @@ export function inspectState(directory, { recover = true } = {}) {
   return { jobs, stateDiagnostics, blocked };
 }
 export function snapshots(directory) { return inspectState(directory).jobs; }
+// Every run leaves its log and every batch its manifest, and each inspection (the watcher's,
+// once a second) authenticates every entry and reads every manifest, so its cost grew with
+// each run of the session. Only the log a module's snapshot names can be read, and a finished
+// batch matters while a snapshot or claim still names it. A start removes the rest.
+export function pruneHistory(directory) {
+  securePath(directory, true);
+  // List before reading records: a log exists only once its snapshot names it.
+  const names = fs.readdirSync(directory), present = new Set(names);
+  const runs = new Set(), batches = new Set();
+  for (const name of names) {
+    const job = /^([a-z][a-z0-9-]*)\.([0-9a-f-]{36})\.job\.json$/.exec(name);
+    if (job) runs.add(`${job[1]}.${job[2]}`);
+  }
+  for (const moduleId of stateIds(directory)) {
+    const loc = files(directory, moduleId);
+    // A record that cannot be read leaves everything in place.
+    for (const record of [readJson(loc.snapshot), securePath(loc.lock, true, true) ? readJson(loc.claim) : null]) {
+      if (!record) continue;
+      runs.add(`${moduleId}.${record.runId}`);
+      batches.add(record.batchId);
+    }
+  }
+  const remove = (name) => {
+    const file = path.join(directory, name);
+    try { if (secureEntry(file, false, true)) fs.unlinkSync(file); } catch { /* In use or unsafe; the next start tries again. */ }
+  };
+  for (const name of names) {
+    const log = /^([a-z][a-z0-9-]*)\.([0-9a-f-]{36})\.log$/.exec(name);
+    if (log && validId(log[1]) && validRunId(log[2]) && !runs.has(`${log[1]}.${log[2]}`)) { remove(name); continue; }
+    const batch = /^batch\.([0-9a-f-]{36})\.json$/.exec(name);
+    if (!batch || !validRunId(batch[1]) || batches.has(batch[1]) ||
+        ['request.json', 'compensate.json', 'mutation'].some(suffix => present.has(`batch.${batch[1]}.${suffix}`))) continue;
+    try {
+      const manifest = readJson(path.join(directory, name));
+      // A batch whose supervision ended with conserved locks stays as the evidence that blocks them.
+      if (manifest?.schemaVersion === SCHEMA_VERSION && manifest.batchId === batch[1] && manifest.state !== 'preparing' &&
+          typeof manifest.supervisionEndedAt === 'string' && !manifest.supervisionError) remove(name);
+    } catch { /* Inspection reports it. */ }
+  }
+}
 export function revision(cwd) {
   try {
     const options = { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 };

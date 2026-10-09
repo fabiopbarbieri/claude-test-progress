@@ -14,7 +14,7 @@ import path from 'path';
 const METRICS = ['wallMs', 'startMs', 'kpi.collectorCpuMsPer1kTests', 'kpi.avCpuMsPer1kTests', 'kpi.overheadPct',
   'groups.collector.cpuS', 'groups.collector.wsPeakMb', 'groups.collector.privPeakMb', 'groups.mod.cpuS',
   'groups.av.cpuS', 'groups.tests.cpuS', 'diagnose.allocMb', 'diagnose.statPerS', 'diagnose.eventLoopP99Ms',
-  'diagnose.eventLoopMaxMs', 'coldMs', 'p50Ms', 'p95Ms'];
+  'diagnose.eventLoopMaxMs', 'coldMs', 'p50Ms', 'p95Ms', 'stateFiles'];
 
 function readRuns(files) {
   return files.flatMap((file) => {

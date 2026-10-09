@@ -73,6 +73,9 @@ async function main() {
     await waitFor(result => settled(result, 'api', 'failed'));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'suite failure must not compensate sibling');
     assert.strictEqual(collect('start', 'api').ok, true, 'a finished module can restart while sibling remains active');
+    const current = collect('status').jobs;
+    assert.deepStrictEqual(fs.readdirSync(context.directory).filter(name => name.endsWith('.log')).sort(),
+      [`api.${current.api.runId}.log`, `ui.${current.ui.runId}.log`], 'a start removes the logs of earlier runs');
     await new Promise(resolve => setTimeout(resolve, 250));
     assert.strictEqual(collect('status').jobs.ui.status, 'running', 'old supervisor cannot compensate a safely finished run after its module restarts');
     // A coordinator holds its batch gate for milliseconds; a start that meets it waits instead of refusing.
@@ -95,7 +98,7 @@ async function main() {
     await waitFor(result => settled(result, 'ui', 'cancelled'));
     const unknown = spawnSync(process.execPath, [cli, 'unknown', '--cwd', cwd, '--owner', owner], { encoding: 'utf8' });
     assert.strictEqual(unknown.status, 1);
-    console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation and incompatible-state blocking: OK');
+    console.log('module batch real CLI: all preflight/ready zero effects, release, individual cancel, removed config, infrastructure compensation, normal failure isolation, history pruning and incompatible-state blocking: OK');
   } finally {
     try { collect('cancel'); } catch { /* Retain failure evidence until teardown. */ }
     await new Promise(resolve => setTimeout(resolve, 400));
