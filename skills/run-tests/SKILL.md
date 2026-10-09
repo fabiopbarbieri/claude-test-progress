@@ -11,10 +11,10 @@ Só um run iniciado pelo coletor aparece no painel e na faixa acima do prompt. R
 **Raiz do plugin** = dois níveis acima do diretório base desta skill. Todas as ações usam a CLI do plugin, com o mesmo estado do painel desta sessão (cwd + id da sessão):
 
 ```bash
-bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <diretório da sessão> --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
+bash "<raiz>/scripts/run-collector.sh" <list|start|status|logs|cancel> --cwd "<diretório da sessão>" --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
 ```
 
-No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON. `--module` aceita um ID ou `all`, então rode uma chamada por módulo.
+No Windows, o mesmo comando roda no Git Bash, o Bash do Claude Code. Use o PowerShell só onde não houver Bash: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON. `--module` aceita um ID ou `all`, então rode uma chamada por módulo.
 
 ```text
 Progresso:

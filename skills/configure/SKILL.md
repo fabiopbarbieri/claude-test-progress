@@ -10,10 +10,10 @@ description: Configura e diagnostica o Test Progress. Use ao criar ou editar `.c
 O modelo não consegue chamar o slash command `/test-progress`; só a pessoa consegue. Rode as ações pela CLI do plugin, que usa o mesmo estado do painel desta sessão (cwd + id da sessão):
 
 ```bash
-bash <raiz>/scripts/run-collector.sh <list|start|status|logs|cancel> --cwd <diretório da sessão> --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
+bash "<raiz>/scripts/run-collector.sh" <list|start|status|logs|cancel> --cwd "<diretório da sessão>" --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
 ```
 
-No Windows: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
+No Windows, o mesmo comando roda no Git Bash, o Bash do Claude Code. Use o PowerShell só onde não houver Bash: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON: `modules.<id>.diagnostics`, `jobs.<id>.status`, `jobs.<id>.logTail` e `jobs.<id>.recoveryRequired`. `list` e `status` não iniciam nada; `start` dispara a suíte de verdade.
 
 Para rodar um módulo cadastrado, siga `test-progress:run-tests`.
 
