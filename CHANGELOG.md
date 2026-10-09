@@ -4,6 +4,13 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.1] - 2026-10-08
+
+### Desempenho
+
+- **mod:** start no Node while idle until a watched file changes ([4b3d564](https://github.com/fabiopbarbieri/claude-test-progress/commit/4b3d5644b22cefdbc40ca452ec2f55467a44cec8))
+- **mod:** compare watched files every two seconds, prune old helpers and keep the collector Node ([c54f53a](https://github.com/fabiopbarbieri/claude-test-progress/commit/c54f53a200325c19b482c756d20e309b9478fe64))
+
 ## [0.10.0] - 2026-10-08
 
 ### Funcionalidades
