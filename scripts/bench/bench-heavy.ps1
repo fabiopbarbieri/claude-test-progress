@@ -750,7 +750,8 @@ try {
                             $extra = @{ NODE_OPTIONS = $options; TP_BENCH_COUNT_DIR = (Join-Path $diag 'counters'); TP_BENCH_EPERM_EVERY = [string]$EpermEvery
                                 TP_BENCH_RUNNER = (Join-Path $Checkout 'runner') }
                         }
-                        $variant = $(if ($EpermEvery -gt 0) { 'replay-eperm' } else { 'replay' })
+                        # Instrumented runs cost CPU, so they never share a group with plain ones.
+                        $variant = 'replay' + $(if ($EpermEvery -gt 0) { '-eperm' } else { '' }) + $(if ($Diagnose) { '-diag' } else { '' })
                         $run = Invoke-CollectorRun 'S5' $variant ('k=' + $count) $i $replay.path $replay.ids $replay.expected $null $null $extra
                         if ($diag) { $run.diagnose = Read-Diagnostics (Join-Path $diag 'counters') ($run.wallMs / 1000.0) (Join-Path $diag 'profiles') ('diag-' + $Label + '-' + $stamp + '-k' + $count + '-' + $i) }
                     }
