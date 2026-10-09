@@ -78,10 +78,9 @@ let lastPersistedAt = 0;
 let progressPending = false;
 const heartbeatIntervalMs = 5000;
 // Fast suites report many results per second; coalesce them into a few snapshot writes.
-// On Windows the antivirus scans every snapshot write's temporary file and every control
-// read, and the panel reads once a second: a snapshot is written at most that often, and
-// the control loop runs less often too.
-const progressIntervalMs = windows ? 1000 : 250;
+// On Windows each write and each control read is also scanned by the antivirus, and the
+// panel reads once a second, so both the writes and the control loop run less often.
+const progressIntervalMs = windows ? 500 : 250;
 const pollIntervalMs = windows ? 500 : 150;
 const logLimit = 1024 * 1024;
 let logBytes = 0;
@@ -392,8 +391,7 @@ if (cancelling) {
     poll = setInterval(guard(() => {
       checkCancellation();
       // Silence is not failure: record worker activity without inventing test progress.
-      const age = Date.now() - lastPersistedAt;
-      if (!ended && ((progressPending && age >= progressIntervalMs) || age >= heartbeatIntervalMs)) persist();
+      if (!ended && (progressPending || Date.now() - lastPersistedAt >= heartbeatIntervalMs)) persist();
     }), pollIntervalMs);
     persist();
   } catch (error) {
