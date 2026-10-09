@@ -115,7 +115,7 @@ class LongRunningTests(unittest.TestCase):
 
     def test_log_rotation_retains_counts_and_distinguishes_output(self):
         self.start("event(1);\nsetTimeout(() => {\n"
-                   " process.stdout.write('ordinary log line\\n'.repeat(100000));\n"
+                   " process.stdout.write(Array.from({ length: 100000 }, (_, n) => `ordinary log line ${n}\\n`).join(''));\n"
                    "}, 300);\nconst timer = setInterval(() => {\n"
                    " if (fs.existsSync('release')) { clearInterval(timer); event(2, true); }\n"
                    "}, 50);\n")
@@ -128,6 +128,11 @@ class LongRunningTests(unittest.TestCase):
         (self.app / "release").touch()
         final = self.until(lambda job: job["status"] not in ACTIVE)
         self.assertEqual((final["status"], final["resolved"]), ("completed", 2))
+        # Rotation keeps one unbroken tail: the newest lines, in order, up to the last one written.
+        kept = [int(line.rsplit(" ", 1)[1]) for line in Path(final["logPath"]).read_text().splitlines()[1:]
+                if line.startswith("ordinary log line ")]
+        self.assertGreater(len(kept), 20000)
+        self.assertEqual(kept, list(range(100000 - len(kept), 100000)))
 
     @unittest.skipUnless(os.name == "posix" and Path("/proc").is_dir(), "Linux process identity required")
     def test_lost_worker_supervisor_cleans_tree_and_retains_partial_results(self):
