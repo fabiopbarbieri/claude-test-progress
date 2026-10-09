@@ -4,6 +4,21 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.2] - 2026-10-09
+
+### Correções
+
+- **bench:** keep instrumented replays apart from plain ones in comparisons ([4496dc2](https://github.com/fabiopbarbieri/claude-test-progress/commit/4496dc21eb95fd870b915f70fbbd70c19173f709))
+
+### Desempenho
+
+- **collector:** size state reads from the file instead of zero-filling 1 MiB ([0dfbeac](https://github.com/fabiopbarbieri/claude-test-progress/commit/0dfbeaced6b51edde40baccf9c21bbd083a09306))
+- **collector:** keep the module log open for the whole run ([6369c8f](https://github.com/fabiopbarbieri/claude-test-progress/commit/6369c8fefef41f257608d9296b52664b9ce60459))
+
+### Documentação
+
+- **bench:** name the sampling interval and warn about the RDP clipboard ([c57270a](https://github.com/fabiopbarbieri/claude-test-progress/commit/c57270afb0f7a5b85dec41d78c0725d3e0c3e581))
+
 ## [0.10.1] - 2026-10-08
 
 ### Desempenho
