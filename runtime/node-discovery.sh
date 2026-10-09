@@ -6,12 +6,35 @@ _tp_node_error() {
   printf 'test-progress: %s\n' "$*" >&2
 }
 
+# Git Bash (MSYS2) and Cygwin run Windows' node.exe, which reports and accepts Windows
+# paths; cygpath converts them to and from this shell's paths.
+_tp_node_msys() {
+  [[ ${OSTYPE-} == msys* || ${OSTYPE-} == cygwin* ]]
+}
+
+_tp_node_posix_path() {
+  if _tp_node_msys && [[ $1 =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+    # /proc/cygdrive leads to the drives in MSYS2 and Cygwin alike, and costs no process;
+    # each process start in Git Bash costs ~40 ms.
+    if [[ -d /proc/cygdrive/${BASH_REMATCH[1],,} ]]; then
+      printf '/proc/cygdrive/%s/%s\n' "${BASH_REMATCH[1],,}" "${BASH_REMATCH[2]//\\//}"
+    else
+      cygpath -u "$1" 2>/dev/null
+    fi
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 _tp_node_initialize() {
   TP_NODE_PATH=''
   TP_NODE_VERSION=''
   TP_NODE_SOURCE=''
   TP_NODE_NVMRC=''
   TP_TASK_NODE_CWD=''
+  local tp_cwd
+  tp_cwd=$(_tp_node_posix_path "${1-}") || tp_cwd=''
+  set -- "$tp_cwd"
   if [[ ${1-} != /* || ! -d ${1-} ]]; then
     _tp_node_error '--cwd deve indicar um diretório absoluto existente.'
     return 1
@@ -35,7 +58,7 @@ _tp_node_probe() {
   fi
   [[ $tp_output == *$'\n'* ]] || return 1
   tp_version=${tp_output##*$'\n'}
-  tp_path=${tp_output%$'\n'*}
+  tp_path=$(_tp_node_posix_path "${tp_output%$'\n'*}") || return 1
   [[ $tp_path == /* && -x $tp_path ]] || return 1
   [[ $tp_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || return 1
   TP_TASK_PROBE_PATH=$tp_path
@@ -132,6 +155,34 @@ _tp_node_from_nvm() {
   return 1
 }
 
+# nvm-windows from Git Bash: its current version (NVM_SYMLINK), then every local install
+# under NVM_HOME, newest first. Network locations are skipped, as in node-discovery.ps1.
+_tp_node_nvm_windows_paths() {
+  local tp_root tp_dir
+  _tp_node_msys || return 0
+  if [[ -n ${NVM_SYMLINK-} && ${NVM_SYMLINK} != [\\/][\\/]* ]]; then
+    tp_root=$(_tp_node_posix_path "$NVM_SYMLINK") && printf '%s\n' "$tp_root/node.exe"
+  fi
+  if [[ -n ${NVM_HOME-} && ${NVM_HOME} != [\\/][\\/]* ]]; then
+    tp_root=$(_tp_node_posix_path "$NVM_HOME") || return 0
+    for tp_dir in "$tp_root"/v*; do
+      if [[ ${tp_dir##*/} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && -d $tp_dir ]]; then printf '%s\n' "${tp_dir##*/}"; fi
+    done | command sort -Vr | while IFS= read -r tp_dir; do printf '%s\n' "$tp_root/$tp_dir/node.exe"; done
+  fi
+}
+
+_tp_node_from_nvm_windows() {
+  local tp_minimum=$1 tp_source=$2 tp_candidate
+  while IFS= read -r tp_candidate; do
+    [[ -f $tp_candidate ]] || continue
+    if _tp_node_probe "$tp_candidate" && _tp_node_matches "$tp_minimum"; then
+      _tp_node_accept "$tp_source"
+      return 0
+    fi
+  done < <(_tp_node_nvm_windows_paths)
+  return 1
+}
+
 _tp_node_find_nvmrc() {
   local tp_dir=$TP_TASK_NODE_CWD tp_file
   while :; do
@@ -184,7 +235,9 @@ tp_select_collector_node() {
     return 1
   fi
   _tp_node_from_path 14 path && return 0
-  _tp_node_from_nvm 14 nvm '' fallback current default node && return 0
+  # nvm.sh does not run on Windows; Git Bash uses nvm-windows' installs instead.
+  if ! _tp_node_msys; then _tp_node_from_nvm 14 nvm '' fallback current default node && return 0; fi
+  _tp_node_from_nvm_windows 14 nvm && return 0
   _tp_node_error 'Node >=14 não encontrado no PATH ou no nvm local para o coletor.'
   return 1
 }

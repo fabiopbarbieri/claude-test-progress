@@ -234,6 +234,17 @@ ou `all`. Exemplo, depois de cadastrar `web`:
   -Action status -Cwd $PWD.Path -Owner 'owner-conhecido' -Module all
 ```
 
+No Git Bash, que é o Bash do Claude Code no Windows, `scripts/run-collector.sh`
+faz o mesmo e é o caminho que as skills usam. Ele aceita caminhos Windows ou
+`/c/...` e procura o Node no `PATH` e depois nas instalações locais do
+nvm-windows (`NVM_SYMLINK` e `NVM_HOME`). Shims do nvm 2.x e locais de rede
+ficam com o bootstrap PowerShell. Na VM de teste, uma chamada leva ~260 ms,
+contra ~550–650 ms pelo PowerShell aberto a partir do Git Bash.
+
+```bash
+bash "C:\Tools\claude-test-progress\scripts\run-collector.sh" status --cwd "$PWD" --owner 'owner-conhecido' --module all
+```
+
 `-Config`/`--config` é override somente da CLI/bootstrap, relativo ao workspace.
 Não altera namespace ou owner; o painel usa o arquivo default da sessão.
 Cada fonte tem limite de 1 MiB. command/env substituem campos inteiros do
