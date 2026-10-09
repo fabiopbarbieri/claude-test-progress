@@ -1,6 +1,6 @@
 {
   "name": "test-progress",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Acompanha em segundo plano os testes dos módulos cadastrados no workspace, com contadores observados, estado e logs por módulo.",
   "author": { "name": "Fabio Barbieri", "url": "https://github.com/fabiopbarbieri" },
   "homepage": "https://github.com/fabiopbarbieri/claude-test-progress",
