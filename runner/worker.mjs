@@ -372,7 +372,9 @@ if (cancelling) {
     child.stderr.on('data', guard((chunk) => consume('stderr', chunk)));
     // Persist identity immediately after spawn, before accepting stream events.
     // A crash before this write leaves an unknown orphan and deliberately keeps the lock.
-    const childIdentity = processIdentity(child.pid);
+    // On Windows only the broker's contained identity, from its proof, can prove or end a
+    // tree; a plain query here started the helper and blocked every in-process worker.
+    const childIdentity = windows ? null : processIdentity(child.pid);
     if (child.pid) {
       // Retain identity in memory even if the first disk write fails.
       snapshot = { ...snapshot, pid: child.pid, childIdentity };

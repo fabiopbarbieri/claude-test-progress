@@ -197,7 +197,7 @@ export function windowsSameProcess(identity) {
   try { return control('State', identityArguments(identity)).state === 'present'; }
   catch { return false; }
 }
-export function windowsSameProcesses(identities) {
+export function windowsSameProcesses(identities, { withSelf = false } = {}) {
   checkedList(identities);
   const result = identities.map(() => false);
   const pending = [];
@@ -207,7 +207,7 @@ export function windowsSameProcesses(identities) {
     else pending.push({ identity, index });
   });
   if (!pending.length) return result;
-  const captureSelf = !selfIdentity && pending.some(item => item.identity.pid === process.pid);
+  const captureSelf = !selfIdentity && (withSelf || pending.some(item => item.identity.pid === process.pid));
   try {
     const parameters = ['-Queries', JSON.stringify(pending.map(item => ({ pid: item.identity.pid,
       startTime: item.identity.startTime, owner: item.identity.owner })))];
