@@ -392,7 +392,8 @@ if (cancelling) {
     poll = setInterval(guard(() => {
       checkCancellation();
       // Silence is not failure: record worker activity without inventing test progress.
-      if (!ended && (progressPending || Date.now() - lastPersistedAt >= heartbeatIntervalMs)) persist();
+      const age = Date.now() - lastPersistedAt;
+      if (!ended && ((progressPending && age >= progressIntervalMs) || age >= heartbeatIntervalMs)) persist();
     }), pollIntervalMs);
     persist();
   } catch (error) {
