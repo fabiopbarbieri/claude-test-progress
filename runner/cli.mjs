@@ -247,6 +247,8 @@ function envelope(state, ok, error) {
   return { schemaVersion: SCHEMA_VERSION, ok, modules, jobs: state.jobs,
     workspace: { ...(discovery?.workspace || {}), moduleConfig: { ...(discovery?.workspace?.moduleConfig || { status: 'absent', schemaVersion: null, enabledIds: [] }), diagnostics: discovery?.diagnostics || [] }, stateBlocked: state.blocked },
     stateDiagnostics: state.stateDiagnostics, ...(actionResults ? { actionResults } : {}), ...(error ? { error } : {}),
+    // While idle the Mod compares these files with the host's file system and starts no Node until one changes.
+    ...(context && discovery ? { sources: { state: context.directory, paths: [...new Set(discovery.sources)] } } : {}),
     // The Mod reuses this Node for later queries instead of bootstrapping a shell each time.
     collector: { path: collectorRuntime.path, source: collectorRuntime.source } };
 }

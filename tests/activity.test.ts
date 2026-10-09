@@ -372,3 +372,69 @@ test('a live job streams status from one watcher instead of a query per second, 
   expect(actions.length).toBeGreaterThanOrEqual(2);
   expect(actions.every(action => action === 'status')).toBe(true);
 });
+
+test('idle panels start no Node until a watched file changes, refresh every five minutes and poll when the file system refuses', async ($, on) => {
+  const clock = mock.clock(on); const calls: string[] = [];
+  const sources = { state: '/tmp/state/abc', paths: ['/work/.claude/test-progress.json', '/work/api'] };
+  let current: any = { ...data({ api: module() }, {}), sources };
+  let entries = [{ name: 'api.json', kind: 'file', size: 10, mtimeMs: 1, isLink: false }];
+  let config = { kind: 'file', size: 50, mtimeMs: 1, isLink: false }, refuse = false;
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { calls.push(e.argv[2]); return response(current); });
+  on('fs.list', ($, e) => refuse ? { deny: 'fixture refuses' } : (e.path === sources.state ? { value: entries } : { deny: 'unexpected' }));
+  on('fs.stat', ($, e) => e.path === sources.paths[0] ? { value: config } : { value: { kind: 'dir', size: 0, mtimeMs: Date.now(), isLink: false } });
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  // The first answer brings the sources; one more query takes the baseline they describe.
+  await clock.advance(1000); expect(calls).toEqual(['status', 'status']);
+  // A folder's own time moves with what tests write in it; that alone starts nothing.
+  await clock.advance(30000); expect(calls).toEqual(['status', 'status']);
+  // Another session of the skill writes a snapshot: the panel follows within a second.
+  entries = [...entries, { name: 'api.lock', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }];
+  await clock.advance(1000); expect(calls).toEqual(['status', 'status', 'status']);
+  config = { ...config, mtimeMs: 2 };
+  await clock.advance(1000); expect(calls).toHaveLength(4);
+  await clock.advance(298000); expect(calls).toHaveLength(4);
+  await clock.advance(2000); expect(calls).toHaveLength(5);
+  refuse = true;
+  await clock.advance(9000); expect(calls).toHaveLength(5);
+  await clock.advance(1000); expect(calls).toHaveLength(6);
+});
+
+test('a failed idle query is retried after ten seconds even with nothing changed', async ($, on) => {
+  const clock = mock.clock(on); const calls: string[] = []; let fail = false;
+  const sources = { state: '/tmp/state/abc', paths: [] as string[] };
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => { calls.push(e.argv[2]); return fail ? { deny: 'fixture timed out' } : response({ ...data({ api: module() }, {}), sources }); });
+  on('fs.list', () => ({ value: [] }));
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  await clock.advance(1000); expect(calls).toHaveLength(2);
+  fail = true;
+  await clock.advance(299000); expect(calls).toHaveLength(2);
+  await clock.advance(1000); expect(calls).toHaveLength(3);
+  await clock.advance(9000); expect(calls).toHaveLength(3);
+  await clock.advance(1000); expect(calls).toHaveLength(4);
+});
+
+test('a new session reuses the collector Node kept for the same folder and PATH, and forgets one that stopped answering', async ($, on) => {
+  const calls: any[] = []; let owner = 'A'; let deny = false;
+  mock.store(on); mock.env(on, { PATH: '/usr/bin' });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', ($, e) => {
+    calls.push(e);
+    if (deny && e.argv[0] === '/opt/node/bin/node') return { deny: 'node removed' };
+    return response({ ...data(), collector: { path: '/opt/node/bin/node', source: 'nvm' } });
+  });
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(calls[0].argv[0]).toBe('bash');
+  owner = 'B';
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(calls[1].argv[0]).toBe('/opt/node/bin/node'); expect(calls[1].init.env).toEqual({ TEST_PROGRESS_NODE_SOURCE: 'nvm' });
+  owner = 'C'; deny = true;
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  expect(calls.slice(2).map(call => call.argv[0])).toEqual(['/opt/node/bin/node', 'bash']);
+});
