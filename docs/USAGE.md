@@ -290,8 +290,10 @@ node /caminho/absoluto/claude-test-progress/runner/cli.mjs status \
   --cwd /caminho/absoluto/do/app --owner OWNER_CONHECIDO --module all
 ```
 
-Estado e logs ficam no temporário do sistema, fora do cache do plugin. Não há
-promessa de retomada após reboot/limpeza. Contadores persistem separados da cauda
+Estado e logs ficam no temporário do sistema, fora do cache do plugin. Cada
+módulo guarda só o log da execução mais recente: um start apaga os logs e os
+lotes encerrados de execuções anteriores. Não há promessa de retomada após
+reboot/limpeza. Contadores persistem separados da cauda
 do log, limitada a aproximadamente 1 MiB por execução; relatórios completos
 pertencem ao runner. Perda de worker preserva resultados parciais e pode exigir
 cancelamento/recuperação no owner original. Não apague locks para liberar jobs.
