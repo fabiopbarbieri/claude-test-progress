@@ -48,6 +48,9 @@ async function main(){
       const deadline=Date.now()+5000;while(sameProcess(claim.workerIdentity)&&Date.now()<deadline)await sleep(50);
       assert(!sameProcess(claim.workerIdentity));assert.strictEqual(groupState(claim.childIdentity),'empty');
       assert(!fs.existsSync(files(directory,moduleId).lock));
+      // The batch supervisor still stamps its manifest and drops its request after the worker exits.
+      const settled=Date.now()+5000;while(fs.readdirSync(directory).some(name=>name.endsWith('.request.json'))&&Date.now()<settled)await sleep(50);
+      assert(!fs.readdirSync(directory).some(name=>name.endsWith('.request.json')));
     }
     fs.writeFileSync(configPath,JSON.stringify({schemaVersion:1,modules:{}}));
     assert.deepStrictEqual(collect('status').workspace.moduleConfig.enabledIds,[]);collect('start','all',false);
