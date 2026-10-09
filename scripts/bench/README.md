@@ -61,6 +61,7 @@ medido; o padrão é o checkout do script.
 | `S4` | `list`, `start`, `status`, `logs` e `cancel` por Node direto, PowerShell 5.1, PowerShell 7, Git Bash → PowerShell e `run-collector.sh` | custo por chamada da skill e do Mod |
 | `S5` | replay das capturas de S1/S2 com 1, 2, 4 e 8 módulos | vazão do coletor, sem Java nem Chrome |
 | `S6` | S2 várias vezes na mesma sessão | crescimento e sobras |
+| `S7` | `-Repeat` lotes curtos na mesma sessão, com `-HistoryModules` módulos que só esperam `-HistorySeconds`, e `-Calls` chamadas de `status` no fim | quanto o estado acumulado numa sessão longa pesa no coletor (execuções agrupadas de 10 em 10; `stateFiles` conta as entradas) |
 
 A rodada sem o coletor (`raw`) usa `capture.mjs`, que lança o comando como o
 coletor lançaria e grava a saída com os tempos em `captures\`. O `replay.mjs`

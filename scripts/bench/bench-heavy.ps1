@@ -14,6 +14,8 @@ param(
     [switch] $Diagnose,
     [ValidateRange(0, 3600)][int] $DefenderSeconds = 0,
     [ValidateRange(10, 3600)][int] $IdleSeconds = 60,
+    [ValidateRange(1, 16)][int] $HistoryModules = 6,
+    [ValidateRange(1, 600)][int] $HistorySeconds = 10,
     [string] $Label = 'bench',
     [string] $Output,
     [ValidateRange(250, 30000)][int] $SampleMs = 1000,
@@ -40,6 +42,10 @@ param(
 #       -Diagnose adds fs counters, event loop delay and CPU profiles (replay only, so the
 #       suites' own Node processes are never instrumented); -EpermEvery N injects rename EPERM.
 #   S6  S2 with the collector -Repeat times in one session, watching growth and leftovers.
+#   S7  -Repeat short batches in one session, as a long Claude Code session runs its tests:
+#       -HistoryModules modules that only wait -HistorySeconds, so what changes from one run to
+#       the next is the collector's own cost as the session's state accumulates. Runs are grouped
+#       by ten; Calls status calls at the end measure a query against that state.
 #
 # CPU per process group comes from process handles held from the first sample to the end, so a
 # process that exited still reports its whole CPU; processes living less than -SampleMs are
@@ -57,7 +63,7 @@ function Split-List($Values, [string[]] $Allowed, [string] $Name) {
     foreach ($item in $items) { if ($Allowed -and $Allowed -notcontains $item) { throw ('Invalid ' + $Name + ': ' + $item) } }
     $items
 }
-$Scenario = Split-List $Scenario @('S0', 'S1', 'S2', 'S4', 'S5', 'S6') 'scenario'
+$Scenario = Split-List $Scenario @('S0', 'S1', 'S2', 'S4', 'S5', 'S6', 'S7') 'scenario'
 $Entry = Split-List $Entry @('direct', 'ps51', 'pwsh', 'gitbash-ps51', 'gitbash-pwsh', 'gitbash-sh') 'entry'
 $ReplayModules = @(Split-List $ReplayModules $null 'replay count' | ForEach-Object { [int]$_ })
 if ($Modules) { $Modules = Split-List $Modules $null 'module' }
@@ -436,6 +442,11 @@ function New-Run([string] $ScenarioId, [string] $Variant, [string] $ModuleLabel,
         processStarts = $null }
 }
 
+function Remove-State([string] $StateDir) {
+    Remove-Item -LiteralPath $StateDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $StateDir) ('acl-' + (Split-Path -Leaf $StateDir) + '.json')) -Force -ErrorAction SilentlyContinue
+}
+
 # One batch through the collector, with a watcher streaming status as the Mod's would.
 function Invoke-CollectorRun([string] $ScenarioId, [string] $Variant, [string] $ModuleLabel, [int] $Index, [string] $Cwd,
         [string[]] $Ids, $ExpectedMap, [string] $Config, [string] $Owner, [hashtable] $ExtraEnv, [switch] $KeepState) {
@@ -496,10 +507,7 @@ function Invoke-CollectorRun([string] $ScenarioId, [string] $Variant, [string] $
     if ($first.Count -and $first[0].Value.logPath) { $stateDir = Split-Path -Parent $first[0].Value.logPath }
     Test-Run $run $envelope $Ids $ExpectedMap $stateDir
     Complete-Run $run $before $avBefore $clock.Elapsed.TotalSeconds
-    if ($stateDir -and -not $KeepState) {
-        Remove-Item -LiteralPath $stateDir -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath (Join-Path (Split-Path -Parent $stateDir) ('acl-' + (Split-Path -Leaf $stateDir) + '.json')) -Force -ErrorAction SilentlyContinue
-    }
+    if ($stateDir -and -not $KeepState) { Remove-State $stateDir }
     Remove-Item -LiteralPath $stream, ($stream + '.err') -Force -ErrorAction SilentlyContinue
     $run
 }
@@ -650,6 +658,44 @@ function Invoke-ControlScenario {
     }
 }
 
+function Invoke-HistoryScenario {
+    $dir = Join-Path $Workspace 'history'
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir '.claude')
+    $set = [ordered]@{}
+    for ($i = 1; $i -le $HistoryModules; $i++) {
+        $set[('h' + $i)] = [ordered]@{ label = ('History ' + $i); adapter = 'exit'
+            command = @($node, '-e', ('setTimeout(function () {}, ' + ($HistorySeconds * 1000) + ')')) }
+    }
+    Write-Utf8 (Join-Path $dir '.claude\test-progress.json') (([ordered]@{ schemaVersion = 1; modules = $set }) | ConvertTo-Json -Depth 6)
+    $ids = @($set.Keys)
+    $owner = 'bench-history-' + $Label + '-' + $stamp
+    $stateDir = $null
+    for ($i = 1; $i -le $Repeat; $i++) {
+        $first = [Math]::Floor(($i - 1) / 10) * 10 + 1
+        $group = 'k=' + $HistoryModules + ' runs ' + $first + '-' + [Math]::Min($first + 9, $Repeat)
+        Write-Host ('S7 history run #' + $i + ' ...')
+        $null = Invoke-CollectorRun 'S7' 'history' $group $i $dir $ids @{} $null $owner $null -KeepState
+    }
+    $samples = New-Object Collections.Generic.List[double]
+    $failures = 0
+    for ($i = 0; $i -lt $Calls; $i++) {
+        $call = Invoke-Collector 'status' 'all' $dir $owner $null
+        $samples.Add($call.ms)
+        if (-not $call.ok) { $failures += 1 }
+        $job = $(if ($call.data) { @($call.data.jobs.PSObject.Properties | Select-Object -First 1) } else { @() })
+        if ($job.Count -and $job[0].Value.logPath) { $stateDir = Split-Path -Parent $job[0].Value.logPath }
+    }
+    $run = New-Run 'S7' 'status' ('k=' + $HistoryModules + ' after ' + $Repeat + ' runs') 1
+    $stats = Get-Stats $samples
+    foreach ($key in $stats.Keys) { $run | Add-Member -NotePropertyName $key -NotePropertyValue $stats[$key] }
+    if ($stateDir) { $run.stateFiles = @(Get-ChildItem -LiteralPath $stateDir -Recurse -Force -ErrorAction SilentlyContinue).Count }
+    if ($failures) { $run.invalidReasons += ($failures.ToString() + ' of ' + $samples.Count + ' status calls failed') }
+    $run.valid = ($failures -eq 0)
+    $script:runs.Add($run)
+    Write-Host ('  S7 status after ' + $Repeat + ' runs: p50 ' + $stats.p50Ms + ' ms, ' + $run.stateFiles + ' state files')
+    if ($stateDir) { Remove-State $stateDir }
+}
+
 # ---------------------------------------------------------------- replay workspaces (S5)
 function New-ReplayWorkspace([int] $Count) {
     $captures = @($Modules | Where-Object { Test-Path -LiteralPath (Join-Path $capturesDir ($_ + '.jsonl.gz')) })
@@ -733,6 +779,7 @@ try {
                 }
             }
             'S4' { Invoke-ControlScenario }
+            'S7' { Invoke-HistoryScenario }
             'S5' {
                 foreach ($count in $ReplayModules) {
                     $replay = New-ReplayWorkspace $count
