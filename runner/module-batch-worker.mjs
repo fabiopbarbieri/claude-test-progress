@@ -124,7 +124,9 @@ async function main() {
     let allSafe = true;
     for (const entry of manifest.entries) {
       try {
-        if (acknowledged(entry)) continue;
+        // The manifest read for this pass is enough here; every path that acts on a missing
+        // or changed record reads it again first.
+        if (finalAcknowledged(manifest, entry)) continue;
         const loc = files(request.directory, entry.moduleId);
         const snapshot = readJson(loc.snapshot);
         if (!validRecord(snapshot, entry.moduleId, entry.runId)) { if (acknowledged(entry)) continue; cancelAll('Snapshot substituído durante supervisão'); allSafe = false; continue; }
@@ -135,7 +137,8 @@ async function main() {
           else if (snapshot.infrastructureFailure) cancelAll(snapshot.error || 'Falha de infraestrutura');
           continue;
         }
-        ownedClaim(request.directory, entry.moduleId, entry.runId);
+        // readJson authenticated the lock directory with the claim; this pass acts on that read.
+        if (!validRecord(claim, entry.moduleId, entry.runId)) throw new Error(`Claim de ${entry.moduleId} não corresponde à execução`);
         if (claim.batchId !== request.batchId || !sameIdentity(claim.coordinatorIdentity, coordinatorIdentity)) throw new Error('Identidade de coordenação substituída');
         allSafe = false;
         if (snapshot.infrastructureFailure) cancelAll(snapshot.error || 'Falha de infraestrutura');
@@ -153,6 +156,7 @@ async function main() {
           cancelAll('Worker perdido antes do resultado final seguro');
           cleanLostWorker(entry, claim, snapshot);
         } else if (stopping) {
+          if (acknowledged(entry)) continue;
           // A delayed preparation is safe to stop: no command can pass an aborted barrier.
           // An in-process worker shares this process; it sees the aborted barrier itself.
           if (!claim.spawnAttemptAt && !inProcess && Date.now() > observationDeadline - ABORT_MS + 500) process.kill(claim.workerIdentity.pid, 'SIGKILL');
