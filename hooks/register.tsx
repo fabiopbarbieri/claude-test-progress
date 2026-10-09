@@ -71,11 +71,44 @@ function serialized<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 const liveJobs = () => Object.values(p.jobs).some(job => ACTIVE.has(job.status) || job.recoveryRequired);
+// Idle, a query starts a Node only when something it read changed. Each answer names its sources
+// (the state directory and the configuration files and module folders); every IDLE_CHECK_TICKS
+// seconds the Mod compares them through the host's file system, with a query at least every
+// IDLE_REFRESH_TICKS seconds (ten after a failed one). Without sources, or if the file system
+// refuses, the panel polls every IDLE_POLL_TICKS seconds instead.
+const IDLE_CHECK_TICKS = 2;
+const IDLE_REFRESH_TICKS = 300;
+const absolutePath = (value: unknown): value is string => typeof value === 'string' && !value.includes('\0') &&
+  (value.startsWith('/') || /^[a-z]:\\/i.test(value));
+let sources: { identity: string; state: string; paths: string[] } | null = null;
+let baseline: string | null = null, refreshTicks = 0;
+function rememberSources(value: { state?: unknown; paths?: unknown } | undefined) {
+  const paths = Array.isArray(value?.paths) ? value.paths : null;
+  sources = absolutePath(value?.state) && paths && paths.length <= 256 && paths.every(absolutePath)
+    ? { identity: p.identity, state: value.state, paths } : null;
+}
+async function fingerprint($: $) {
+  const current = sources;
+  if (!current || current.identity !== p.identity) return null;
+  try {
+    const rows = (await $.fs.list(current.state)).map(entry => `${entry.name}|${entry.kind}|${entry.size}|${entry.mtimeMs}`).sort();
+    for (const path of current.paths) {
+      const info = await $.fs.stat(path).catch(() => null);
+      // A folder counts by presence: its own time moves with every file a test writes in it.
+      rows.push(`${path}|${!info ? 'absent' : info.kind === 'dir' ? 'dir' : `${info.kind}|${info.size}|${info.mtimeMs}`}`);
+    }
+    return rows.join('\n');
+  } catch { return null; }
+}
 // Poll every second only while something can change without us: an unseen identity or a live job.
-function pollDue() {
-  const live = !p.workspace || liveJobs();
-  if (live || ++idleTicks >= IDLE_POLL_TICKS) { idleTicks = 0; return true; }
-  return false;
+async function pollDue($: $) {
+  if (!p.workspace || liveJobs()) { idleTicks = 0; return true; }
+  const ticks = ++idleTicks, refresh = --refreshTicks <= 0;
+  if (!refresh && ticks % IDLE_CHECK_TICKS) return false;
+  const print = refresh ? null : await fingerprint($);
+  const due = refresh || (print === null ? ticks >= IDLE_POLL_TICKS : print !== baseline);
+  if (due) idleTicks = 0;
+  return due;
 }
 // While a job is live, one collector started once streams each status change (`watch`),
 // instead of a Node started every second. A watcher that stops answering, or one the host
@@ -91,6 +124,7 @@ function stopWatcher() {
 }
 function applyEnvelope(data: ReturnType<typeof validateEnvelope>) {
   p.modules = data.modules; p.jobs = data.jobs; p.workspace = data.workspace; p.stateDiagnostics = data.stateDiagnostics;
+  rememberSources(data.sources);
   const selected = p.selectedLogs && p.jobs[p.selectedLogs.id];
   if (p.selectedLogs && selected?.runId === p.selectedLogs.runId && Array.isArray(selected.logTail)) p.logTail = sanitizeTail(selected.logTail);
 }
@@ -148,6 +182,40 @@ function watch($: $, logs: string) {
 const validCollector = (value: { path?: unknown; source?: unknown } | undefined): value is { path: string; source: string } =>
   typeof value?.path === 'string' && !value.path.includes('\0') && (value.path.startsWith('/') || /^[a-z]:\\/i.test(value.path)) &&
   typeof value.source === 'string' && /^[\w-]{1,32}$/.test(value.source);
+// The bootstrap's Node is kept between sessions for the same folder, PATH and override, so a new
+// session queries it directly instead of starting PowerShell or bash first. A Node that no longer
+// answers is forgotten, and that query goes through the bootstrap.
+const COLLECTORS = 'collectors';
+async function collectorKey($: $, cwd: string) {
+  try {
+    const [path, override] = await Promise.all([$.env.get('PATH').then(value => value ?? $.env.get('Path')), $.env.get('TEST_PROGRESS_NODE')]);
+    return JSON.stringify([cwd, path ?? null, override ?? null]);
+  } catch { return null; }
+}
+async function storedCollectors($: $) {
+  const value = await $.store.get(COLLECTORS).catch(() => undefined);
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, { path?: unknown; source?: unknown }> : {};
+}
+async function rememberedCollector($: $, key: string | null) {
+  if (!key) return null;
+  const value = (await storedCollectors($))[key];
+  if (!validCollector(value)) return null;
+  p.collector = { identity: p.identity, path: value.path, source: value.source };
+  return p.collector;
+}
+async function keepCollector($: $, key: string | null, value: { path: string; source: string }) {
+  if (!key) return;
+  // The newest 32 folders stay; each entry is a path and a source label.
+  const kept = Object.entries(await storedCollectors($)).filter(([entry]) => entry !== key).slice(-31);
+  await $.store.set(COLLECTORS, Object.fromEntries([...kept, [key, { path: value.path, source: value.source }]])).catch(() => {});
+}
+async function forgetCollector($: $, key: string | null) {
+  if (!key) return;
+  const all = await storedCollectors($);
+  if (!(key in all)) return;
+  delete all[key];
+  await $.store.set(COLLECTORS, all).catch(() => {});
+}
 const duration = (ms: number | undefined) => typeof ms === 'number' ? `${Math.floor(ms / 1000)}s` : 'desconhecida';
 function startAllowed(id: string) {
   const job = p.jobs[id];
@@ -211,7 +279,12 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   const context = await synchronizeIdentity($);
   const windows = /^[a-z]:[\\/]|^\\\\/i.test(context.cwd);
   // After one bootstrap, call the Node it selected directly: no shell, no PATH/nvm probing.
-  const direct = p.collector?.identity === p.identity ? p.collector : null;
+  let key: string | null | undefined;
+  const keyOf = async () => key === undefined ? (key = await collectorKey($, context.cwd)) : key;
+  const direct = p.collector?.identity === p.identity ? p.collector : await rememberedCollector($, await keyOf());
+  // What the files looked like before this query; an answer makes it the idle baseline.
+  const print = await fingerprint($);
+  const settle = (ok: boolean) => { baseline = print; refreshTicks = ok ? IDLE_REFRESH_TICKS : IDLE_POLL_TICKS; };
   let argv: string[];
   if (direct) argv = [direct.path, `${$.plugin.root}/runner/cli.mjs`, action,
     '--cwd', context.cwd, '--owner', context.owner, '--module', moduleId];
@@ -225,14 +298,15 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   const init = { timeoutMs: action === 'start' ? 60000 : windows ? 15000 : 5000,
     ...(direct ? { env: { TEST_PROGRESS_NODE_SOURCE: direct.source } } : {}) };
   // A stale cached Node falls back to the bootstrap once; a start is never repeated.
-  const fallback = () => { p.collector = null; return !!direct && action !== 'start'; };
+  const fallback = async () => { p.collector = null; await forgetCollector($, await keyOf()); return !!direct && action !== 'start'; };
   const changed = () => new Error('A sessão mudou durante a consulta. Atualize para ver os jobs desta sessão.');
   let response;
   try { response = await $.process.run(argv, init); }
   catch (error) {
     await synchronizeIdentity($);
     if (context.generation !== p.generation) throw changed();
-    if (direct && fallback()) return collect($, action, moduleId);
+    if (direct && await fallback()) return collect($, action, moduleId);
+    settle(false);
     throw error;
   }
   await synchronizeIdentity($);
@@ -240,13 +314,19 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   let raw: unknown;
   try { raw = JSON.parse(response.stdout.trim()); }
   catch {
-    if (direct && fallback()) return collect($, action, moduleId);
+    if (direct && await fallback()) return collect($, action, moduleId);
+    settle(false);
     throw new Error(sanitizeText(response.stderr).trim().slice(0, 1024) || `Coletor retornou resposta inválida (exit ${response.exitCode}); requer Node 14+ local.`);
   }
-  const data = validateEnvelope(raw);
-  if (!direct && validCollector(data.collector)) p.collector = { identity: p.identity, path: data.collector.path, source: data.collector.source };
+  let data;
+  try { data = validateEnvelope(raw); } catch (error) { settle(false); throw error; }
+  if (!direct && validCollector(data.collector)) {
+    p.collector = { identity: p.identity, path: data.collector.path, source: data.collector.source };
+    await keepCollector($, await keyOf(), p.collector);
+  }
   // Error envelopes still carry the valid catalogue and persistent jobs.
   applyEnvelope(data);
+  settle(data.ok && response.exitCode === 0);
   if (!data.ok || response.exitCode !== 0) {
     const actionErrors = Object.entries(data.actionResults ?? {}).filter(([, result]) => !result.ok)
       .map(([id, result]) => `${id}: ${result.error ?? 'ação recusada'}`).join('\n');
@@ -367,7 +447,7 @@ export const register: Register = on => {
         try {
           await synchronizeIdentity($);
           if (watcher && watcher.identity !== p.identity) stopWatcher();
-          if (pollDue()) {
+          if (await pollDue($)) {
             // Every query returns the whole catalogue and all jobs; only a live selected run re-reads its log.
             const selected = p.selectedLogs, job = selected && p.jobs[selected.id];
             const live = !!selected && !!job && ACTIVE.has(job.status);

@@ -87,8 +87,21 @@ Linux; `inprocess` força o modo compartilhado.
 Enquanto há job ativo, o painel recebe o estado de um coletor contínuo
 (`cli.mjs watch`), que lê o estado a cada segundo e só escreve quando algo
 muda, em vez de iniciar um Node por segundo. Sem jobs ativos por 15 s, ele
-encerra e o painel volta à consulta a cada 10 s. Se o watcher não iniciar ou
-parar de responder, o painel volta à consulta por segundo.
+encerra. Se o watcher não iniciar ou parar de responder, o painel volta à
+consulta por segundo.
+
+Sem job ativo, o painel não inicia Node para conferir se algo mudou. Cada
+resposta do coletor diz do que dependeu: a pasta de estado da sessão, o
+cadastro, o registry e as pastas dos módulos. A cada 2 s o Mod compara
+esses arquivos pelo sistema de arquivos do próprio Claude Code e só consulta o
+coletor quando um deles muda, ou a cada 5 minutos. Uma pasta de módulo conta só
+por existir, porque a data dela muda a cada arquivo que os testes gravam. Se o
+sistema de arquivos recusar a leitura, o painel volta à consulta a cada 10 s.
+
+O Node escolhido pelo bootstrap (`run-collector.ps1`) fica guardado entre
+sessões, por pasta, `PATH` e `TEST_PROGRESS_NODE`, no armazenamento do próprio
+plugin. Uma sessão nova consulta esse Node direto, sem abrir PowerShell; se ele
+não responder, é esquecido e a consulta passa pelo bootstrap.
 
 A descoberta do Node de módulos `node-project` também roda no helper nativo,
 com as mesmas regras de `runtime/node-discovery.ps1`; o PowerShell só é usado se
@@ -105,7 +118,9 @@ arquivo comum, sem link, dentro da raiz com DACL privada verificada, a mesma
 confiança dada aos arquivos de job que definem os comandos. Se não puder ser
 compilado (nova tentativa após 1 h) ou iniciado, por exemplo por AppLocker ou
 WDAC, o plugin usa o PowerShell como antes; `TEST_PROGRESS_WINDOWS_HELPER=0`
-força esse caminho. No caminho PowerShell, a DLL compilada de
+força esse caminho. Quando um helper novo é compilado, os helpers e DLLs de
+outras versões do código são apagados da raiz; um que ainda esteja em uso fica
+para a próxima compilação. No caminho PowerShell, a DLL compilada de
 `WindowsProcessHost.cs` fica em cache na mesma raiz e só é carregada se o dono
 for o usuário, Administrators ou SYSTEM. Cada chamada é
 limitada por padrão a **7500 ms** no 5.1 e **15000 ms** no 7 (`pwsh.exe`), que

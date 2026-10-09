@@ -77,6 +77,8 @@ export function discoverModules(context, { configPath } = {}) {
   const workspacePath = path.resolve(context.cwd, configPath === undefined ? '.claude/test-progress.json' : configPath);
   const source = readSource(workspacePath);
   const revision = [sourceRevision(workspacePath, source)];
+  // What this answer depends on besides the state directory; the Mod watches it while idle.
+  const sources = [workspacePath];
   const configuredDirectory = process.env.CLAUDE_CONFIG_DIR;
   const registryDirectory = configuredDirectory === undefined ? path.join(os.homedir(), '.claude') : configuredDirectory;
   let registry;
@@ -86,17 +88,18 @@ export function discoverModules(context, { configPath } = {}) {
   } else {
     const registryPath = path.join(registryDirectory, 'test-progress.registry.json');
     registry = readSource(registryPath);
+    sources.push(registryPath);
     revision.push(sourceRevision(registryPath, registry));
     registryError = rootDiagnostic(registry, 'templates');
   }
   if (registryError) diagnostics.push(registryError);
   const sourceError = rootDiagnostic(source, 'modules');
-  if (source.status === 'absent') return { modules, workspace, diagnostics, catalog, revision };
+  if (source.status === 'absent') return { modules, workspace, diagnostics, catalog, revision, sources };
   workspace.moduleConfig.schemaVersion = source.value?.schemaVersion === SCHEMA_VERSION ? SCHEMA_VERSION : null;
   if (sourceError) {
     workspace.moduleConfig.status = 'invalid';
     diagnostics.push(sourceError);
-    return { modules, workspace, diagnostics, catalog, revision };
+    return { modules, workspace, diagnostics, catalog, revision, sources };
   }
   workspace.moduleConfig.status = 'valid';
   for (const [id, declaration] of Object.entries(source.value.modules)) {
@@ -130,7 +133,9 @@ export function discoverModules(context, { configPath } = {}) {
     if (!Number.isInteger(effective.order)) errors.push(diagnostic('INVALID_ORDER', 'order precisa ser um inteiro.', id));
     let directoryPresent = false;
     if (typeof effective.cwd === 'string' && !effective.cwd.includes('\0')) {
-      try { directoryPresent = fs.statSync(path.resolve(context.cwd, effective.cwd)).isDirectory(); } catch { /* Discovery reports presence only. */ }
+      const directory = path.resolve(context.cwd, effective.cwd);
+      sources.push(directory);
+      try { directoryPresent = fs.statSync(directory).isDirectory(); } catch { /* Discovery reports presence only. */ }
     }
     modules[id] = { id, label: textValue(effective.label, 64) ? effective.label.trim() : id,
       language: textValue(effective.language, 40) ? effective.language.trim() : null,
@@ -139,7 +144,7 @@ export function discoverModules(context, { configPath } = {}) {
     catalog[id] = { configuration: effective, workspaceCwd: context.cwd };
   }
   workspace.moduleConfig.enabledIds = ordered(modules).filter(id => modules[id].enabled);
-  return { modules, workspace, diagnostics, catalog, revision };
+  return { modules, workspace, diagnostics, catalog, revision, sources };
 }
 
 function fail(code, message, moduleId) {

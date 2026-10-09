@@ -23,6 +23,9 @@ async function main() {
     hash.update(fs.readFileSync(fileURLToPath(new URL(`../../runtime/${name}`, import.meta.url)))).update('\0');
   }
   const helper = path.join(root, `helper-${hash.digest('hex').slice(0, 16)}.exe`);
+  const hostDigest = crypto.createHash('sha256').update(fs.readFileSync(fileURLToPath(new URL('../../runtime/WindowsProcessHost.cs', import.meta.url)))).digest('hex').slice(0, 16);
+  const stale = ['helper-0000000000000000.exe', 'helper-0000000000000000.exe.failed', 'host-4.0.30319.42000-5-0000000000000000.dll'].map(name => path.join(root, name));
+  const kept = [`host-4.0.30319.42000-5-${hostDigest}.dll`, `host-9.0.10-7-${hostDigest}.dll`, 'acl-fixture.json'].map(name => path.join(root, name));
   const self = { platform: 'win32', pid: process.pid + 1, startTime: '134356740192899202', owner: 'S-1-5-21-1-2-3-1001', sessionId: 2 };
   const calls = [];
   const last = () => calls[calls.length - 1];
@@ -95,15 +98,18 @@ async function main() {
     calls.length = 0;
     api.windowsSecureDirectory(path.join(root, 'workspace'));
     assert.deepStrictEqual(calls.map(call => call.action), ['SecureDirectory'], 'Only the state root triggers a build');
+    for (const file of [...stale, ...kept]) fs.writeFileSync(file, 'old');
     api.windowsSecureDirectory(root);
     assert(fs.existsSync(helper), 'A successful build publishes the helper');
+    assert.deepStrictEqual(stale.filter(file => fs.existsSync(file)), [], 'Builds of other sources are removed');
+    assert.deepStrictEqual(kept.filter(file => !fs.existsSync(file)), [], 'Current host DLLs and other state stay');
     api.windowsIdentity(self.pid);
     assert.strictEqual(last().file, helper, 'The built helper is used right away');
-    console.log('Windows native helper: selection, argument shape, broker, fallback, opt-out and one-time build: OK');
+    console.log('Windows native helper: selection, argument shape, broker, fallback, opt-out and one-time build and pruning: OK');
   } finally {
     childProcess.execFileSync = originalExec;
     fs.existsSync = originalExists;
-    for (const file of [helper, `${helper}.failed`]) { try { fs.unlinkSync(file); } catch { /* Already absent. */ } }
+    for (const file of [helper, `${helper}.failed`, ...stale, ...kept]) { try { fs.unlinkSync(file); } catch { /* Already absent. */ } }
     if (originalSystemRoot === undefined) delete process.env.SystemRoot; else process.env.SystemRoot = originalSystemRoot;
     if (originalHelper === undefined) delete process.env.TEST_PROGRESS_WINDOWS_HELPER; else process.env.TEST_PROGRESS_WINDOWS_HELPER = originalHelper;
     syncBuiltinESMExports();

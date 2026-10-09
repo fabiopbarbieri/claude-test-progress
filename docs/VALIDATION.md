@@ -110,6 +110,19 @@ Node 14/24, e Node 12 separado para o aplicativo. Numa máquina Windows:
 .\scripts\check-windows.ps1 -NodePath C:\tools\node24\node.exe -ProjectNode C:\tools\node12\node.exe
 ```
 
+Para medir o custo do monitoramento com sessões reais, abra os Claudes com
+`--plugin-dir` (por exemplo, dois na mesma pasta: um roda os testes e o outro
+fica com o painel aberto) e, como Administrador:
+
+```powershell
+.\scripts\bench-sessions.ps1 -WindowSeconds 120 -Label dois-claudes -Output C:\tmp\dois-claudes.json
+```
+
+Por `claude.exe`, ele conta os processos que a sessão iniciou (eventos de
+início do kernel, então nenhuma consulta curta escapa) e mede a CPU e a memória
+da sessão e dos processos do coletor que estiverem vivos. Cada sessão tem a
+própria pasta de estado: a segunda não vê os jobs da primeira.
+
 O gate recusa sistemas não Windows e verifica argv literal, DACL privada,
 contenção por Job Object, filhos/netos, cancelamento, compensação por perda do
 broker, `.cmd` e runtimes separados. Sintaxe e provas sintéticas no Linux não

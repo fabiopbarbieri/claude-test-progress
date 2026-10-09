@@ -12,6 +12,7 @@ type Envelope = {
   actionResults?: Record<string, { ok: boolean; action?: string; error?: string }>
   error?: string
   collector?: { path?: unknown; source?: unknown }
+  sources?: { state?: unknown; paths?: unknown }
 }
 
 export const ACTIVE: Set<string>;

@@ -69,6 +69,21 @@ function helper() {
   if (file) helperFile = file;
   return file;
 }
+// A new helper means a new plugin version: helpers and host DLLs compiled from other sources
+// are removed. One still in use (a broker of an older run) stays until the next build.
+export function pruneBuilds(current) {
+  const root = path.dirname(current), keep = path.basename(current);
+  const host = crypto.createHash('sha256').update(fs.readFileSync(helperSources[0])).digest('hex').slice(0, 16);
+  let names;
+  try { names = fs.readdirSync(root); } catch { return; }
+  for (const name of names) {
+    const helperBuild = /^helper-[0-9a-f]{16}\.exe(?:\.failed)?$/.test(name) && name !== keep && name !== `${keep}.failed`;
+    const hostBuild = /^host-[\d.]+-\d+-([0-9a-f]{16})\.dll$/.exec(name);
+    if (!helperBuild && !(hostBuild && hostBuild[1] !== host)) continue;
+    const file = path.join(root, name);
+    try { if (fs.lstatSync(file).isFile()) fs.unlinkSync(file); } catch { /* In use or already gone. */ }
+  }
+}
 // Builds the helper once per source hash; a failed build is not retried for an hour.
 function ensureHelper() {
   if (helper() || helperFile === null) return;
@@ -81,6 +96,7 @@ function ensureHelper() {
     execFileSync(builder, [...POWERSHELL_FLAGS, '-File', script, '-Action', 'BuildHelper', '-Output', file],
       { encoding: 'utf8', timeout: 30000, maxBuffer: 64 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     helperFile = plainFile(file) ?? undefined;
+    if (helperFile) pruneBuilds(file);
   } catch {
     try { fs.writeFileSync(failed, '', { mode: 0o600 }); } catch { /* The next call may try again. */ }
   }
