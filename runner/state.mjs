@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { execFileSync } from 'child_process';
 import { performance } from 'perf_hooks';
 import { processIdentity, sameProcess, sameProcesses, groupState, canKillOwnedOrphan, validProcessIdentity } from './process-identity.mjs';
-import { removePath, stateRoot } from './runtime.mjs';
+import { removePath, stateRoot, readUpTo } from './runtime.mjs';
 import { windowsSecureDirectory } from './windows-process.mjs';
 import { windowsProof } from './windows-proof.mjs';
 import { validModuleId } from './module-id.mjs';
@@ -57,13 +57,8 @@ export function readPrivate(file, limit = 1024 * 1024, { tail = 0 } = {}) {
       // A concurrent regular replacement is retried, never compared to old lstat.
       if (opened.dev !== current.dev || opened.ino !== current.ino) continue;
       const start = tail > 0 ? Math.max(0, opened.size - tail) : 0;
-      const buffer = Buffer.alloc(tail > 0 ? Math.min(tail, limit) + 1 : limit + 1);
-      let length = 0;
-      while (length < buffer.length) {
-        const count = fs.readSync(fd, buffer, length, buffer.length - length, start + length);
-        if (!count) break;
-        length += count;
-      }
+      const buffer = readUpTo(fd, opened.size - start, tail > 0 ? Math.min(tail, limit) + 1 : limit + 1, start);
+      const length = buffer.length;
       if (start + length > limit) throw new Error('Arquivo de estado excede o limite durante leitura');
       // Cut on the byte level so a partial first line never leaves a broken UTF-8 sequence.
       const first = start > 0 ? buffer.indexOf(10) + 1 : 0;

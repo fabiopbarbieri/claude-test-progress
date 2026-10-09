@@ -142,6 +142,20 @@ try {
   assert.strictEqual(found.diagnostics[0].code, 'SOURCE_TOO_LARGE');
   assert.throws(() => prepareSelection(found, 'all'));
   console.log('Other versions, mixed schema, unsafe IDs, JSON and source size block starts: OK');
+  // The read buffer starts at the size fstat reported; a source that grew since is still read
+  // to its end, and one that grew past the limit is still refused.
+  writeWorkspace({ api: { command: [process.execPath], label: 'x'.repeat(60) } });
+  const expectedDigest = discoverModules({ cwd }).revision;
+  const originalFstat = fs.fstatSync;
+  fs.fstatSync = function(...args) { const info = originalFstat.apply(this, args); info.size = 1; return info; };
+  try {
+    found = discoverModules({ cwd });
+    assert.strictEqual(found.workspace.moduleConfig.status, 'valid');
+    assert.deepStrictEqual(found.revision, expectedDigest, 'a source larger than its fstat size is read whole');
+    fs.writeFileSync(configPath, ' '.repeat(1024 * 1024 + 1));
+    assert.strictEqual(discoverModules({ cwd }).diagnostics[0].code, 'SOURCE_TOO_LARGE');
+  } finally { fs.fstatSync = originalFstat; }
+  console.log('Source reads sized from fstat keep the 1 MiB bound: OK');
   for (const [declaration, code] of [[false, 'INVALID_MODULE'], [null, 'INVALID_MODULE'],
     [{ enabled: null }, 'INVALID_ENABLED'], [{ label: '\u001bprivate' }, 'INVALID_LABEL'],
     [{ language: null }, 'INVALID_LANGUAGE'], [{ order: 1.5 }, 'INVALID_ORDER'],

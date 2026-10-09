@@ -5,7 +5,7 @@ import { createHash } from 'crypto';
 import { validModuleId, requireModuleId } from './module-id.mjs';
 import { frontendRuntime } from './frontend-runtime.mjs';
 import { windowsCommand } from './windows-shell.mjs';
-import { mergeEnvironment } from './runtime.mjs';
+import { mergeEnvironment, readUpTo } from './runtime.mjs';
 import { SCHEMA_VERSION } from './schema.mjs';
 
 const sourceLimit = 1024 * 1024;
@@ -29,17 +29,11 @@ function readSource(file) {
   let descriptor;
   try {
     descriptor = fs.openSync(file, 'r');
-    if (!fs.fstatSync(descriptor).isFile()) throw new Error('not a file');
-    const buffer = Buffer.alloc(sourceLimit + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      const count = fs.readSync(descriptor, buffer, length, buffer.length - length, null);
-      if (!count) break;
-      length += count;
-    }
-    if (length > sourceLimit) return { status: 'invalid', digest: null,
+    const info = fs.fstatSync(descriptor);
+    if (!info.isFile()) throw new Error('not a file');
+    const bytes = readUpTo(descriptor, info.size, sourceLimit + 1);
+    if (bytes.length > sourceLimit) return { status: 'invalid', digest: null,
       diagnostic: diagnostic('SOURCE_TOO_LARGE', 'A fonte de configuração excede 1 MiB.') };
-    const bytes = buffer.subarray(0, length);
     const digest = createHash('sha256').update(bytes).digest('hex');
     try { return { status: 'valid', digest, value: JSON.parse(bytes.toString('utf8')) }; }
     catch { return { status: 'invalid', digest,

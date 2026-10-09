@@ -123,6 +123,12 @@ início do kernel, então nenhuma consulta curta escapa) e mede a CPU e a memór
 da sessão e dos processos do coletor que estiverem vivos. Cada sessão tem a
 própria pasta de estado: a segunda não vê os jobs da primeira.
 
+Para medir o custo do coletor durante suítes pesadas (Angular 9 + Karma no
+Node 14, Maven/JUnit no Java 17 e pytest, com mais de mil testes cada) e
+comparar duas versões, use o [fluxo de benchmark pesado](../scripts/bench/README.md).
+Ele separa a CPU e a memória por grupo de processo (coletor, Claude Code,
+testes e antivírus) e só aceita rodadas com as contagens esperadas.
+
 O gate recusa sistemas não Windows e verifica argv literal, DACL privada,
 contenção por Job Object, filhos/netos, cancelamento, compensação por perda do
 broker, `.cmd` e runtimes separados. Sintaxe e provas sintéticas no Linux não

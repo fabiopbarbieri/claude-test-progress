@@ -20,9 +20,7 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) { throw 'This b
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run as Administrator: process start events need it.' }
 
-Add-Type -Namespace TestProgressBench -Name Times -MemberDefinition @'
-[DllImport("kernel32.dll")] public static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
-'@
+. (Join-Path $PSScriptRoot 'bench\common.ps1')
 
 function Get-Snapshot {
     $all = @(Get-CimInstance Win32_Process)
@@ -41,8 +39,7 @@ $starts = New-Object Collections.Generic.List[object]
 $source = 'tp-bench-' + [Guid]::NewGuid().ToString('N')
 Register-CimIndicationEvent -ClassName Win32_ProcessStartTrace -SourceIdentifier $source
 $before = Get-Snapshot
-$i0 = 0L; $k0 = 0L; $u0 = 0L; $i1 = 0L; $k1 = 0L; $u1 = 0L
-$null = [TestProgressBench.Times]::GetSystemTimes([ref]$i0, [ref]$k0, [ref]$u0)
+$machineBefore = Get-MachineTimes
 Write-Host ("Measuring '" + $Label + "' for " + $WindowSeconds + ' s with ' + $before.sessions.Count + ' claude.exe ...')
 $deadline = [DateTime]::UtcNow.AddSeconds($WindowSeconds)
 try {
@@ -59,9 +56,8 @@ try {
     Unregister-Event -SourceIdentifier $source -ErrorAction SilentlyContinue
     Get-Event -SourceIdentifier $source -ErrorAction SilentlyContinue | Remove-Event
 }
-$null = [TestProgressBench.Times]::GetSystemTimes([ref]$i1, [ref]$k1, [ref]$u1)
+$machineAfter = Get-MachineTimes
 $after = Get-Snapshot
-$total = ($k1 - $k0) + ($u1 - $u0)
 $delta = { param($id) $after.cpu[$id] - $(if ($before.cpu.ContainsKey($id)) { $before.cpu[$id] } else { 0 }) }
 
 $sessionIds = @($before.sessions + $after.sessions | ForEach-Object { [int]$_.ProcessId } | Sort-Object -Unique)
@@ -75,7 +71,7 @@ $sessions = foreach ($proc in $after.sessions) {
 $collectorCpu = 0.0
 foreach ($proc in $after.collector) { $collectorCpu += & $delta ([int]$proc.ProcessId) }
 $result = [ordered]@{
-    label = $Label; seconds = $WindowSeconds; machineCpuPct = [Math]::Round(100.0 * ($total - ($i1 - $i0)) / [Math]::Max([long]1, $total), 1)
+    label = $Label; seconds = $WindowSeconds; machineCpuPct = (Get-BusyPercent $machineBefore $machineAfter)
     sessions = @($sessions)
     collector = [ordered]@{ alive = $after.collector.Count; cpuSeconds = [Math]::Round($collectorCpu, 2)
         workingSetMb = [Math]::Round((($after.collector | Measure-Object WorkingSetSize -Sum).Sum) / 1MB, 1)

@@ -75,6 +75,7 @@ Não acrescente frameworks como dependências globais do plugin.
 | Java/JUnit | `(cd adapters/junit && bash build.sh)` | JDK 17+ e curl; o build baixa dependências para `build/`. Compilação não comprova execução em Surefire. Veja o [listener](adapters/junit/README.md) e acrescente uma fixture pública para o comportamento alterado. |
 | Karma | `node --check adapters/karma/reporter.cjs` | Só verifica sintaxe. Para comportamento, use uma fixture isolada com Karma e browser compatíveis com a versão em teste, conforme o [reporter](adapters/karma/README.md). |
 | Mod, painel ou manifests/hooks | Comandos Claude abaixo | Use o CLI compatível com Mods; o mínimo Node do coletor não define o runtime do Claude. |
+| Desempenho do coletor no Windows | A/B com `scripts/bench/bench-heavy.ps1` e tabela do `compare.mjs` no PR | Windows nativo com 4+ núcleos e 8 GB; o replay (S5) roda em minutos. Veja o [fluxo de benchmark](scripts/bench/README.md). |
 
 Exemplo opcional para pytest, executado em Bash com Python compatível com a
 versão escolhida no [workflow Quality](.github/workflows/quality.yml):
