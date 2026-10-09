@@ -4,7 +4,7 @@
 
 **Acompanhe suas suítes de teste no Claude Code enquanto elas rodam em segundo plano.**
 Plugin `test-progress`, um [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.10.2**, licença **MIT**.
+independente da Anthropic. Versão **0.10.3**, licença **MIT**.
 
 ![Painel do Test Progress com sete módulos de projetos fictícios](docs/assets/panel.png)
 
