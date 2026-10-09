@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { removePath } from '../../runner/runtime.mjs';
 
 if (process.platform === 'win32') {
   console.log('MSYS bootstrap: skipped on native Windows');
@@ -56,5 +57,5 @@ try {
     'A network NVM_HOME is never probed; without a Node, Git Bash hands the call to the PowerShell bootstrap');
   console.log('MSYS bootstrap: Windows paths from node.exe, --cwd/--config conversion, nvm-windows and PowerShell fallbacks: OK');
 } finally {
-  fs.rmSync(temporary, { recursive: true, force: true });
+  removePath(temporary, { recursive: true, force: true });
 }
