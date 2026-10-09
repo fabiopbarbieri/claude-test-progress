@@ -20,6 +20,26 @@ export function stateRoot() {
   return path.join(fs.realpathSync(os.tmpdir()), `claude-test-progress-${process.getuid?.() ?? 'user'}`);
 }
 
+// Reads from `position` until EOF or `bound` bytes. The buffer starts at the size the
+// caller saw at open: state records are a few KB, and zero-filling the whole bound on
+// every read was the collector's largest allocation. A file that grew since then keeps
+// reading into a larger buffer, up to the same bound, so a caller's limit check holds.
+export function readUpTo(fd, size, bound, position = 0) {
+  let buffer = Buffer.alloc(Math.max(1, Math.min(bound, size + 1)));
+  let length = 0;
+  for (;;) {
+    while (length < buffer.length) {
+      const count = fs.readSync(fd, buffer, length, buffer.length - length, position + length);
+      if (!count) return buffer.subarray(0, length);
+      length += count;
+    }
+    if (buffer.length >= bound) return buffer;
+    const grown = Buffer.alloc(bound);
+    buffer.copy(grown, 0, 0, length);
+    buffer = grown;
+  }
+}
+
 export function mergeEnvironment(...environments) {
   const result = Object.create(null);
   for (const environment of environments) for (const [key, value] of Object.entries(environment)) {

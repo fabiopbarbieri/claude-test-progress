@@ -131,6 +131,20 @@ try {
   atomicJson(replacementFile, { content: 'x'.repeat(2048) });
   assert.throws(() => readPrivate(replacementFile, 1024), /limite/, 'the opened fd must still obey the byte limit');
   fs.unlinkSync(replacementFile);
+  // The read buffer starts at the size fstat reported; growth after fstat still meets the limit.
+  const sizedFile = path.join(context.directory, 'sized.json');
+  fs.writeFileSync(sizedFile, 'x'.repeat(1024), { mode: 0o600 });
+  assert.strictEqual(readPrivate(sizedFile, 1024).length, 1024, 'a file exactly at the limit is read whole');
+  assert.strictEqual(readPrivate(sizedFile, 1024, { tail: 4096 }).length, 1024, 'a tail longer than the file reads it whole');
+  fs.appendFileSync(sizedFile, 'x');
+  assert.throws(() => readPrivate(sizedFile, 1024), /limite/, 'one byte over the limit is refused');
+  const originalFstat = fs.fstatSync;
+  fs.fstatSync = function(...args) { const info = originalFstat.apply(this, args); info.size = 10; return info; };
+  try {
+    assert.strictEqual(readPrivate(sizedFile, 4096), 'x'.repeat(1025), 'a file that grew after fstat is read to its end');
+    assert.throws(() => readPrivate(sizedFile, 1024), /limite/, 'growth after fstat still obeys the limit');
+  } finally { fs.fstatSync = originalFstat; }
+  fs.unlinkSync(sizedFile);
   const tailFile = path.join(context.directory, 'tail.log');
   fs.writeFileSync(tailFile, `${'é'.repeat(40)}\nsecond\nthird\n`, { mode: 0o600 });
   assert.strictEqual(readPrivate(tailFile, 1024, { tail: 10 }), 'third\n', 'a tail starts after the first, partial line');
