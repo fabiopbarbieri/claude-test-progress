@@ -46,10 +46,11 @@ export function processIdentities(pids) {
   for (let index = 0; index < pids.length; index += 64) results.push(...windowsIdentities(pids.slice(index, index + 64)));
   return results;
 }
-export function sameProcesses(identities) {
+// withSelf: on Windows the same query also records this process's identity for processIdentity.
+export function sameProcesses(identities, { withSelf = false } = {}) {
   if (process.platform !== 'win32') return identities.map(sameProcess);
   const results = [];
-  for (let index = 0; index < identities.length; index += 64) results.push(...windowsSameProcesses(identities.slice(index, index + 64)));
+  for (let index = 0; index < identities.length; index += 64) results.push(...windowsSameProcesses(identities.slice(index, index + 64), { withSelf: withSelf && index === 0 }));
   return results;
 }
 export function groupState(identity) {

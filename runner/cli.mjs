@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { ACTIVE, namespace, files, readJson, readPrivate, atomicJson, acquireLock, releaseLock,
   inspectState, pruneHistory, revision, timestamp, validRecord, ownedClaim, jobFile } from './state.mjs';
-import { processIdentity, sameProcess, groupState, killOwnedOrphan } from './process-identity.mjs';
+import { processIdentity, sameProcess, groupState, killOwnedOrphan, WINDOWS_LIVENESS_MS } from './process-identity.mjs';
 import { randomUUID, removePath, LONG_LIVED_NODE_FLAGS } from './runtime.mjs';
 import { validModuleId } from './module-id.mjs';
 import { sanitizeLogText, readableTail } from './module-presentation.mjs';
@@ -108,6 +108,10 @@ async function start(selection, preparationStartedAt) {
     if (!identity) throw new Error('Identidade do coordenador não confirmada');
     // While the coordinator prepares, the new snapshots have replaced the runs they name.
     try { pruneHistory(context.directory); } catch { /* History stays for the next start. */ }
+    // On Windows each liveness query starts the helper, and querying on every pass took most
+    // of a start's own time. The launch confirmed the coordinator alive; a positive answer
+    // is trusted for WINDOWS_LIVENESS_MS, as the coordinator trusts its workers'.
+    let confirmedAt = Date.now();
     for (;;) {
       const manifest = readBatch(context.directory, batchId);
       if (manifest.state === 'released') {
@@ -115,13 +119,16 @@ async function start(selection, preparationStartedAt) {
         return;
       }
       if (manifest.state === 'aborted') throw new Error(manifest.error || 'Lote abortado antes da execução');
-      const alive = sameProcess(identity);
-      // A native identity query can outlive preparation. The durable barrier,
-      // reread after that query, decides whether launch has already succeeded.
-      const afterProbe = readBatch(context.directory, batchId);
-      if (afterProbe.state === 'released') { acknowledgeRelease(); return; }
-      if (afterProbe.state === 'aborted') throw new Error(afterProbe.error || 'Lote abortado antes da execução');
-      if (!alive) throw new Error('Coordenador perdido antes da liberação do lote');
+      if (process.platform !== 'win32' || Date.now() - confirmedAt >= WINDOWS_LIVENESS_MS) {
+        const alive = sameProcess(identity);
+        // A native identity query can outlive preparation. The durable barrier,
+        // reread after that query, decides whether launch has already succeeded.
+        const afterProbe = readBatch(context.directory, batchId);
+        if (afterProbe.state === 'released') { acknowledgeRelease(); return; }
+        if (afterProbe.state === 'aborted') throw new Error(afterProbe.error || 'Lote abortado antes da execução');
+        if (!alive) throw new Error('Coordenador perdido antes da liberação do lote');
+        confirmedAt = Date.now();
+      }
       if (Date.now() >= Date.parse(deadlineAt)) throw new Error('Prazo de preparação do lote expirado');
       await pause();
     }

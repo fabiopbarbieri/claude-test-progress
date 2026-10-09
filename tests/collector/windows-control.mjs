@@ -84,9 +84,15 @@ async function main() {
     const firstIdentities = await import('../../runner/windows-process.mjs?first-batch-identities');
     assert.deepStrictEqual(firstIdentities.windowsIdentities([self.pid, external.pid]), [self, external]);
     assert.strictEqual(calls.length, beforeFirstBatch + 2, 'Identity batch also establishes genuine self in one invocation');
+    const launcher = await import('../../runner/windows-process.mjs?launcher-with-self');
+    const beforeLauncher = calls.length;
+    assert.deepStrictEqual(launcher.windowsSameProcesses([external], { withSelf: true }), [true]);
+    assert(calls[calls.length - 1].args.includes('-SelfProcessId'), 'withSelf asks for this process in the same query');
+    assert.deepStrictEqual(launcher.windowsIdentity(process.pid), self);
+    assert.strictEqual(calls.length, beforeLauncher + 1, 'A coordinator learns its identity and its launcher state in one invocation');
     const forgedFirst = await import('../../runner/windows-process.mjs?forged-first-self');
     assert.deepStrictEqual(forgedFirst.windowsSameProcesses([{ ...self, startTime: '1' }, external]), [false, true]);
-    assert.strictEqual(calls.length, beforeFirstBatch + 3, 'An untrusted first self tuple cannot seed the cache');
+    assert.strictEqual(calls.length, beforeFirstBatch + 4, 'An untrusted first self tuple cannot seed the cache');
     fail = true;
     const uncached = await import('../../runner/windows-process.mjs?uncached-self');
     assert.strictEqual(uncached.windowsSameProcess(self), false, 'Failed first self query cannot establish liveness');

@@ -19,8 +19,10 @@ async function main() {
   const request = readJson(requestPath);
   if (!request || request.schemaVersion !== SCHEMA_VERSION || requestPath !== batchFiles(request.directory, request.batchId).request) throw new Error('Pedido do lote inválido');
   let manifest = readBatch(request.directory, request.batchId);
+  // On Windows one helper query answers both: it records this process's identity with the launcher's state.
+  const [launcherAlive] = sameProcesses([manifest.launchIdentity], { withSelf: true });
   const coordinatorIdentity = processIdentity(process.pid);
-  if (!coordinatorIdentity || !sameProcess(manifest.launchIdentity)) throw new Error('Ownership de lançamento perdido');
+  if (!coordinatorIdentity || !launcherAlive) throw new Error('Ownership de lançamento perdido');
   manifest = changeBatch(request.directory, request.batchId, (value) => ({ ...value, coordinatorIdentity }));
   const deadline = Date.parse(manifest.deadlineAt);
   const workerPath = fileURLToPath(new URL('./worker.mjs', import.meta.url));
