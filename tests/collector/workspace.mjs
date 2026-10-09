@@ -30,7 +30,12 @@ async function main(){
     for(const moduleId of ['api','billing']){
       const disabled=moduleId==='api'?'billing':'api';
       fs.writeFileSync(configPath,JSON.stringify({schemaVersion:1,modules:{[moduleId]:suite,[disabled]:{enabled:false,command:null,cwd:'missing'}}}));
-      const previous=collect('status').jobs[disabled]?.runId;
+      const listing=collect('status'),previous=listing.jobs[disabled]?.runId;
+      // The idle panel watches what the answer read: the state directory, the configuration and each module folder.
+      assert.strictEqual(listing.sources.state,directory);
+      for(const file of [configPath,app,path.join(app,'missing')])assert(listing.sources.paths.includes(file),file);
+      const entries=()=>fs.readdirSync(directory).map(name=>{const info=fs.lstatSync(path.join(directory,name));return `${name}:${info.size}:${info.mtimeMs}`;}).sort().join();
+      const unchanged=entries();collect('status');assert.strictEqual(entries(),unchanged,'A status query leaves the state directory as it was');
       const started=collect('start');assert.deepStrictEqual(started.workspace.moduleConfig.enabledIds,[moduleId]);
       assert.strictEqual(started.jobs[disabled]?.runId,previous);
       const initial=await waitFor(moduleId,job=>job?.status==='running'&&job.resolved===1);

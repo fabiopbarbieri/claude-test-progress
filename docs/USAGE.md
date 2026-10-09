@@ -271,7 +271,10 @@ O worker grava heartbeat a cada 5 segundos, mesmo sem logs. Último heartbeat,
 última saída e último progresso são sinais distintos: atividade do executor
 não comprova avanço do teste. Silêncio não fabrica resultados nem sucesso.
 O painel atualiza na sessão aberta; enquanto há job ativo, um único coletor
-contínuo envia as mudanças, sem iniciar um processo por segundo. Isso não envia
+contínuo envia as mudanças, sem iniciar um processo por segundo. Sem job ativo,
+o painel confere a cada 2 s, pelo sistema de arquivos do Claude Code, a pasta
+de estado da sessão, o cadastro e as pastas dos módulos, e só consulta o coletor
+quando algo muda (ou a cada 5 minutos). Isso não envia
 notificações autônomas ao modelo. Peça ao Claude para consultar enquanto a execução estiver ativa.
 
 `completed` indica término com progresso reconhecido sem falhas; `failed`

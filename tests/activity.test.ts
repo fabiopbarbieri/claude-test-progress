@@ -387,14 +387,14 @@ test('idle panels start no Node until a watched file changes, refresh every five
   on('fs.stat', ($, e) => e.path === sources.paths[0] ? { value: config } : { value: { kind: 'dir', size: 0, mtimeMs: Date.now(), isLink: false } });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   // The first answer brings the sources; one more query takes the baseline they describe.
-  await clock.advance(1000); expect(calls).toEqual(['status', 'status']);
+  await clock.advance(2000); expect(calls).toEqual(['status', 'status']);
   // A folder's own time moves with what tests write in it; that alone starts nothing.
   await clock.advance(30000); expect(calls).toEqual(['status', 'status']);
-  // Another session of the skill writes a snapshot: the panel follows within a second.
+  // A run started outside the pane writes a snapshot: the panel follows within two seconds.
   entries = [...entries, { name: 'api.lock', kind: 'dir', size: 0, mtimeMs: 0, isLink: false }];
-  await clock.advance(1000); expect(calls).toEqual(['status', 'status', 'status']);
+  await clock.advance(2000); expect(calls).toEqual(['status', 'status', 'status']);
   config = { ...config, mtimeMs: 2 };
-  await clock.advance(1000); expect(calls).toHaveLength(4);
+  await clock.advance(2000); expect(calls).toHaveLength(4);
   await clock.advance(298000); expect(calls).toHaveLength(4);
   await clock.advance(2000); expect(calls).toHaveLength(5);
   refuse = true;
@@ -411,7 +411,7 @@ test('a failed idle query is retried after ten seconds even with nothing changed
   on('process.run', ($, e) => { calls.push(e.argv[2]); return fail ? { deny: 'fixture timed out' } : response({ ...data({ api: module() }, {}), sources }); });
   on('fs.list', () => ({ value: [] }));
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
-  await clock.advance(1000); expect(calls).toHaveLength(2);
+  await clock.advance(2000); expect(calls).toHaveLength(2);
   fail = true;
   await clock.advance(299000); expect(calls).toHaveLength(2);
   await clock.advance(1000); expect(calls).toHaveLength(3);

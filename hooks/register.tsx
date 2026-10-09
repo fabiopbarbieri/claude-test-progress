@@ -72,9 +72,11 @@ function serialized<T>(task: () => Promise<T>): Promise<T> {
 }
 const liveJobs = () => Object.values(p.jobs).some(job => ACTIVE.has(job.status) || job.recoveryRequired);
 // Idle, a query starts a Node only when something it read changed. Each answer names its sources
-// (the state directory and the configuration files and module folders); every tick compares them
-// through the host's file system, with a query at least every IDLE_REFRESH_TICKS seconds (ten after a
-// failed one). Without sources, or if the file system refuses, the panel polls every IDLE_POLL_TICKS.
+// (the state directory and the configuration files and module folders); every IDLE_CHECK_TICKS
+// seconds the Mod compares them through the host's file system, with a query at least every
+// IDLE_REFRESH_TICKS seconds (ten after a failed one). Without sources, or if the file system
+// refuses, the panel polls every IDLE_POLL_TICKS seconds instead.
+const IDLE_CHECK_TICKS = 2;
 const IDLE_REFRESH_TICKS = 300;
 const absolutePath = (value: unknown): value is string => typeof value === 'string' && !value.includes('\0') &&
   (value.startsWith('/') || /^[a-z]:\\/i.test(value));
@@ -101,13 +103,12 @@ async function fingerprint($: $) {
 // Poll every second only while something can change without us: an unseen identity or a live job.
 async function pollDue($: $) {
   if (!p.workspace || liveJobs()) { idleTicks = 0; return true; }
-  const print = await fingerprint($);
-  if (print === null) {
-    if (++idleTicks >= IDLE_POLL_TICKS) { idleTicks = 0; return true; }
-    return false;
-  }
-  idleTicks = 0;
-  return print !== baseline || --refreshTicks <= 0;
+  const ticks = ++idleTicks, refresh = --refreshTicks <= 0;
+  if (!refresh && ticks % IDLE_CHECK_TICKS) return false;
+  const print = refresh ? null : await fingerprint($);
+  const due = refresh || (print === null ? ticks >= IDLE_POLL_TICKS : print !== baseline);
+  if (due) idleTicks = 0;
+  return due;
 }
 // While a job is live, one collector started once streams each status change (`watch`),
 // instead of a Node started every second. A watcher that stops answering, or one the host
