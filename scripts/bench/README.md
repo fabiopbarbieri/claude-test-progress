@@ -150,8 +150,12 @@ sessão do usuário. Ela também sobrevive à queda da conexão.
 
 ## Limites
 
-- Um processo que vive menos que `-SampleSeconds` não entra na CPU do grupo dele;
-  só aparece na CPU da máquina.
+- Um processo que vive menos que o intervalo de amostragem (`-SampleMs`, 1 s) não
+  entra na CPU do grupo dele; só aparece na CPU da máquina.
 - A CPU da máquina inteira numa VM é ruidosa; compare grupos, não o total.
+- Numa VM aberta por RDP com a área de transferência compartilhada, o `rdpclip.exe`
+  já chegou a 13 GB de memória e derrubou uma campanha por falta de memória virtual.
+  Não copie nada grande no host durante a campanha, e rode cada `bench-heavy.ps1`
+  num processo próprio para uma falha não levar as rodadas seguintes.
 - O Chrome for Testing tem versão fixa, mas o JDK e o Maven ficam na versão
   instalada; registre-as no PR (`tools` no relatório).
