@@ -4,6 +4,18 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.3] - 2026-10-09
+
+### Correções
+
+- **test:** clean up the MSYS bootstrap test on Node 14.0 ([42d1088](https://github.com/fabiopbarbieri/claude-test-progress/commit/42d1088efe63cdee63815bc200a40504f625db45))
+- **release:** leave reverted commits out of the notes and the bump ([fae3c5e](https://github.com/fabiopbarbieri/claude-test-progress/commit/fae3c5ed20f79e970144f61cba2d555b674a22c0))
+
+### Desempenho
+
+- **collector:** authenticate each state path once per operation ([1821aa7](https://github.com/fabiopbarbieri/claude-test-progress/commit/1821aa79eb5a202c745b10112697b360009d37d8))
+- **skill:** run the collector from Git Bash without PowerShell ([83312a7](https://github.com/fabiopbarbieri/claude-test-progress/commit/83312a790b12a7fef00f529d9f3bad75bd3d9ac2))
+
 ## [0.10.2] - 2026-10-09
 
 ### Correções
