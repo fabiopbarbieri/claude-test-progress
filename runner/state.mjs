@@ -17,11 +17,8 @@ export const validRunId = (id) => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-
 const validId = validModuleId;
 export function securePath(file, directory = false, absent = false) {
   for (let attempt = 0; attempt < 8; attempt++) {
-    let info;
-    try { info = fs.lstatSync(file); }
-    catch (error) { if (absent && error.code === 'ENOENT') return null; throw error; }
-    if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
-        (process.getuid && info.uid !== process.getuid())) throw new Error(`Caminho de estado inseguro: ${file}`);
+    const info = secureEntry(file, directory, absent);
+    if (!info) return null;
     let resolved;
     try { resolved = fs.realpathSync(file); }
     catch (error) {
@@ -33,6 +30,18 @@ export function securePath(file, directory = false, absent = false) {
     if (resolved !== path.resolve(file)) throw new Error(`Link no caminho de estado: ${file}`);
     return info;
   }
+}
+// The leaf alone, for an entry of a directory the caller has just authenticated with
+// securePath: that directory's real path is its own, so a leaf that is not a link has its
+// own real path too. realpathSync walks every parent with one lstat each, which made
+// these repeated checks most of the collector's CPU on Windows.
+export function secureEntry(file, directory = false, absent = false) {
+  let info;
+  try { info = fs.lstatSync(file); }
+  catch (error) { if (absent && error.code === 'ENOENT') return null; throw error; }
+  if (info.isSymbolicLink() || (directory ? !info.isDirectory() : !info.isFile()) ||
+      (process.getuid && info.uid !== process.getuid())) throw new Error(`Caminho de estado inseguro: ${file}`);
+  return info;
 }
 // tail > 0 reads at most the file's last `tail` bytes, starting at a line boundary.
 export function readPrivate(file, limit = 1024 * 1024, { tail = 0 } = {}) {
@@ -50,7 +59,7 @@ export function readPrivate(file, limit = 1024 * 1024, { tail = 0 } = {}) {
       // atomicJson may replace the pathname between lstat and open. Authenticate
       // the actual fd, not its equality to an obsolete inode, before reading bytes.
       securePath(path.dirname(file), true);
-      const current = securePath(file, false, true);
+      const current = secureEntry(file, false, true);
       if (!current) return null;
       // O_NOFOLLOW protects only the leaf. Bind the fd to the freshly authenticated
       // current leaf on every platform, covering transient parent substitutions.
@@ -75,7 +84,7 @@ export const readJson = (file) => {
 };
 export function atomicJson(file, value) {
   securePath(path.dirname(file), true);
-  securePath(file, false, true);
+  secureEntry(file, false, true);
   const temporary = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: 'wx' });
   try {
@@ -86,7 +95,7 @@ export function atomicJson(file, value) {
     let pause = 5;
     for (;;) {
       securePath(path.dirname(file), true);
-      securePath(file, false, true);
+      secureEntry(file, false, true);
       try { fs.renameSync(temporary, file); break; }
       catch (error) {
         // Windows readers can briefly prevent replacement even with delete
@@ -401,9 +410,10 @@ export function inspectState(directory, { recover = true } = {}) {
     } catch (error) { diagnose(moduleId, error.message); }
   }
   // Files with names outside the state vocabulary also fail closed.
+  securePath(directory, true);
   for (const name of fs.readdirSync(directory)) {
     // Authenticate every entry before deciding whether its vocabulary is understood.
-    try { if (!securePath(path.join(directory, name), /\.(?:lock|mutation)$/.test(name), true)) continue; }
+    try { if (!secureEntry(path.join(directory, name), /\.(?:lock|mutation)$/.test(name), true)) continue; }
     catch (error) { diagnose('*', error.message, true); continue; }
     const temporary = /^(?:[a-z][a-z0-9-]*\.(?:json|cancel\.json|[0-9a-f-]{36}\.job\.json)|claim\.json|batch\.[0-9a-f-]{36}\.(?:json|request\.json|compensate\.json))\.[1-9][0-9]*\.[0-9a-f]{8}\.tmp$/.test(name);
     const windowsTemporary = /^[a-z][a-z0-9-]*\.[0-9a-f-]{36}\.job\.json\.windows\.json\.[0-9a-f]{32}\.tmp$/.test(name);

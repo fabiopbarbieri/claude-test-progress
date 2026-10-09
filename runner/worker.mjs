@@ -92,10 +92,9 @@ const now = timestamp();
 snapshot = { ...snapshot, workerPid: process.pid, workerIdentity, updatedAt: now };
 fs.writeFileSync(snapshot.logPath, '', { mode: 0o600, flag: 'wx' });
 
+// updateSnapshot authenticates the claim and the current snapshot under the mutation gate.
 function persist(overrides = {}) {
   const now = timestamp();
-  ownedClaim(job.directory, job.moduleId, job.runId);
-  if (!validRecord(readJson(locations.snapshot), job.moduleId, job.runId)) throw new Error('Snapshot trocado durante execução');
   snapshot = { ...snapshot, ...progress.values(), ...overrides, updatedAt: now, heartbeatAt: now };
   if (cancelling && !ended) snapshot.phase = 'cancellation-requested';
   updateSnapshot(job.directory, job.moduleId, job.runId, () => snapshot);
