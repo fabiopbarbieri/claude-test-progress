@@ -16,6 +16,14 @@ bash "<raiz>/scripts/run-collector.sh" <list|start|status|logs|cancel> --cwd "<d
 
 No Windows, o mesmo comando roda no Git Bash, o Bash do Claude Code. Use o PowerShell só onde não houver Bash: `powershell -NoProfile -ExecutionPolicy Bypass -File <raiz>/scripts/run-collector.ps1 -Action <ação> -Cwd <diretório> -Owner $env:CLAUDE_CODE_SESSION_ID -Module <id|all>`. A resposta é JSON. `--module` aceita um ID ou `all`, então rode uma chamada por módulo.
 
+**Depois da primeira resposta, chame o Node direto.** O script só escolhe um Node 14+ e repassa a chamada, e no Windows isso custa segundos e vários processos `bash.exe` ou PowerShell, que o antivírus corporativo inspeciona um a um. A resposta traz em `collector.path` o Node escolhido; use-o nas chamadas seguintes da mesma sessão, com os mesmos argumentos:
+
+```bash
+'<collector.path>' '<raiz>/runner/cli.mjs' <ação> --cwd '<diretório da sessão>' --owner "$CLAUDE_CODE_SESSION_ID" --module <id|all>
+```
+
+No Windows, passe `<raiz>` e `--cwd` no formato `C:\...`, entre aspas simples: o Node do Windows não entende `/c/...`. Se essa chamada não iniciar (Node removido ou trocado), volte ao script.
+
 ```text
 Progresso:
 - [ ] 1 Módulos identificados
