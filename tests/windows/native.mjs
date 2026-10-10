@@ -251,7 +251,9 @@ async function assertBoundedSharing() {
       await waitClosed();
     }
   }
-  await runCase('released-after-450ms', 450, true);
+  // PowerShell's Start-Sleep releases the handle 100-320 ms late under load, so the
+  // hold leaves that much room below the 750 ms retry budget and stays above 300 ms.
+  await runCase('released-after-350ms', 350, true);
   await runCase('held-past-retry-budget', 1500, false);
 }
 // The native helper chooses the project's Node as runtime/node-discovery.ps1 does: same
