@@ -2,7 +2,7 @@
 
 [Início](../README.md) · [Uso](USAGE.md) · [Diagnóstico](TROUBLESHOOTING.md)
 
-Matriz da versão **0.10.4**. Requisito declarado é o contrato pretendido; versão
+Matriz da versão **0.10.5**. Requisito declarado é o contrato pretendido; versão
 testada é uma combinação concreta exercitada na CI ou localmente. Nenhuma linha
 implica que todas as combinações entre versões e sistemas foram exercitadas.
 Confira a CI do commit que instalar; resultados e limites em [VALIDATION](VALIDATION.md).
