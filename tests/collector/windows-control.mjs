@@ -5,6 +5,7 @@ import path from 'path';
 import crypto from 'crypto';
 import childProcess from 'child_process';
 import { syncBuiltinESMExports } from 'module';
+import { removePath } from '../../runner/runtime.mjs';
 
 async function main() {
   const originalExec = childProcess.execFileSync;
@@ -185,7 +186,7 @@ async function main() {
     if (originalOverride === undefined) delete process.env.TEST_PROGRESS_POWERSHELL; else process.env.TEST_PROGRESS_POWERSHELL = originalOverride;
     if (originalTimeout === undefined) delete process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS; else process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = originalTimeout;
     if (originalTmp === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = originalTmp;
-    fs.rmSync(temporary, { recursive: true, force: true });
+    removePath(temporary, { recursive: true, force: true });
     syncBuiltinESMExports();
   }
 }
