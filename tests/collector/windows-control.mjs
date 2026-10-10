@@ -1,5 +1,8 @@
 import assert from 'assert';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import crypto from 'crypto';
 import childProcess from 'child_process';
 import { syncBuiltinESMExports } from 'module';
 
@@ -10,6 +13,15 @@ async function main() {
   const originalSystemRoot = process.env.SystemRoot;
   const originalOverride = process.env.TEST_PROGRESS_POWERSHELL;
   const originalTimeout = process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS;
+  const originalTmp = process.env.TMPDIR;
+  // A private state root holding the host DLL cached for both engines: the warm case.
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'tp-windows-control-'));
+  process.env.TMPDIR = temporary;
+  const root = path.join(fs.realpathSync(temporary), `claude-test-progress-${process.getuid?.() ?? 'user'}`);
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(new URL('../../runtime/WindowsProcessHost.cs', import.meta.url))).digest('hex').slice(0, 16);
+  const hostDlls = ['5', '7'].map(major => path.join(root, `host-4.0.30319.42000-${major}-${digest}.dll`));
+  fs.mkdirSync(root);
+  for (const file of hostDlls) fs.writeFileSync(file, '');
   const self = { platform: 'win32', pid: process.pid, startTime: '134356740192899202', owner: 'S-1-5-21-1-2-3-1001', sessionId: 2 };
   const external = { ...self, pid: process.pid + 100 };
   const calls = [];
@@ -139,6 +151,32 @@ async function main() {
     assert.throws(() => api.windowsSecureDirectory('C:\\state'), /ETIMEDOUT/);
     assert.strictEqual(calls.length, beforeRetry + 4, 'SecureDirectory retries at most once');
     console.log('Windows per-engine and configurable control timeout, bounded SecureDirectory retry: OK');
+
+    // Cold: without the cached host DLL the call compiles it, so it gets the cold limit and no retry.
+    for (const file of hostDlls) fs.unlinkSync(file);
+    fs.writeFileSync(path.join(root, 'host-4.0.30319.42000-5-0000000000000000.dll'), '');
+    const cold = await import('../../runner/windows-process.mjs?cold-host');
+    expectedTimeout = 30000;
+    secureTimeouts = 2;
+    const beforeCold = calls.length;
+    assert.throws(() => cold.windowsSecureDirectory('C:\\state'), /ETIMEDOUT/);
+    assert.strictEqual(calls.length, beforeCold + 1, 'A cold compile is not retried: a killed one caches nothing');
+    process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = '5000';
+    assert.deepStrictEqual(cold.windowsIdentities([external.pid]), [external], 'A lower configured limit does not cut the compile');
+    delete process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS;
+    fs.writeFileSync(hostDlls[0], '');
+    expectedTimeout = 7500;
+    secureTimeouts = 1;
+    const beforeWarm = calls.length;
+    cold.windowsSecureDirectory('C:\\state');
+    assert.strictEqual(calls.length, beforeWarm + 2, 'Once the 5.1 DLL is cached, the default limit and retry return');
+    fs.statSync = (file, ...args) => file === pwsh ? { isFile: () => true } : originalStat(file, ...args);
+    process.env.TEST_PROGRESS_POWERSHELL = pwsh;
+    expectedTimeout = 30000;
+    assert.deepStrictEqual(cold.windowsIdentities([external.pid]), [external], 'The 5.1 DLL does not warm PowerShell 7');
+    delete process.env.TEST_PROGRESS_POWERSHELL;
+    fs.statSync = originalStat;
+    console.log('Windows cold host compile gets the cold limit once, per engine: OK');
   } finally {
     childProcess.execFileSync = originalExec;
     fs.existsSync = originalExists;
@@ -146,6 +184,8 @@ async function main() {
     if (originalSystemRoot === undefined) delete process.env.SystemRoot; else process.env.SystemRoot = originalSystemRoot;
     if (originalOverride === undefined) delete process.env.TEST_PROGRESS_POWERSHELL; else process.env.TEST_PROGRESS_POWERSHELL = originalOverride;
     if (originalTimeout === undefined) delete process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS; else process.env.TEST_PROGRESS_POWERSHELL_TIMEOUT_MS = originalTimeout;
+    if (originalTmp === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = originalTmp;
+    fs.rmSync(temporary, { recursive: true, force: true });
     syncBuiltinESMExports();
   }
 }

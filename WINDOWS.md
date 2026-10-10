@@ -124,7 +124,10 @@ para a próxima compilação. No caminho PowerShell, a DLL compilada de
 `WindowsProcessHost.cs` fica em cache na mesma raiz e só é carregada se o dono
 for o usuário, Administrators ou SYSTEM. Cada chamada é
 limitada por padrão a **7500 ms** no 5.1 e **15000 ms** no 7 (`pwsh.exe`), que
-inicia mais devagar a frio. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
+inicia mais devagar a frio. Enquanto a DLL desse engine não está em cache (a
+primeira chamada depois de instalar ou atualizar o plugin), a chamada compila
+`WindowsProcessHost.cs` e recebe **30000 ms**, sem retry: sob um EDR a
+compilação passa dos 7,5 s, e uma compilação interrompida não grava a DLL. Se ainda houver `ETIMEDOUT` nessas chamadas, defina o
 limite para o engine em uso; a variável vale para os dois:
 
 ```powershell

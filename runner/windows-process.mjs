@@ -27,7 +27,7 @@ export function windowsPowerShell(environment = process.env) {
 // than 5.1 (it compiles WindowsProcessHost.cs until the cached DLL exists), so its default is higher. The
 // variable overrides either engine; the ceiling is the batch preparation deadline
 // and an invalid value is an error, never a silent fallback.
-export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, min: 1000, max: 30000 });
+export const CONTROL_TIMEOUT_MS = Object.freeze({ default: 7500, pwsh: 15000, cold: 30000, min: 1000, max: 30000 });
 export function windowsControlTimeout(environment = process.env, engine = null) {
   const value = environmentValue(environment, 'TEST_PROGRESS_POWERSHELL_TIMEOUT_MS');
   if (value === undefined || value === '') {
@@ -101,11 +101,30 @@ function ensureHelper() {
     try { fs.writeFileSync(failed, '', { mode: 0o600 }); } catch { /* The next call may try again. */ }
   }
 }
+// windows-process.ps1 compiles WindowsProcessHost.cs until its DLL is cached in the state
+// root, once per engine (host-<CLR>-<PowerShell major>-<source hash>.dll). Under an EDR that
+// compile alone outlasts the 7500 ms of 5.1, and a killed compile caches nothing, so every
+// retry starts over. Until the DLL exists, the call gets the cold limit and no retry.
+const warmEngines = new Set();
+function hostCached(engine) {
+  const major = path.win32.basename(engine).toLowerCase() === 'pwsh.exe' ? 'pwsh' : '5';
+  if (warmEngines.has(major)) return true;
+  const digest = crypto.createHash('sha256').update(fs.readFileSync(helperSources[0])).digest('hex').slice(0, 16);
+  let names;
+  try { names = fs.readdirSync(stateRoot()); } catch { return false; }
+  const cached = names.some(name => {
+    const match = /^host-[\d.]+-(\d+)-([0-9a-f]{16})\.dll$/.exec(name);
+    return match && match[2] === digest && (major === '5' ? match[1] === '5' : Number(match[1]) >= 6);
+  });
+  if (cached) warmEngines.add(major);
+  return cached;
+}
 function control(action, parameters, attempts = 1) {
   for (let attempt = 1; ; attempt++) {
     const exe = helper();
     const engine = exe || windowsPowerShell();
-    const timeout = windowsControlTimeout(process.env, exe ? null : engine);
+    let timeout = windowsControlTimeout(process.env, exe ? null : engine);
+    if (!exe && !hostCached(engine)) { timeout = Math.max(timeout, CONTROL_TIMEOUT_MS.cold); attempts = attempt; }
     const args = exe ? ['-Action', action, ...parameters, ...(action === 'LaunchCoordinator' ? ['-Runner', runnerDirectory] : [])] :
       argumentsFor(action, parameters);
     try {
