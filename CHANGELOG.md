@@ -4,6 +4,16 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.10.5] - 2026-10-10
+
+### Correções
+
+- **windows:** give the cold host compile its own control timeout ([a71c5e7](https://github.com/fabiopbarbieri/claude-test-progress/commit/a71c5e7d41e10b696c85dcc72b904ea6dc74efbc))
+
+### Desempenho
+
+- **skills:** call the collector's Node directly after the first answer ([14de077](https://github.com/fabiopbarbieri/claude-test-progress/commit/14de07760239df7804a56d725cfdc383e6a0f49f))
+
 ## [0.10.4] - 2026-10-09
 
 ### Desempenho
