@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   native-mod:
-    name: Claude 2.1.295 native mod tests
+    name: Claude 2.1.296 native mod tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -37,7 +37,7 @@ jobs:
         run: |
           export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-test-config"
           cli="$RUNNER_TEMP/claude-cli/node_modules/.bin/claude"
-          test "$("$cli" --version)" = '2.1.295 (Claude Code)'
+          test "$("$cli" --version)" = '2.1.296 (Claude Code)'
           "$cli" plugin validate . --strict
           "$cli" plugin validate .claude-plugin/plugin.json --strict
           "$cli" plugin test .
