@@ -29,7 +29,8 @@ test('session.start registers the tool in the prompt list, outside tool search',
 
 test('reading needs no permission, uses the session folder and owner, and answers the envelope without bookkeeping', async ($, on) => {
   const calls: string[][] = []; let checks = 0;
-  session(on, calls, () => data({ api: module() }, { api: job() }));
+  let current = data({ api: module() }, { api: job() });
+  session(on, calls, () => current);
   on('tool.check', () => { checks++; return { decision: 'deny' }; });
   for (const action of ['list', 'status', 'logs']) {
     const answer = await $.tool.call({ tool: TOOL, action, module: 'api' } as never) as { result: string };
@@ -40,6 +41,12 @@ test('reading needs no permission, uses the session folder and owner, and answer
   expect(checks).toBe(0);
   expect(actionsOf(calls)).toEqual(['list all', 'status api', 'logs api']);
   expect(calls[0]).toEqual(expect.arrayContaining(['--cwd', '/work', '--owner', 'owner']));
+  // One module answers with its own entry and job; list and all keep the catalogue.
+  current = data({ api: module(), web: module('web') }, { api: job(), web: job('web') });
+  const one = JSON.parse((await $.tool.call({ tool: TOOL, action: 'status', module: 'web' } as never) as { result: string }).result);
+  expect(Object.keys(one.modules)).toEqual(['web']); expect(Object.keys(one.jobs)).toEqual(['web']);
+  const every = JSON.parse((await $.tool.call({ tool: TOOL, action: 'status' } as never) as { result: string }).result);
+  expect(Object.keys(every.jobs).sort()).toEqual(['api', 'web']);
 });
 
 test('start refreshes first and refuses what the pane refuses: a live run, diagnostics, an unknown ID', async ($, on) => {

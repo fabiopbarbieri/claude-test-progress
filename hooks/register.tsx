@@ -459,10 +459,14 @@ const TOOL_SPEC = {
 };
 const SUBAGENT_REFUSAL = 'Este agente roda em outro diretório que o painel desta sessão, e a ferramenta só atende o ' +
   'diretório do painel. Carregue a skill test-progress:run-tests e rode o coletor pelo Bash com o seu próprio --cwd.';
-// What the model reads: the collector's envelope without the Mod's own bookkeeping (Node path, watched files).
-function toolAnswer(data: ReturnType<typeof validateEnvelope>) {
+// What the model reads: the collector's envelope without the Mod's own bookkeeping (Node path, watched files),
+// and for one module only that module's entry and job, so a status loop does not repeat the whole catalogue.
+function toolAnswer(data: ReturnType<typeof validateEnvelope>, moduleId: string) {
   const { collector: _collector, sources: _sources, ...rest } = data;
-  return JSON.stringify(rest);
+  if (moduleId === 'all') return JSON.stringify(rest);
+  const only = <T,>(record: Record<string, T>) => moduleId in record ? { [moduleId]: record[moduleId] } : {};
+  return JSON.stringify({ ...rest, modules: only(rest.modules), jobs: only(rest.jobs),
+    stateDiagnostics: { ...only(rest.stateDiagnostics), ...(rest.stateDiagnostics['*'] ? { '*': rest.stateDiagnostics['*'] } : {}) } });
 }
 // Why a start the pane would refuse is refused, in words the model can act on; empty when it may start.
 function startRefusals(moduleId: string) {
@@ -509,11 +513,11 @@ function serveTool($: $, action: ToolAction, moduleId: string) {
         const refusals = startRefusals(moduleId);
         if (refusals.length) return { deny: refusals.join('\n') };
       }
-      return { result: toolAnswer(await collect($, action, moduleId) as ReturnType<typeof validateEnvelope>) };
+      return { result: toolAnswer(await collect($, action, moduleId) as ReturnType<typeof validateEnvelope>, moduleId) };
     } catch (error) {
       p.lastError = errorText(error);
       const envelope = (error as { envelope?: ReturnType<typeof validateEnvelope> }).envelope;
-      return envelope ? { result: toolAnswer(envelope) } : { deny: p.lastError };
+      return envelope ? { result: toolAnswer(envelope, moduleId) } : { deny: p.lastError };
     } finally { p.busy = false; await publish($); }
   });
 }
@@ -606,7 +610,8 @@ export const register: Register = on => {
     } catch (error) { return { text: `${textSummary()}\nPainel indisponível: ${errorText(error)}` }; }
     return {};
   });
-  on('tool.call', { tool: TOOL_NAME }, async ($, e) => {
+  // A RegExp matcher: the literal name type-checks only once the generated MCP types declare this tool.
+  on('tool.call', { tool: /^mcp__test-progress__tests$/ }, async ($, e) => {
     const input = e as unknown as { action?: unknown; module?: unknown; agentId?: string };
     const action = TOOL_ACTIONS.find(name => name === input.action);
     if (!action) return { deny: `action deve ser ${TOOL_ACTIONS.join(', ')}.` };
