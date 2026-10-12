@@ -43,8 +43,13 @@ Instalação por terminal, clone SSH e `--plugin-dir`: [guia de uso](docs/USAGE.
 
 O jeito mais simples é pedir ao Claude: a skill `test-progress:configure`
 cadastra as suítes do projeto e explica erros do painel. Depois, quando você
-pedir para rodar os testes, a skill `test-progress:run-tests` os inicia pelo
-coletor, para o run aparecer no painel.
+pedir para rodar os testes, o Claude os inicia pelo coletor, para o run
+aparecer no painel: pela ferramenta `mcp__test-progress__tests`, que o Mod
+registra em cada sessão, ou pela skill `test-progress:run-tests` via Bash
+onde a ferramenta não alcança (subagente em outro diretório, `claude -p` sem o
+Mod). `list`, `status` e `logs` não pedem permissão; `start` e `cancel` seguem
+as suas regras de permissão para `mcp__test-progress__tests` e, sem regra,
+perguntam antes.
 
 O cadastro fica em `.claude/test-progress.json`, no diretório em que você abriu
 a sessão. Exemplo para um app Maven com `mvnw` na raiz:
@@ -113,7 +118,7 @@ adapters. [Procedimento completo](docs/USAGE.md#atualizar-com-jobs-encerrados).
 
 ## Compatibilidade
 
-Claude Code **2.1.295+** e Node **14+** para o coletor. Linux e WSL são o caminho
+Claude Code **2.1.296+** e Node **14+** para o coletor. Linux e WSL são o caminho
 principal; Windows nativo tem [guia próprio](WINDOWS.md). O plugin não instala
 runners, browsers nem runtimes. Versões testadas por suíte:
 [compatibilidade](docs/COMPATIBILITY.md).

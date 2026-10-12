@@ -30,7 +30,7 @@ jobs:
       # Official npm distribution; isolated prefix, no project/global dependency.
       # https://code.claude.com/docs/en/setup#install-with-npm
       - name: Install pinned Claude CLI in runner temporary directory
-        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact @anthropic-ai/claude-code@2.1.295
+        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact @anthropic-ai/claude-code@2.1.296
       # Native test kit needs no account, API key, model, or network call.
       # https://code.claude.com/docs/en/plugins/mods/test
       - name: Validate manifest and native mod behavior
