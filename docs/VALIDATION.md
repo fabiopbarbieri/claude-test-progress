@@ -134,5 +134,6 @@ contenção por Job Object, filhos/netos, cancelamento, compensação por perda 
 broker, `.cmd` e runtimes separados. Sintaxe e provas sintéticas no Linux não
 comprovam esses comportamentos nativos. Os dois gates passaram numa VM Windows 11
 em 06/10/2026, junto com o aceite visual do Mod no Claude Code
-([detalhes](../WINDOWS.md#aceite-em-windows-11)). O aceite numa máquina física e
-o aceite do Claude Desktop permanecem pendentes.
+([detalhes](../WINDOWS.md#aceite-em-windows-11)). O Claude Desktop teve aceite na
+mesma VM em 12/10/2026 ([detalhes](../WINDOWS.md#claude-desktop)). O aceite numa
+máquina física permanece pendente.

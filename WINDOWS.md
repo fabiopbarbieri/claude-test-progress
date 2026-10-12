@@ -11,8 +11,8 @@ Angular 9 e suas dependências permanecem como estão.
 **Estado de aceite:** implementação e gate nativo estão presentes, e a matriz
 [Windows modules](.github/workflows/windows.yml) roda na CI hospedada. Há um
 aceite registrado no Windows 11 nativo, numa VM (detalhes em
-[Aceite em Windows 11](#aceite-em-windows-11)). Faltam aceite numa máquina
-física, com um app Angular 9 real e no Claude Desktop.
+[Aceite em Windows 11](#aceite-em-windows-11)), no terminal e no Claude Desktop.
+Faltam aceite numa máquina física e com um app Angular 9 real.
 
 O cadastro usa `schemaVersion: 1` com `modules` e IDs seguros; o início é sempre
 explícito, por ID ou `all`. Templates pessoais opcionais também usam schemaVersion 1; somente workspace
@@ -359,7 +359,58 @@ política de execução no padrão `Restricted`), com o `main` em `c65c868`:
   resultado final, logs com falhas e acentos, `cancel` individual sem processos
   restantes e o layout largo e estreito.
 
-O aceite não cobre máquina física, Angular 9 nem o Claude Desktop.
+O aceite não cobre máquina física nem Angular 9.
+
+### Claude Desktop
+
+Em 12/10/2026, na mesma VM (Windows 11 25H2, build 26200), com o Claude Desktop
+2.31226.1 (MSIX), que embute o Claude Code 2.1.295, e o plugin instalado pelo
+marketplace no escopo `user`. Foram usadas sessões locais de código no app, com o
+mesmo app de teste de seis módulos e o coletor em Node 24.21.0 (nvm-windows),
+achado sem `launch.ps1`. Base: `main` em `f3cfccd`, mais as correções da branch
+`feature/claude-desktop`.
+
+- O Mod carrega no app. `/test-progress` abre o painel numa coluna lateral, a
+  faixa acima do prompt acompanha o run e a ferramenta do modelo pede permissão
+  antes de iniciar.
+- Conferidos `list`, `start all` com o painel aberto, contagens e resultado
+  final, logs com falhas e acentos, `↻ Apenas com erro`, `cancel` individual e
+  `cancel all` sem processos restantes e o layout largo (1920 px) e estreito
+  (1280 px).
+- Também `help`, `paths`, `status`, `logs --text`, `/test-progress` sozinho
+  abrindo e fechando o painel, Esc fechando o painel aberto pelo comando, a
+  legenda `?`, a ordenação `⇅`, `×` e `↓` do log e "nova execução ↻".
+- Com o painel fechado, uma falha no fim do lote abre o painel no log do primeiro
+  módulo com falha, e a faixa sai quando o painel é visto.
+- As skills `test-progress:configure` e `test-progress:run-tests` funcionaram por
+  pedido em linguagem natural.
+- O app foi fechado à força com um módulo rodando. O coordenador, o helper e o
+  pytest terminaram o run em segundo plano e saíram sozinhos. Na sessão retomada,
+  o módulo aparece concluído (45/45), sem órfãos.
+
+O Desktop desenha a barra de progresso como SVG, porque a fonte proporcional
+alargava os glifos sobre o percentual. Os botões ▶/■ por linha usam a largura do
+botão nativo, e a saída em texto dos comandos vai num bloco de código: o app a lê
+como Markdown, o que apagava as barras invertidas dos caminhos. A roda do mouse
+rola o painel do app, não a janela do log, então o cabeçalho do log ganha um
+`↑` para voltar uma página, e a legenda descreve isso. Sem terminal,
+`$.ui.notify` só roda os hooks `Notification` da pessoa e nada nativo é escrito;
+quando a notificação não sai, a falha aparece como toast no app.
+
+Limites observados:
+
+- O app executa o plugin a partir da cópia em
+  `%USERPROFILE%\.claude\plugins\cache\<marketplace>\test-progress\<versão>`,
+  mesmo quando `claude plugin list` diz "Read from" a pasta do marketplace.
+- `/reload-plugins` recarrega skills, mas não o Mod. Depois de atualizar o
+  plugin, feche o Claude Desktop por completo e abra de novo.
+- O compositor avisa "/test-progress não é um comando aqui", mas a sessão executa
+  o comando.
+- Não há notificação nativa do Windows: o aviso é o toast dentro do app, que só
+  aparece com o app aberto.
+- O Claude Code embutido (2.1.295) é anterior ao mínimo declarado (2.1.296). O
+  painel, a faixa e a ferramenta do modelo funcionaram nele, sem garantia para
+  outras combinações.
 
 ## Fontes e evidências
 
