@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing';
 import { parseCommand, visibleModuleIds, validateEnvelope, progressText, sanitizeTail, plainTail, ansiSpans, moduleTitle,
-  statusGlyph, progressBar, compactPercent, compactCounts, clock, readableTail, summaryCounts, outcomeText, sortModuleIds,
+  statusGlyph, progressBar, progressSvg, compactPercent, compactCounts, clock, readableTail, summaryCounts, outcomeText, sortModuleIds,
   nextSort } from '../runner/module-presentation.mjs';
 
 test('titles preserve labels and IDs even when modules share a language or label', () => {
@@ -77,6 +77,10 @@ test('compact vocabulary: one-column glyphs, bars, partial totals, omitted zeros
   expect(statusGlyph({ status: 'error', recoveryRequired: true })).toEqual({ glyph: '!', color: 'error' });
   expect(progressBar({ total: 4, percent: 50 }, 4)).toEqual({ done: '━━', rest: '━━' });
   expect(progressBar({ total: null, percent: null }, 4)).toEqual({ done: '', rest: '╌╌╌╌' });
+  expect(progressSvg({ total: 4, percent: 25 }, 40)).toContain('width="10" height="4" rx="2" fill="#4f8ff7"');
+  expect(progressSvg({ total: 4, percent: 25 }, 40, true)).toContain('fill="#888"');
+  expect(progressSvg({ total: 4, percent: 0 }, 40)).not.toContain('#4f8ff7');
+  expect(progressSvg({ total: null, percent: null }, 40)).toContain('stroke-dasharray');
   expect(readableTail(['a', '@@TEST_PROGRESS@@{}', '', '', 'b', ''], '@@TEST_PROGRESS@@')).toEqual(['a', '', 'b']);
   expect(summaryCounts(['a', 'b', 'c', 'd'], { a: { status: 'running' }, b: { status: 'failed', failed: 1 },
     c: { status: 'completed', failed: 0 }, d: { status: 'completed', failed: 2 } })).toEqual({ passed: 1, failed: 2, total: 4 });

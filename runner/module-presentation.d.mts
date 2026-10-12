@@ -42,6 +42,7 @@ export type SpanStyle = { color?: string; backgroundColor?: string; bold?: boole
 export function ansiSpans(line: string): { text: string; style: SpanStyle | null }[];
 export function statusGlyph(job: TestProgressJob | undefined): { glyph: string; color: Tone };
 export function progressBar(job: TestProgressJob, cells?: number): { done: string; rest: string };
+export function progressSvg(job: TestProgressJob, width?: number, stopping?: boolean): string;
 export function outcomeText(job: TestProgressJob): { text: string; color: Tone };
 export function finishedWithFailure(job: TestProgressJob | undefined): boolean;
 export function summaryCounts(ids: string[], jobs: Record<string, TestProgressJob>): { passed: number; failed: number; total: number };

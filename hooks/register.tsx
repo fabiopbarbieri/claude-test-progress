@@ -3,7 +3,7 @@ import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
-  sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
+  sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, progressSvg, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
   configStatus, SORTS, sortLabels, nextSort, sortModuleIds } from '../runner/module-presentation.mjs';
 
 type $ = EngineInterface;
@@ -405,9 +405,22 @@ const LEGEND = ['● rodando  ✓ ok  ✗ falhou  ■ cancelado  ! erro ou órf�
   'S/E/T: módulos com sucesso / com erro / total',
   '✓ passaram  ✗ falharam  ⊘ ignorados',
   '/test-progress help lista os comandos.'];
+// The app's wheel scrolls its pane, not the log's window (see the log header).
+const APP_SCROLL = '↑ volta uma página do log aberto; ↓ volta ao fim.';
 function textLogs(moduleId: string) {
   const ids = moduleId === 'all' ? Object.keys(p.jobs).sort() : [moduleId];
   return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${plainTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
+}
+// The app surfaces read a command's text as Markdown, which eats Windows backslashes and pairs of _ or *.
+// A fence keeps it as written; the terminal prints it as is.
+async function verbatim($: $, text: string) {
+  try {
+    const surfaces = await $.session.surfaces();
+    if (!surfaces.length || surfaces.includes('terminal')) return text;
+  } catch { return text; }
+  const fence = '`'.repeat(Math.max(3, ...(text.match(/`+/g) ?? []).map(run => run.length + 1)));
+  // The app writes the command's name before the text, so the fence opens on a line of its own.
+  return `\n${fence}text\n${text}\n${fence}`;
 }
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
@@ -427,7 +440,10 @@ async function autoOpen($: $) {
   // Their own channel and Notification hooks decide; a refusal or a missing channel changes nothing here.
   const names = displayNames();
   const notice = failed.map(id => { const count = p.jobs[id]!.failed ?? 0; return `${names[id] ?? id} (${count ? `${count} ✗` : 'erro'})`; });
-  void Promise.resolve().then(() => $.ui.notify(`Falharam: ${notice.join(', ')}`, { title: 'Test Progress' })).catch(() => {});
+  // With no terminal (the desktop app) only Notification hooks run and nothing native is written: a toast in the app instead.
+  const text = `Falharam: ${notice.join(', ')}`;
+  void Promise.resolve().then(() => $.ui.notify(text, { title: 'Test Progress' })).catch(() => null)
+    .then(sent => { if (!sent?.isSent) $.ui.toast(text, { timeoutMs: 10000 }); }).catch(() => {});
   try {
     if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
     const first = failed[0]!;
@@ -571,44 +587,48 @@ export const register: Register = on => {
     return next(e);
   });
   on('command.run', { command: 'test-progress' }, async ($, e, next) => {
-    await hydrate($);
-    // A name match alone isn't ownership: register() can have failed, or another
-    // command can have replaced our name since startup. Preserve its full result.
-    if (p.registrationError) return next(e);
-    try {
-      const current = (await $.command.list()).find(command => command.name === 'test-progress');
-      if (!current || current.source !== 'plugin' || current.plugin !== 'test-progress') {
-        p.registrationError = 'O comando test-progress está indisponível ou pertence a outra origem.';
+    const answer = await (async () => {
+      await hydrate($);
+      // A name match alone isn't ownership: register() can have failed, or another
+      // command can have replaced our name since startup. Preserve its full result.
+      if (p.registrationError) return next(e);
+      try {
+        const current = (await $.command.list()).find(command => command.name === 'test-progress');
+        if (!current || current.source !== 'plugin' || current.plugin !== 'test-progress') {
+          p.registrationError = 'O comando test-progress está indisponível ou pertence a outra origem.';
+          await publish($);
+          return next(e);
+        }
+      } catch (error) {
+        p.registrationError = `Não foi possível confirmar a origem do comando: ${errorText(error)}`;
         await publish($);
         return next(e);
       }
-    } catch (error) {
-      p.registrationError = `Não foi possível confirmar a origem do comando: ${errorText(error)}`;
-      await publish($);
-      return next(e);
-    }
-    let command;
-    try { command = parseCommand(e.args); } catch (error) { return { text: errorText(error) }; }
-    if (command.action === 'help') return { text: HELP };
-    if (command.action === 'paths') return { text: [`Plugin: ${$.plugin.root}`,
-      `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
-      `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
-      `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
-      `Playwright: ${$.plugin.root}/adapters/playwright/reporter.cjs`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
-    // A bare /test-progress toggles: an open pane closes, a closed one refreshes and opens.
-    if (!String(e.args ?? '').trim()) {
+      let command;
+      try { command = parseCommand(e.args); } catch (error) { return { text: errorText(error) }; }
+      if (command.action === 'help') return { text: HELP };
+      if (command.action === 'paths') return { text: [`Plugin: ${$.plugin.root}`,
+        `Rails: ${$.plugin.root}/adapters/rails/run.rb`, `Python: ${$.plugin.root}/adapters/python/run.py`,
+        `Karma: ${$.plugin.root}/adapters/karma/reporter.cjs`, `JUnit: ${$.plugin.root}/adapters/junit/pom.xml`,
+        `Ruby / RSpec: ${$.plugin.root}/adapters/ruby/run.rb`,
+        `Playwright: ${$.plugin.root}/adapters/playwright/reporter.cjs`, `Exemplos: ${$.plugin.root}/config.example.json`].join('\n') };
+      // A bare /test-progress toggles: an open pane closes, a closed one refreshes and opens.
+      if (!String(e.args ?? '').trim()) {
+        try {
+          if ((await $.ui.panes()).some(pane => pane.id === PANE)) { await $.ui.close({ id: PANE }); return {}; }
+        } catch { /* No pane record: open as usual. */ }
+      }
+      await perform($, command.action, command.moduleId);
+      if (command.text || command.action === 'list') return { text: textSummary() + (command.action === 'logs' ? `\n${textLogs(command.moduleId)}` : '') };
       try {
-        if ((await $.ui.panes()).some(pane => pane.id === PANE)) { await $.ui.close({ id: PANE }); return {}; }
-      } catch { /* No pane record: open as usual. */ }
-    }
-    await perform($, command.action, command.moduleId);
-    if (command.text || command.action === 'list') return { text: textSummary() + (command.action === 'logs' ? `\n${textLogs(command.moduleId)}` : '') };
-    try {
-      const placement = await $.ui.open({ id: PANE, title: 'Test Progress', focus: true, closeOnEscape: true });
-      if (!placement.isPlaced) return { text: `${textSummary()}\nPainel aguardando espaço: ${placement.reason}` };
-      acknowledge(); await publish($);
-    } catch (error) { return { text: `${textSummary()}\nPainel indisponível: ${errorText(error)}` }; }
-    return {};
+        const placement = await $.ui.open({ id: PANE, title: 'Test Progress', focus: true, closeOnEscape: true });
+        if (!placement.isPlaced) return { text: `${textSummary()}\nPainel aguardando espaço: ${placement.reason}` };
+        acknowledge(); await publish($);
+      } catch (error) { return { text: `${textSummary()}\nPainel indisponível: ${errorText(error)}` }; }
+      return {};
+    })();
+    // Another command's run (ref) passes untouched; our own text is plain, so it stays verbatim everywhere.
+    return answer.ref === undefined && answer.text ? { ...answer, text: await verbatim($, answer.text) } : answer;
   });
   // A RegExp matcher: the literal name type-checks only once the generated MCP types declare this tool.
   on('tool.call', { tool: /^mcp__test-progress__tests$/ }, async ($, e) => {
@@ -636,7 +656,10 @@ export const register: Register = on => {
     // Reading the host's value subscribes this drawing; each publish redraws it.
     await read($, panel);
     await hydrate($);
-    const { Box, Text, Button } = $.ui.resolve(e);
+    const elements = $.ui.resolve(e);
+    const { Box, Text, Button } = elements;
+    // The terminal lays out in character cells; the app surfaces draw native buttons and a proportional font.
+    const Svg = e.surface !== 'terminal' && 'Svg' in elements ? elements.Svg : null;
     const expected = { generation: p.generation, projection: actionProjection() };
     const guarded = (fn: () => Promise<void> | void) => async () => {
       await synchronizeIdentity($);
@@ -662,7 +685,7 @@ export const register: Register = on => {
     // ▶/■ leads the row, in a fixed cell so names stay aligned when a module has neither.
     const runControl = (id: string) => {
       const module = p.modules[id], job = p.jobs[id];
-      return <Box key="run" width={1}>{job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ? button(`cancel-${id}`, '■', 'cancel', id) :
+      return <Box key="run" width={Svg ? undefined : 1} flexShrink={0}>{job && (ACTIVE.has(job.status) || job.recoveryRequired && job.cancellable) ? button(`cancel-${id}`, '■', 'cancel', id) :
         module?.enabled ? button(`start-${id}`, '▶', 'start', id, startAllowed(id)) : null}</Box>;
     };
     const progress = (id: string, cells: number) => {
@@ -676,12 +699,15 @@ export const register: Register = on => {
       }
       const stopping = job.phase === 'cancellation-requested';
       const bar = progressBar(job, cells);
+      const pct = compactPercent(job);
       return [
+        Svg ? <Box key="bar" flexShrink={0} paddingRight={1}><Svg source={progressSvg(job, cells * 8, stopping)}
+          alt={pct === '—' ? 'total desconhecido' : `${pct} concluído`} /></Box> :
         <Box key="bar" flexDirection="row" width={cells + 1}>
           {bar.done ? <Text key="done" color={stopping ? 'inactive' : 'suggestion'}>{bar.done}</Text> : null}
           <Text key="rest" color="subtle">{bar.rest}</Text>
         </Box>,
-        <Box key="pct" width={7}><Text dimColor={stopping}>{compactPercent(job)}</Text></Box>,
+        <Box key="pct" width={7}><Text dimColor={stopping}>{pct}</Text></Box>,
         ...(stopping ? [<Text key="stopping" color="inactive">parando…</Text>] : counts),
       ];
     };
@@ -712,6 +738,8 @@ export const register: Register = on => {
           <Box key="log-header" flexDirection="row" justifyContent="space-between">
             <Text key="log-title" color="inactive" wrap="truncate-end">{`│ ${header}`}</Text>
             <Box key="log-actions" flexDirection="row" flexShrink={0} gap={1}>
+              {/* The app sizes the pane to its tree and scrolls it itself, so no wheel reaches the log's window: page it here. */}
+              {Svg && top > 0 ? local(`up-logs-${id}`, '↑', () => { p.logTop = Math.max(0, top - LOG_ROWS); }) : null}
               {top < max ? local(`end-logs-${id}`, '↓', () => { p.logTop = null; }) : null}
               {local(`close-logs-${id}`, '×', closeLogs)}
             </Box>
@@ -798,7 +826,7 @@ export const register: Register = on => {
       {(p.stateDiagnostics['*'] ?? []).map((item, i) => <Text key={`state-${i}`} color="error" wrap="wrap">{`Estado: ${diagnosticText(item)}`}</Text>)}
       {p.lastError ? <Text key="last-error" color="error" wrap="wrap">{p.lastError}</Text> : null}
       {p.registrationError ? <Text key="registration" color="error" wrap="wrap">{`Registro: ${p.registrationError}`}</Text> : null}
-      {p.showHelp ? LEGEND.map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
+      {p.showHelp ? (Svg ? LEGEND.map(line => line.startsWith('A roda') ? APP_SCROLL : line) : LEGEND).map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
     </Box>;
   });
   // With a log open, the wheel moves the log's own window; at its edges, and for the keys, the pane scrolls.

@@ -332,6 +332,29 @@ test('when every run has ended, unseen failures open the pane once on the first 
   expect(notified.at(-1)).toMatchObject({ text: 'Falharam: API (erro)' });
 });
 
+test('where no native notification goes out, as on the desktop app, the failure shows as a toast', async ($, on) => {
+  const clock = mock.clock(on); const toasts: any[] = []; let sent: any = { isSent: false, reason: 'no-channel' };
+  const modules = { api: module() };
+  let current = data(modules, { api: running });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  on('ui.panes', () => ({ value: [] }));
+  on('ui.open', () => ({ value: { isPlaced: true } }));
+  on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
+  on('ui.notify', () => ({ value: sent }));
+  on('ui.toast', ($, e) => { toasts.push(e); return { value: undefined }; });
+  await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' });
+  current = data(modules, { api: { ...running, status: 'failed', failed: 1 } }); await clock.advance(10000);
+  expect(toasts).toHaveLength(1);
+  expect(toasts[0]).toMatchObject({ text: 'Falharam: API (1 ✗)', timeoutMs: 10000 });
+  // A notification that went out needs no toast.
+  sent = { isSent: true, channel: 'kitty' };
+  current = data(modules, { api: { ...running, runId: 'second', status: 'failed', failed: 1 } }); await clock.advance(10000);
+  expect(toasts).toHaveLength(1);
+});
+
 test('a live job streams status from one watcher instead of a query per second, and polling resumes when it ends', async ($, on) => {
   const clock = mock.clock(on); const actions: string[] = []; const spawned: string[][] = [];
   const collector = { path: '/node/bin/node', source: 'path' };

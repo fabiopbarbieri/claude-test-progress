@@ -64,7 +64,10 @@ for (const surface of ['terminal', 'desktop'] as const) {
     on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
     await $.command.run({ command: 'test-progress', args: '--text' });
     const ui = await $.ui.mount(pane(surface));
-    for (const value of ['✓2 ', '✗1 ', '⊘ 1 ', '~100%', '—', '╌╌╌╌╌╌╌╌╌╌╌╌']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
+    for (const value of ['✓2 ', '✗1 ', '⊘ 1 ', '~100%', '—']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
+    // An unknown total draws dashes: glyphs on the terminal, a dashed SVG line on the app.
+    if (surface === 'terminal') expect(await ui.find({ type: 'Text', text: '╌╌╌╌╌╌╌╌╌╌╌╌' })).toBeDefined();
+    else expect(await ui.find({ type: 'Svg', alt: 'total desconhecido' })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: /executing-tests/ })).toBeUndefined();
     expect(await ui.find({ key: 'cancel-api' })).toMatchObject({ props: { label: '■' } });
     await ui.press({ key: 'start-all' });
@@ -283,6 +286,31 @@ test('wide panes keep one line per module; narrow panes move progress to a secon
   await narrow.unmount();
 });
 
+test('desktop draws the live bar as an SVG and lets the native run button size itself', async ($, on) => {
+  const current = data({ api: module('api', 0, { label: 'API' }), web: module('web', 1, { label: 'Web' }) },
+    { api: job('api', { total: 4, resolved: 2, passed: 2, failed: 0, skipped: 0, percent: 50 }) });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const desktop = await $.ui.mount(pane('desktop'));
+  // A proportional font widens the bar glyphs past their cells, over the percentage.
+  expect(await desktop.find({ type: 'Text', text: /━/ })).toBeUndefined();
+  const svg = await desktop.find({ type: 'Svg' });
+  expect(svg).toMatchObject({ props: { alt: '~50% concluído' } });
+  expect(svg?.props.source).toContain('width="48"');
+  expect(await desktop.find({ type: 'Text', text: '~50%' })).toBeDefined();
+  // One cell holds no native button: the control takes its own width.
+  expect((await desktop.find({ key: 'run' }))?.props.width).toBeUndefined();
+  expect(await desktop.find({ key: 'cancel-api' })).toMatchObject({ props: { label: '■' } });
+  await desktop.unmount();
+  const terminal = await $.ui.mount(pane('terminal'));
+  expect(await terminal.find({ type: 'Svg' })).toBeUndefined();
+  expect(await terminal.find({ type: 'Text', text: '━━━━━━' })).toBeDefined();
+  expect((await terminal.find({ key: 'run' }))?.props.width).toBe(1);
+  await terminal.unmount();
+});
+
 test('help toggles a short legend; empty workspace is one line', async ($, on) => {
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
@@ -384,6 +412,37 @@ test('the wheel scrolls an open log within its tail, then hands the edges to the
   await ui.unmount();
 });
 
+test('on the app the log pages up with a button, since its wheel scrolls the pane, not the log', async ($, on) => {
+  const current = data({ api: module('api') }, { api: job('api', { status: 'completed', phase: 'finished', exitCode: 0,
+    logTail: Array.from({ length: 30 }, (_, i) => `line ${i + 1}`) }) });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(current));
+  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const ui = await $.ui.mount(pane('desktop'));
+  await ui.press({ key: 'logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 30 linhas/ })).toBeDefined();
+  await ui.press({ key: 'up-logs-api' });
+  expect(await ui.find({ type: 'Text', text: /linhas 7–18 de 30/ })).toBeDefined();
+  await ui.press({ key: 'up-logs-api' });
+  expect(await ui.find({ type: 'Text', text: /linhas 1–12 de 30/ })).toBeDefined();
+  expect(await ui.find({ key: 'up-logs-api' })).toBeUndefined();
+  await ui.press({ key: 'end-logs-api' });
+  expect(await ui.find({ type: 'Text', text: /últimas 12 de 30 linhas/ })).toBeDefined();
+  await ui.unmount();
+  await $.ui.mount(pane('desktop')).then(async view => {
+    await view.press({ key: 'help' });
+    expect(await view.find({ type: 'Text', text: /^↑ volta uma página/ })).toBeDefined();
+    expect(await view.find({ type: 'Text', text: /roda do mouse/ })).toBeUndefined();
+    await view.press({ key: 'help' });
+    await view.unmount();
+  });
+  // The terminal keeps the wheel and draws no page button.
+  const terminal = await $.ui.mount(pane('terminal'));
+  expect(await terminal.find({ key: 'up-logs-api' })).toBeUndefined();
+  await terminal.unmount();
+});
+
 test('a bare command closes an open pane instead of reopening it', async ($, on) => {
   const closed: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
@@ -393,4 +452,20 @@ test('a bare command closes an open pane instead of reopening it', async ($, on)
   on('ui.close', ($, e) => { closed.push(e.id); return { value: undefined }; });
   expect(await $.command.run({ command: 'test-progress', args: '' })).toEqual({});
   expect(closed).toEqual(['claude-test-progress']);
+});
+
+test('command text stays verbatim where the app reads it as Markdown, and plain on the terminal', async ($, on) => {
+  let surfaces: string[] = ['desktop'];
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.surfaces', () => ({ value: surfaces }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('process.run', () => response(data({ api: module('api', 0, { label: '__init__ *core*' }) })));
+  const app = await $.command.run({ command: 'test-progress', args: 'list' });
+  expect(app.text).toMatch(/^\n```text\n/);
+  expect(app.text).toMatch(/\n```$/);
+  expect(app.text).toContain('__init__ *core*');
+  surfaces = ['terminal'];
+  const terminal = await $.command.run({ command: 'test-progress', args: 'list' });
+  expect(terminal.text).not.toContain('```');
+  expect(terminal.text).toContain('__init__ *core*');
 });
