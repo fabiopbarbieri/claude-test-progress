@@ -409,8 +409,11 @@ Limites observados:
   mesmo quando `claude plugin list` diz "Read from" a pasta do marketplace.
 - `/reload-plugins` recarrega skills, mas não o Mod. Depois de atualizar o
   plugin, feche o Claude Desktop por completo e abra de novo.
-- O compositor avisa "/test-progress não é um comando aqui", mas a sessão executa
-  o comando.
+- O compositor do app não conhece o comando registrado pelo Mod: avisa
+  "/test-progress não é um comando aqui", mas a sessão executa. Pelo mesmo motivo
+  ele não consulta `prompt.autocomplete`, então as sugestões de ação e módulo
+  (0.11.0+) não aparecem no app. Os mesmos atalhos estão no painel: ▶ por módulo
+  e o nome abrindo o log.
 - A notificação nativa sai em nome do Windows PowerShell, não do Claude, e
   segue as preferências de notificação do Windows para esse app.
 - O Desktop mais recente disponível (2.31226.1, sem atualização no winget em
