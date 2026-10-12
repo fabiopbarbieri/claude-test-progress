@@ -367,7 +367,9 @@ Em 12/10/2026, na mesma VM (Windows 11 25H2, build 26200), com o Claude Desktop
 2.31226.1 (MSIX), que embute o Claude Code 2.1.295, e o plugin instalado pelo
 marketplace no escopo `user`. Foram usadas sessões locais de código no app, com o
 mesmo app de teste de seis módulos e o coletor em Node 24.21.0 (nvm-windows),
-achado sem `launch.ps1`. Base: `main` em `f3cfccd`, mais as correções da branch
+achado sem `launch.ps1`. A instalação final veio do marketplace no GitHub
+(`claude plugin marketplace add https://github.com/fabiopbarbieri/claude-test-progress.git#feature/claude-desktop`),
+porque a VM não tem SSH do GitHub. Base: `main` em `f3cfccd`, mais as correções da branch
 `feature/claude-desktop`.
 
 - O Mod carrega no app. `/test-progress` abre o painel numa coluna lateral, a
@@ -394,8 +396,11 @@ botão nativo, e a saída em texto dos comandos vai num bloco de código: o app 
 como Markdown, o que apagava as barras invertidas dos caminhos. A roda do mouse
 rola o painel do app, não a janela do log, então o cabeçalho do log ganha um
 `↑` para voltar uma página, e a legenda descreve isso. Sem terminal,
-`$.ui.notify` só roda os hooks `Notification` da pessoa e nada nativo é escrito;
-quando a notificação não sai, a falha aparece como toast no app.
+`$.ui.notify` só roda os hooks `Notification` da pessoa e nada nativo é escrito.
+Nesse caso o Mod usa o notificador do sistema: no Windows, uma notificação do
+Windows PowerShell ("Test Progress / Falharam: …") vista na central de
+notificações; no Linux, `notify-send`. Se nenhum responder, a falha aparece como
+toast no app. O texto vai por variável de ambiente, nunca dentro do script.
 
 Limites observados:
 
@@ -406,11 +411,13 @@ Limites observados:
   plugin, feche o Claude Desktop por completo e abra de novo.
 - O compositor avisa "/test-progress não é um comando aqui", mas a sessão executa
   o comando.
-- Não há notificação nativa do Windows: o aviso é o toast dentro do app, que só
-  aparece com o app aberto.
-- O Claude Code embutido (2.1.295) é anterior ao mínimo declarado (2.1.296). O
-  painel, a faixa e a ferramenta do modelo funcionaram nele, sem garantia para
-  outras combinações.
+- A notificação nativa sai em nome do Windows PowerShell, não do Claude, e
+  segue as preferências de notificação do Windows para esse app.
+- O Desktop mais recente disponível (2.31226.1, sem atualização no winget em
+  12/10/2026) embute o Claude Code 2.1.295, anterior ao mínimo declarado
+  (2.1.296). Tudo acima funcionou nele, com uma diferença: antes do 2.1.296 o
+  `$` de um subagente responde a pasta da sessão. Um subagente noutra pasta
+  então recebe da ferramenta os módulos da sessão, em vez de ser recusado.
 
 ## Fontes e evidências
 

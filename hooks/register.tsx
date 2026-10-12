@@ -422,6 +422,32 @@ async function verbatim($: $, text: string) {
   // The app writes the command's name before the text, so the fence opens on a line of its own.
   return `\n${fence}text\n${text}\n${fence}`;
 }
+// A Windows toast under PowerShell's own app ID; title and text arrive through the environment, never the script.
+const WINDOWS_TOAST = [
+  "$m = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]",
+  "$x = $m::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)",
+  "$t = $x.GetElementsByTagName('text')",
+  "[void]$t.Item(0).AppendChild($x.CreateTextNode($env:TEST_PROGRESS_NOTIFY_TITLE))",
+  "[void]$t.Item(1).AppendChild($x.CreateTextNode($env:TEST_PROGRESS_NOTIFY_TEXT))",
+  "$m::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))",
+].join('; ');
+// Only where the session draws on no terminal: there the terminal's channel already wrote, or chose not to.
+async function systemNotify($: $, title: string, text: string) {
+  try {
+    const surfaces = await $.session.surfaces();
+    if (!surfaces.length || surfaces.includes('terminal')) return false;
+    const cwd = await $.session.cwd();
+    let argv: string[];
+    if (/^[a-z]:[\\/]|^\\\\/i.test(cwd)) {
+      const systemRoot = await $.env.get('SystemRoot');
+      argv = [systemRoot ? `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` : 'powershell.exe',
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_TOAST];
+    } else argv = ['notify-send', '--app-name=Test Progress', title, text];
+    const result = await $.process.run(argv, { timeoutMs: 15000,
+      env: { TEST_PROGRESS_NOTIFY_TITLE: title, TEST_PROGRESS_NOTIFY_TEXT: text } });
+    return result.exitCode === 0;
+  } catch { return false; }
+}
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
 }
@@ -440,10 +466,12 @@ async function autoOpen($: $) {
   // Their own channel and Notification hooks decide; a refusal or a missing channel changes nothing here.
   const names = displayNames();
   const notice = failed.map(id => { const count = p.jobs[id]!.failed ?? 0; return `${names[id] ?? id} (${count ? `${count} ✗` : 'erro'})`; });
-  // With no terminal (the desktop app) only Notification hooks run and nothing native is written: a toast in the app instead.
+  // With no terminal (the desktop app) only Notification hooks run and nothing native is written:
+  // the system's own notifier stands in, and a toast in the app where none answers.
   const text = `Falharam: ${notice.join(', ')}`;
   void Promise.resolve().then(() => $.ui.notify(text, { title: 'Test Progress' })).catch(() => null)
-    .then(sent => { if (!sent?.isSent) $.ui.toast(text, { timeoutMs: 10000 }); }).catch(() => {});
+    .then(async sent => { if (!sent?.isSent && !await systemNotify($, 'Test Progress', text)) $.ui.toast(text, { timeoutMs: 10000 }); })
+    .catch(() => {});
   try {
     if ((await $.ui.panes()).some(pane => pane.id === PANE)) return;
     const first = failed[0]!;
