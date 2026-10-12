@@ -4,6 +4,25 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.13.0] - 2026-10-12
+
+### Funcionalidades
+
+- **mod:** notify through the system where no terminal writes it ([7075558](https://github.com/fabiopbarbieri/claude-test-progress/commit/7075558fbf2653cf3081b8b7aa9151b2dcc17ccb))
+
+### Correções
+
+- **mod:** draw the pane and its notices for the desktop app ([19477da](https://github.com/fabiopbarbieri/claude-test-progress/commit/19477dae3ef8dd855a38be0f5df3264233b6429b))
+- **mod:** toast as the Claude app and refuse subagents an older engine cannot place ([c36e289](https://github.com/fabiopbarbieri/claude-test-progress/commit/c36e28959a97209dd04d13e9c5e5d19df91b0a5c))
+
+### Documentação
+
+- **windows:** record the Claude Desktop acceptance and its limits ([d554f31](https://github.com/fabiopbarbieri/claude-test-progress/commit/d554f31e231b44a688306012c7c92d371387e8b7))
+- **troubleshooting:** refresh a same-version plugin by reinstalling it ([ed96798](https://github.com/fabiopbarbieri/claude-test-progress/commit/ed967980d533d4cb0b130e1aa0701ad12075ee6d))
+- **windows:** note the app composer skips the command's autocomplete ([3a782db](https://github.com/fabiopbarbieri/claude-test-progress/commit/3a782dbb9c4a9171c673c5ede5d98a9fcfe316c3))
+- **windows:** record the Claude-named toast and the subagent refusal before 2.1.296 ([888b069](https://github.com/fabiopbarbieri/claude-test-progress/commit/888b0698df1de54ca57ce283da79f52e5d39029e))
+- **windows:** record the in-app check of the subagent refusal and the Claude toast ([74211f0](https://github.com/fabiopbarbieri/claude-test-progress/commit/74211f0b56b749e0b7050b3367e9c36d82db1b16))
+
 ## [0.12.0] - 2026-10-12
 
 ### Funcionalidades
