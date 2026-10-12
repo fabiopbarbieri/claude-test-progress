@@ -221,6 +221,14 @@ As fontes privadas são revalidadas antes da reserva e da liberação da barreir
 | `/test-progress cancel id` / `cancel all` | Solicita cancelamento da sessão |
 | `--text` | Alternativa textual no Mod |
 
+Ao digitar `/test-progress `, o autocomplete do prompt sugere as ações e, depois
+de `start`, `status`, `logs` ou `cancel`, os IDs com o rótulo ao lado e `all`.
+`start` só oferece módulos ativados; `cancel` só aparece com uma execução que
+possa ser cancelada e só oferece essas execuções. Digitar o começo do ID ou de
+uma palavra do rótulo logo após `/test-progress` sugere o comando inteiro:
+`/test-progress r` oferece `start release`, ou `logs release` se ele estiver
+rodando.
+
 Quando nenhuma execução está mais ativa e alguma terminou com falha (teste
 falho, `failed` ou `error`) que você não viu no painel, ele abre sozinho no log
 do primeiro módulo com falha, na ordem do painel. Não toma o teclado e abre no

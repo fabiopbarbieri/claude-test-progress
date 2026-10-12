@@ -4,7 +4,7 @@
 
 **Acompanhe suas suítes de teste no Claude Code enquanto elas rodam em segundo plano.**
 Plugin `test-progress`, um [Claude Code Mod](https://code.claude.com/docs/en/plugins/mods/create)
-independente da Anthropic. Versão **0.10.5**, licença **MIT**.
+independente da Anthropic. Versão **0.12.0**, licença **MIT**.
 
 ![Painel do Test Progress com sete módulos de projetos fictícios](docs/assets/panel.png)
 
@@ -85,7 +85,8 @@ todos os campos: [configurar seu projeto](docs/USAGE.md#configurar-seu-projeto).
 | `/test-progress cancel <id>` / `cancel all` | Cancela a execução |
 | `/test-progress help` / `paths` | Ajuda / caminhos da instalação |
 
-Acrescente `--text` para a saída em texto. No painel, `⇅` alterna a ordem dos
+Acrescente `--text` para a saída em texto. O autocomplete do prompt sugere as
+ações e os IDs cadastrados. No painel, `⇅` alterna a ordem dos
 módulos (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
 
 Quando todas as execuções terminam e alguma falhou, o painel abre sozinho no log

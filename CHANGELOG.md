@@ -4,6 +4,23 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.12.0] - 2026-10-12
+
+### Funcionalidades
+
+- **command:** suggest actions and module IDs in the prompt autocomplete ([51a5586](https://github.com/fabiopbarbieri/claude-test-progress/commit/51a55867f38476916794a910753585bca438f446))
+- **command:** complete the whole command from a module name ([2e4c090](https://github.com/fabiopbarbieri/claude-test-progress/commit/2e4c090e74bbb0353bca596ee175ed60d10c643d))
+
+## [0.11.0] - 2026-10-12
+
+### Funcionalidades
+
+- **mod:** run registered suites through a model tool, without Bash ([c3cc4ad](https://github.com/fabiopbarbieri/claude-test-progress/commit/c3cc4ad547cd6c02694b820593bea1bb94f206fb))
+
+### Desempenho
+
+- **mod:** answer one module's entry and job from the model tool ([a296c87](https://github.com/fabiopbarbieri/claude-test-progress/commit/a296c8760242e92d1d9110b63d3a1d3b9491bed5))
+
 ## [0.10.5] - 2026-10-10
 
 ### Correções
