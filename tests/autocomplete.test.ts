@@ -37,6 +37,9 @@ test('suggests actions, then the modules each action reaches, with labels beside
   expect(await offered($, '/test-progress s')).toEqual(['beneath', 'start', 'status']);
   expect(await offered($, '/test-progress c')).toEqual(['beneath']);
   expect(await offered($, '/test-progress l')).toEqual(['beneath', 'logs', 'list']);
+  // A module named at the first argument completes the whole command; a disabled one is left out.
+  expect(await offered($, '/test-progress b')).toEqual(['beneath', 'start api']);
+  expect(await offered($, '/test-progress o')).toEqual(['beneath']);
   // A disabled module is never offered; `all` closes the list.
   expect(await offered($, '/test-progress start a')).toEqual(['beneath', 'api', 'all']);
   expect(await offered($, '/test-progress start --text w')).toEqual(['beneath', 'web']);
@@ -59,6 +62,8 @@ test('cancel appears with a live run and offers only the runs it can stop', asyn
   expect(await offered($, '/test-progress c')).toEqual(['beneath', 'cancel']);
   expect(await offered($, '/test-progress cancel a')).toEqual(['beneath', 'api', 'all']);
   expect(await offered($, '/test-progress cancel w')).toEqual(['beneath']);
+  // A running module offers its log instead of a start.
+  expect(await offered($, '/test-progress su')).toEqual(['beneath', 'logs api', 'start web']);
   const rows = (await ($.prompt as unknown as { autocomplete: Autocomplete }).autocomplete(typed('/test-progress start a'))).suggestions;
   expect(rows[1]).toEqual({ text: 'api', description: 'Suíte (api) · em execução' });
 });
