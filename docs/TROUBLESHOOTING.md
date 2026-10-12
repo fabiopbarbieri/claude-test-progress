@@ -11,7 +11,7 @@ consulte novamente antes de outro start. Não existe `/test-progress doctor`.
 | Sintoma | Verificação | Ação |
 | --- | --- | --- |
 | Comando não aparece | Claude, instalação e permissão de Mods | Siga [USAGE](USAGE.md), recarregue ou reabra a sessão |
-| Claude Desktop roda versão antiga do plugin | `/test-progress paths` mostra a pasta em uso (a cópia em `.claude/plugins/cache`) | Atualize o plugin e reabra o app por completo; `/reload-plugins` não recarrega o Mod |
+| Claude Desktop roda versão antiga do plugin | `/test-progress paths` mostra a pasta em uso (a cópia em `.claude/plugins/cache`); `gitCommitSha` em `installed_plugins.json` | `claude plugin update` só troca a cópia quando a versão muda: com a mesma versão, desinstale e instale de novo. Depois reabra o app por completo; `/reload-plugins` não recarrega o Mod |
 | Desktop avisa "/test-progress não é um comando aqui" | A resposta do comando aparece logo abaixo | Aviso do compositor do app; o comando roda mesmo assim |
 | SSH do marketplace falha | `git ls-remote git@github.com:fabiopbarbieri/claude-test-progress.git HEAD` | Configure acesso SSH; não publique chaves/tokens |
 | Painel indisponível | `status all --text` | Use texto; falha de layout não comprova falha da suíte |
