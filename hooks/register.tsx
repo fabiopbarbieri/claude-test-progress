@@ -422,14 +422,17 @@ async function verbatim($: $, text: string) {
   // The app writes the command's name before the text, so the fence opens on a line of its own.
   return `\n${fence}text\n${text}\n${fence}`;
 }
-// A Windows toast under PowerShell's own app ID; title and text arrive through the environment, never the script.
+// A Windows toast; title and text arrive through the environment, never the script.
 const WINDOWS_TOAST = [
   "$m = [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]",
   "$x = $m::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)",
   "$t = $x.GetElementsByTagName('text')",
   "[void]$t.Item(0).AppendChild($x.CreateTextNode($env:TEST_PROGRESS_NOTIFY_TITLE))",
   "[void]$t.Item(1).AppendChild($x.CreateTextNode($env:TEST_PROGRESS_NOTIFY_TEXT))",
-  "$m::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show([Windows.UI.Notifications.ToastNotification]::new($x))",
+  // Under the Claude app's own ID where the desktop app is installed, else PowerShell's.
+  "$p = Get-AppxPackage -Name Claude -ErrorAction SilentlyContinue | Select-Object -First 1",
+  "$id = if ($p) { $p.PackageFamilyName + '!Claude' } else { '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe' }",
+  "$m::CreateToastNotifier($id).Show([Windows.UI.Notifications.ToastNotification]::new($x))",
 ].join('; ');
 // Only where the session draws on no terminal: there the terminal's channel already wrote, or chose not to.
 async function systemNotify($: $, title: string, text: string) {
@@ -545,6 +548,15 @@ const TOOL_SPEC = {
 };
 const SUBAGENT_REFUSAL = 'Este agente roda em outro diretório que o painel desta sessão, e a ferramenta só atende o ' +
   'diretório do painel. Carregue a skill test-progress:run-tests e rode o coletor pelo Bash com o seu próprio --cwd.';
+// Before 2.1.296 a subagent's $ answers the session's folder, so its own folder is unknown: refuse it the same way.
+const SUBAGENT_UNKNOWN = 'Esta versão do Claude Code não informa o diretório de um subagente, e a ferramenta só atende o ' +
+  'diretório do painel. Carregue a skill test-progress:run-tests e rode o coletor pelo Bash com o seu próprio --cwd.';
+async function knowsAgentFolder($: $) {
+  try {
+    const [major = 0, minor = 0, patch = 0] = ((await $.session.version()).base ?? '').split(/[.-]/).map(Number);
+    return major * 1e6 + minor * 1e3 + patch >= 2001296;
+  } catch { return false; }
+}
 // What the model reads: the collector's envelope without the Mod's own bookkeeping (Node path, watched files),
 // and for one module only that module's entry and job, so a status loop does not repeat the whole catalogue.
 function toolAnswer(data: ReturnType<typeof validateEnvelope>, moduleId: string) {
@@ -721,6 +733,7 @@ export const register: Register = on => {
     } catch (error) { return { deny: errorText(error) }; }
     if (input.agentId) {
       // A subagent's $ answers its own folder (2.1.296); another folder would replace the pane's identity.
+      if (!await knowsAgentFolder($)) return { deny: SUBAGENT_UNKNOWN };
       await hydrate($);
       const [panelCwd] = p.identity.split('\n');
       if (!panelCwd || await $.session.cwd() !== panelCwd) return { deny: SUBAGENT_REFUSAL };

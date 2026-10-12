@@ -105,6 +105,7 @@ test('a refused collector answer still reaches the model with its catalogue; bad
 test('a subagent in another folder is refused, one in the pane folder is served, before the collector or the pane identity is touched', async ($, on) => {
   const calls: string[][] = []; let cwd = '/work';
   on('session.cwd', () => ({ value: cwd })); on('session.id', () => ({ value: 'owner' }));
+  on('session.version', () => ({ value: { version: '2.1.296', base: '2.1.296' } }));
   on('process.run', ($, e) => { calls.push(e.argv); return response(data()); });
   await $.tool.call({ tool: TOOL, action: 'status' } as never);
   cwd = '/work/.claude/worktrees/agent-x';
@@ -116,4 +117,18 @@ test('a subagent in another folder is refused, one in the pane folder is served,
   const served = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-y' } as never) as { result?: string };
   expect(served.result).toBeDefined();
   expect(calls).toHaveLength(2);
+});
+
+test('before 2.1.296 a subagent is refused even in the pane folder, since its own folder is unknown', async ($, on) => {
+  const calls: string[][] = []; let base = '2.1.295';
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('session.version', () => ({ value: { version: base, base } }));
+  on('process.run', ($, e) => { calls.push(e.argv); return response(data()); });
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  const refused = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-x' } as never) as { deny?: string };
+  expect(refused.deny).toContain('não informa o diretório de um subagente');
+  expect(calls).toHaveLength(1);
+  base = '2.1.296';
+  const served = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-x' } as never) as { result?: string };
+  expect(served.result).toBeDefined();
 });
