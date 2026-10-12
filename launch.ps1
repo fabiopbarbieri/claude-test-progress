@@ -15,7 +15,7 @@ try {
         throw "Não foi possível identificar a versão do Claude: $versionText"
     }
     $version = [version]($Matches[1] + '.' + $Matches[2] + '.' + $Matches[3])
-    if ($version -lt [version]'2.1.295') { throw "Mods requer Claude 2.1.295+. Encontrado: $versionText" }
+    if ($version -lt [version]'2.1.296') { throw "Mods requer Claude 2.1.296+. Encontrado: $versionText" }
     # PowerShell's call operator invokes .cmd/.bat wrappers through their host.
     & $command.Source '--plugin-dir' $PSScriptRoot @CliArgs
     exit $LASTEXITCODE
