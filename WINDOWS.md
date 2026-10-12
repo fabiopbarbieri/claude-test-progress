@@ -419,8 +419,9 @@ Limites observados:
   12/10/2026) embute o Claude Code 2.1.295, anterior ao mínimo declarado
   (2.1.296). Tudo acima funcionou nele. Antes do 2.1.296, o `$` de um
   subagente responde a pasta da sessão, então a ferramenta recusa qualquer
-  subagente e o manda para o Bash com o próprio `--cwd`, pela skill. Essa recusa
-  está coberta pelo test kit; a VM já estava desligada para conferi-la no app.
+  subagente e o manda para o Bash com o próprio `--cwd`, pela skill. A recusa e
+  a notificação em nome do Claude foram conferidas no app com o plugin instalado
+  da `main` (`8833fc4`).
 
 ## Fontes e evidências
 
