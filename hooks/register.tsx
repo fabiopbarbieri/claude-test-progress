@@ -1,4 +1,4 @@
-// Claude Code Mods 2.1.295+. No host Node APIs run inside the Mod sandbox.
+// Claude Code Mods 2.1.296+. No host Node APIs run inside the Mod sandbox.
 import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
 import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
@@ -330,7 +330,8 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   if (!data.ok || response.exitCode !== 0) {
     const actionErrors = Object.entries(data.actionResults ?? {}).filter(([, result]) => !result.ok)
       .map(([id, result]) => `${id}: ${result.error ?? 'ação recusada'}`).join('\n');
-    throw new Error(data.error ?? (actionErrors || `Coletor encerrou com código ${response.exitCode}.`));
+    // The envelope rides along: the model tool answers with it, catalogue and diagnostics included.
+    throw Object.assign(new Error(data.error ?? (actionErrors || `Coletor encerrou com código ${response.exitCode}.`)), { envelope: data });
   }
   p.lastError = '';
   return data;
@@ -478,6 +479,90 @@ async function autoOpen($: $) {
     await $.ui.open({ id: PANE, title: 'Test Progress' });
   } catch { /* No pane in this surface: the band and the command remain. */ }
 }
+// The model's own tool: the same collector, queue and state as the pane, without Bash. Its schema is
+// listed from the first prompt (isDeferred: false); the run-tests skill stays as the Bash fallback.
+const TOOL = 'tests', TOOL_NAME = 'mcp__test-progress__tests';
+const TOOL_ACTIONS = ['list', 'start', 'status', 'logs', 'cancel'] as const;
+type ToolAction = typeof TOOL_ACTIONS[number];
+const TOOL_SPEC = {
+  name: TOOL,
+  description: 'Roda e acompanha pelo coletor do Test Progress as suítes cadastradas em .claude/test-progress.json, ' +
+    'no mesmo estado do painel e da faixa desta sessão, sem Bash. Use para a suíte inteira de um módulo, a pedido ' +
+    'ou para conferir uma mudança; não para um teste ou arquivo isolado. list: módulos, IDs, labels e diagnósticos. ' +
+    'start: inicia um ID ou all; um módulo em preparing/running não reinicia, acompanhe-o. status: repita, espaçado ' +
+    'pelo porte da suíte, até jobs.<id>.status sair de preparing/running; relate passed, failed, skipped, total e ' +
+    'exitCode. logs: jobs.<id>.logTail, para citar falhas. cancel: cancela; confirme com status. Responde o JSON do ' +
+    'coletor. Diagnóstico, cadastro ou recoveryRequired: carregue a skill test-progress:configure.',
+  inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
+    action: { type: 'string', enum: TOOL_ACTIONS },
+    module: { type: 'string', description: 'ID do módulo ou "all" (padrão). list ignora.' },
+  } },
+  isDeferred: false,
+};
+const SUBAGENT_REFUSAL = 'Este agente roda em outro diretório que o painel desta sessão, e a ferramenta só atende o ' +
+  'diretório do painel. Carregue a skill test-progress:run-tests e rode o coletor pelo Bash com o seu próprio --cwd.';
+// What the model reads: the collector's envelope without the Mod's own bookkeeping (Node path, watched files),
+// and for one module only that module's entry and job, so a status loop does not repeat the whole catalogue.
+function toolAnswer(data: ReturnType<typeof validateEnvelope>, moduleId: string) {
+  const { collector: _collector, sources: _sources, ...rest } = data;
+  if (moduleId === 'all') return JSON.stringify(rest);
+  const only = <T,>(record: Record<string, T>) => moduleId in record ? { [moduleId]: record[moduleId] } : {};
+  return JSON.stringify({ ...rest, modules: only(rest.modules), jobs: only(rest.jobs),
+    stateDiagnostics: { ...only(rest.stateDiagnostics), ...(rest.stateDiagnostics['*'] ? { '*': rest.stateDiagnostics['*'] } : {}) } });
+}
+// Why a start the pane would refuse is refused, in words the model can act on; empty when it may start.
+function startRefusals(moduleId: string) {
+  const config = p.workspace?.moduleConfig?.status;
+  if (config !== 'valid') return [`Cadastro ${configStatus[config ?? ''] ?? 'não consultado'}: confira .claude/test-progress.json com a skill test-progress:configure.`];
+  if (p.workspace?.stateBlocked || p.stateDiagnostics['*']?.length) return ['Estado do coletor bloqueado: veja stateDiagnostics e carregue test-progress:configure.'];
+  const ids = moduleId === 'all' ? enabled() : [moduleId];
+  if (!ids.length) return ['Nenhum módulo ativado neste workspace.'];
+  return ids.flatMap(id => {
+    const module = p.modules[id], job = p.jobs[id];
+    if (!module) return [`${id}: módulo não cadastrado; use action "list".`];
+    if (!module.enabled) return [`${id}: módulo desativado no cadastro.`];
+    if (job && ACTIVE.has(job.status)) return [`${id}: já está ${labels[job.status] ?? job.status} (${job.runId}); acompanhe com status.`];
+    if (job?.recoveryRequired) return [`${id}: run anterior requer recuperação; carregue test-progress:configure.`];
+    if (!module.directoryPresent || diagnostics(id).length) return [`${id}: tem diagnósticos (${diagnostics(id).map(diagnosticText).join('; ') || 'diretório ausente'}).`];
+    return [];
+  });
+}
+// start and cancel run or stop commands from a file the model can edit: the person's permission rules
+// for this tool decide, and an "ask" asks them. Reading (list, status, logs) needs no permission.
+async function toolPermission($: $, tool: string, input: { action: ToolAction; module: string }) {
+  let verdict;
+  try { verdict = await $.tool.check({ tool, input }); }
+  catch (error) { return `Permissão não confirmada: ${errorText(error)}`; }
+  if (verdict.decision === 'allow') return null;
+  if (verdict.decision === 'deny') return `Recusado pelas regras de permissão: ${verdict.reason ?? TOOL_NAME}.`;
+  const target = input.module === 'all' ? 'de todos os módulos' : `do módulo ${input.module}`;
+  const question = input.action === 'start' ? `Iniciar os testes ${target} pelo Test Progress?` : `Cancelar os testes ${target}?`;
+  try {
+    const answer = await $.ui.ask(question, { header: 'Testes', options: ['Permitir', 'Recusar'] });
+    return answer === 'Permitir' ? null : 'A pessoa recusou.';
+  } catch {
+    return `Sem confirmação da pessoa (diálogo fechado ou sessão sem interface). Libere ${TOOL_NAME} nas permissões ou use o painel.`;
+  }
+}
+function serveTool($: $, action: ToolAction, moduleId: string) {
+  return serialized(async () => {
+    await hydrate($);
+    p.busy = true; await publish($);
+    try {
+      if (action === 'start') {
+        // Refresh first, then refuse exactly what the pane's start button would.
+        await collect($, 'status');
+        const refusals = startRefusals(moduleId);
+        if (refusals.length) return { deny: refusals.join('\n') };
+      }
+      return { result: toolAnswer(await collect($, action, moduleId) as ReturnType<typeof validateEnvelope>, moduleId) };
+    } catch (error) {
+      p.lastError = errorText(error);
+      const envelope = (error as { envelope?: ReturnType<typeof validateEnvelope> }).envelope;
+      return envelope ? { result: toolAnswer(envelope, moduleId) } : { deny: p.lastError };
+    } finally { p.busy = false; await publish($); }
+  });
+}
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await hydrate($);
@@ -514,6 +599,8 @@ export const register: Register = on => {
         argumentHint: '[list|start|status|logs|cancel|help|paths] [id|all] [--text]', immediate: true });
       p.registrationError = '';
     } catch (error) { p.registrationError = errorText(error); }
+    // Without the tool the run-tests skill still works through Bash.
+    await $.tool.register(TOOL_SPEC).catch(error => $.ui.log(`Ferramenta ${TOOL_NAME} indisponível: ${errorText(error)}`, { to: 'debug' }));
     await publish($);
     return next(e);
   });
@@ -573,6 +660,28 @@ export const register: Register = on => {
     if (p.registrationError) return below;
     const mine = argumentSuggestions(e.text.slice(0, e.start), e.token);
     return mine?.length ? { suggestions: [...below.suggestions, ...mine] } : below;
+  });
+  // A RegExp matcher: the literal name type-checks only once the generated MCP types declare this tool.
+  on('tool.call', { tool: /^mcp__test-progress__tests$/ }, async ($, e) => {
+    const input = e as unknown as { action?: unknown; module?: unknown; agentId?: string };
+    const action = TOOL_ACTIONS.find(name => name === input.action);
+    if (!action) return { deny: `action deve ser ${TOOL_ACTIONS.join(', ')}.` };
+    let moduleId = 'all';
+    try {
+      if (input.module !== undefined && typeof input.module !== 'string') throw new Error('module deve ser um ID ou "all".');
+      if (action !== 'list') moduleId = parseCommand(`${action} ${input.module ?? 'all'}`).moduleId;
+    } catch (error) { return { deny: errorText(error) }; }
+    if (input.agentId) {
+      // A subagent's $ answers its own folder (2.1.296); another folder would replace the pane's identity.
+      await hydrate($);
+      const [panelCwd] = p.identity.split('\n');
+      if (!panelCwd || await $.session.cwd() !== panelCwd) return { deny: SUBAGENT_REFUSAL };
+    }
+    if (action === 'start' || action === 'cancel') {
+      const refusal = await toolPermission($, e.tool, { action, module: moduleId });
+      if (refusal) return { deny: refusal };
+    }
+    return serveTool($, action, moduleId);
   });
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     // Reading the host's value subscribes this drawing; each publish redraws it.
