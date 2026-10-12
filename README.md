@@ -85,7 +85,8 @@ todos os campos: [configurar seu projeto](docs/USAGE.md#configurar-seu-projeto).
 | `/test-progress cancel <id>` / `cancel all` | Cancela a execução |
 | `/test-progress help` / `paths` | Ajuda / caminhos da instalação |
 
-Acrescente `--text` para a saída em texto. No painel, `⇅` alterna a ordem dos
+Acrescente `--text` para a saída em texto. O autocomplete do prompt sugere as
+ações e os IDs cadastrados. No painel, `⇅` alterna a ordem dos
 módulos (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
 
 Quando todas as execuções terminam e alguma falhou, o painel abre sozinho no log

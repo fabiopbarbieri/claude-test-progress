@@ -409,6 +409,48 @@ function textLogs(moduleId: string) {
   const ids = moduleId === 'all' ? Object.keys(p.jobs).sort() : [moduleId];
   return ids.flatMap(id => { const job = p.jobs[id]; return job ? [`LOGS · ${id} · ${job.runId}\n${plainTail(job.logTail).join('\n')}`] : []; }).join('\n\n');
 }
+// Typeahead for the command's arguments, read from the last published state: nothing waits on the collector.
+type Suggestion = { text: string; label?: string; description?: string };
+const ACTIONS: [Action, string][] = [['start', 'Inicia um módulo ou todos'], ['status', 'Consulta o estado'],
+  ['logs', 'Consulta o log de um módulo'], ['cancel', 'Cancela a execução ativa'], ['list', 'Lista módulos e IDs'],
+  ['help', 'Comandos do Test Progress'], ['paths', 'Caminhos instalados']];
+const cancellable = (id: string) => { const job = p.jobs[id]; return !!job && (ACTIVE.has(job.status) || !!job.recoveryRequired && !!job.cancellable); };
+function moduleSuggestions(action: Action): Suggestion[] {
+  const names = displayNames();
+  const row = (id: string): Suggestion => {
+    const job = p.jobs[id], state = job && ACTIVE.has(job.status) ? ' · em execução' : job?.recoveryRequired ? ' · órfão' : '';
+    return { text: id, description: `${names[id] ?? id}${state}` };
+  };
+  // Starts reach enabled modules only; a cancel, the runs it can stop; status and logs, all the pane shows.
+  const ids = action === 'start' ? enabled() : action === 'cancel' ? visible().filter(cancellable) : visible();
+  const all = action === 'start' ? enabled().length > 0 : action === 'cancel' ? ids.length > 0 : true;
+  return [...ids.map(row), ...all ? [{ text: 'all', description: action === 'start' ? 'Todos os módulos ativados' : 'Todos os módulos' }] : []];
+}
+function argumentSuggestions(before: string, token: string): Suggestion[] | null {
+  const words = before.trim().split(/\s+/);
+  if (words[0] !== '/test-progress') return null;
+  if (token.startsWith('-')) return words.includes('--text') ? [] : [{ text: '--text', description: 'Resposta em texto' }];
+  const args = words.slice(1).filter(word => word !== '--text');
+  const wanted = token.toLowerCase(), prefix = (text: string) => text.toLowerCase().startsWith(wanted);
+  // A module is found by its ID's start or the start of a word in its label.
+  const named = (id: string) => prefix(id) || (p.modules[id]?.label ?? '').split(/[^\p{L}\p{N}-]+/u).some(prefix);
+  if (!args.length) {
+    // Cancel only while a run of this session can be stopped.
+    const live = visible().some(cancellable);
+    const actions = ACTIONS.filter(([action]) => prefix(action) && (action !== 'cancel' || live)).map(([text, description]) => ({ text, description }));
+    // A module named here completes the whole command: its log while it runs, else a start.
+    const names = displayNames();
+    const shortcuts = visible().filter(named).flatMap((id): Suggestion[] => {
+      const job = p.jobs[id];
+      if (job && ACTIVE.has(job.status)) return [{ text: `logs ${id}`, label: names[id] ?? id, description: `logs ${id} · em execução` }];
+      return p.modules[id]?.enabled ? [{ text: `start ${id}`, label: names[id] ?? id, description: `start ${id}` }] : [];
+    });
+    return [...actions, ...shortcuts];
+  }
+  const action = args[0] as Action;
+  if (args.length > 1 || !['start', 'status', 'logs', 'cancel'].includes(action)) return [];
+  return moduleSuggestions(action).filter(row => prefix(row.text) || row.text !== 'all' && named(row.text));
+}
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
 }
@@ -609,6 +651,15 @@ export const register: Register = on => {
       acknowledge(); await publish($);
     } catch (error) { return { text: `${textSummary()}\nPainel indisponível: ${errorText(error)}` }; }
     return {};
+  });
+  on('prompt.autocomplete', async ($, e, next) => {
+    const below = await next(e);
+    // Other drafts, and a command name this plugin does not own, keep only what lies beneath.
+    if (!e.text.startsWith('/test-progress ')) return below;
+    await hydrate($);
+    if (p.registrationError) return below;
+    const mine = argumentSuggestions(e.text.slice(0, e.start), e.token);
+    return mine?.length ? { suggestions: [...below.suggestions, ...mine] } : below;
   });
   // A RegExp matcher: the literal name type-checks only once the generated MCP types declare this tool.
   on('tool.call', { tool: /^mcp__test-progress__tests$/ }, async ($, e) => {
