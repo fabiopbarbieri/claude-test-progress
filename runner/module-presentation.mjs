@@ -202,6 +202,16 @@ export function progressBar(job, cells = 12) {
   const filled = Math.max(0, Math.min(cells, Math.round(job.percent / 100 * cells)));
   return { done: '━'.repeat(filled), rest: '━'.repeat(cells - filled) };
 }
+// The same bar as an SVG for the app surfaces, whose proportional font widens the glyphs past their cells.
+// An image takes no theme color, so the track is a gray that reads on light and dark backgrounds.
+export function progressSvg(job, width = 96, stopping = false) {
+  const track = '<rect x="0" y="2" width="' + width + '" height="4" rx="2" fill="#8888" />';
+  if (!knownPercent(job)) return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="8">` +
+    `<line x1="0" y1="4" x2="${width}" y2="4" stroke="#8888" stroke-width="2" stroke-dasharray="4 3" /></svg>`;
+  const done = Math.round(Math.max(0, Math.min(100, job.percent)) / 100 * width);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="8">${track}` +
+    (done ? `<rect x="0" y="2" width="${done}" height="4" rx="2" fill="${stopping ? '#888' : '#4f8ff7'}" />` : '') + '</svg>';
+}
 // A finished run reads as its result, not as a full bar.
 export function outcomeText(job) {
   if (job.status === 'error') return { text: 'erro', color: 'error' };
