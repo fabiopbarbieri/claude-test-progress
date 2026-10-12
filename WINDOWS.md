@@ -397,9 +397,10 @@ como Markdown, o que apagava as barras invertidas dos caminhos. A roda do mouse
 rola o painel do app, não a janela do log, então o cabeçalho do log ganha um
 `↑` para voltar uma página, e a legenda descreve isso. Sem terminal,
 `$.ui.notify` só roda os hooks `Notification` da pessoa e nada nativo é escrito.
-Nesse caso o Mod usa o notificador do sistema: no Windows, uma notificação do
-Windows PowerShell ("Test Progress / Falharam: …") vista na central de
-notificações; no Linux, `notify-send`. Se nenhum responder, a falha aparece como
+Nesse caso o Mod usa o notificador do sistema: no Windows, uma notificação
+("Test Progress / Falharam: …") vista na central de notificações, em nome do
+app Claude quando o pacote está instalado (do Windows PowerShell se não estiver);
+no Linux, `notify-send`. Se nenhum responder, a falha aparece como
 toast no app. O texto vai por variável de ambiente, nunca dentro do script.
 
 Limites observados:
@@ -414,13 +415,12 @@ Limites observados:
   ele não consulta `prompt.autocomplete`, então as sugestões de ação e módulo
   (0.11.0+) não aparecem no app. Os mesmos atalhos estão no painel: ▶ por módulo
   e o nome abrindo o log.
-- A notificação nativa sai em nome do Windows PowerShell, não do Claude, e
-  segue as preferências de notificação do Windows para esse app.
 - O Desktop mais recente disponível (2.31226.1, sem atualização no winget em
   12/10/2026) embute o Claude Code 2.1.295, anterior ao mínimo declarado
-  (2.1.296). Tudo acima funcionou nele, com uma diferença: antes do 2.1.296 o
-  `$` de um subagente responde a pasta da sessão. Um subagente noutra pasta
-  então recebe da ferramenta os módulos da sessão, em vez de ser recusado.
+  (2.1.296). Tudo acima funcionou nele. Antes do 2.1.296, o `$` de um
+  subagente responde a pasta da sessão, então a ferramenta recusa qualquer
+  subagente e o manda para o Bash com o próprio `--cwd`, pela skill. Essa recusa
+  está coberta pelo test kit; a VM já estava desligada para conferi-la no app.
 
 ## Fontes e evidências
 
