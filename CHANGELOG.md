@@ -4,6 +4,13 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.14.0] - 2026-10-16
+
+### Funcionalidades
+
+- **command:** hint the rest of the command after the caret ([3d0d912](https://github.com/fabiopbarbieri/claude-test-progress/commit/3d0d9129fbd71e14a22983fd44ea07eed9c201ff))
+- **command:** list an action's modules in the hint as it is typed ([6b65e5e](https://github.com/fabiopbarbieri/claude-test-progress/commit/6b65e5e40567f7843fac69db80b45dadf1032213))
+
 ## [0.13.0] - 2026-10-12
 
 ### Funcionalidades
