@@ -493,6 +493,23 @@ function argumentSuggestions(before: string, token: string): Suggestion[] | null
   if (args.length > 1 || !['start', 'status', 'logs', 'cancel'].includes(action)) return [];
   return moduleSuggestions(action).filter(row => prefix(row.text) || row.text !== 'all' && named(row.text));
 }
+// A dim hint after the caret on the command's draft, where the typeahead leaves one answer: the
+// module an action waits for, or the rest of the one row the typed start names. The bare command
+// keeps the engine's own argument hint. Paint only: Enter sends what was typed, Tab takes the row.
+const MODULE_ACTIONS = ['start', 'status', 'logs', 'cancel'];
+function promptHint(text: string): string {
+  const start = text.search(/\S*$/), token = text.slice(start);
+  const rows = argumentSuggestions(text.slice(0, start), token);
+  if (!rows?.length) return '';
+  if (!token) {
+    const args = text.trim().split(/\s+/).slice(1).filter(word => word !== '--text');
+    return args.length === 1 && MODULE_ACTIONS.includes(args[0]!) ? 'módulo | all' : '';
+  }
+  const wanted = token.toLowerCase(), matches = rows.filter(row => row.text.toLowerCase().startsWith(wanted));
+  return matches.length === 1 ? matches[0]!.text.slice(token.length) : '';
+}
+// virtualText came with 2.1.300; set in session.start.
+let canHint = false;
 async function paneShown($: $) {
   try { return (await $.ui.panes()).some(pane => pane.id === PANE && pane.isShown); } catch { return false; }
 }
@@ -551,12 +568,14 @@ const SUBAGENT_REFUSAL = 'Este agente roda em outro diretório que o painel dest
 // Before 2.1.296 a subagent's $ answers the session's folder, so its own folder is unknown: refuse it the same way.
 const SUBAGENT_UNKNOWN = 'Esta versão do Claude Code não informa o diretório de um subagente, e a ferramenta só atende o ' +
   'diretório do painel. Carregue a skill test-progress:run-tests e rode o coletor pelo Bash com o seu próprio --cwd.';
-async function knowsAgentFolder($: $) {
+// Whether the engine is at least 2.1.<patch>; the desktop app runs its own, which may lag.
+async function engineAtLeast($: $, since: number) {
   try {
     const [major = 0, minor = 0, patch = 0] = ((await $.session.version()).base ?? '').split(/[.-]/).map(Number);
-    return major * 1e6 + minor * 1e3 + patch >= 2001296;
+    return major * 1e6 + minor * 1e3 + patch >= since;
   } catch { return false; }
 }
+const knowsAgentFolder = ($: $) => engineAtLeast($, 2001296);
 // What the model reads: the collector's envelope without the Mod's own bookkeeping (Node path, watched files),
 // and for one module only that module's entry and job, so a status loop does not repeat the whole catalogue.
 function toolAnswer(data: ReturnType<typeof validateEnvelope>, moduleId: string) {
@@ -622,6 +641,7 @@ function serveTool($: $, action: ToolAction, moduleId: string) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await hydrate($);
+    canHint = await engineAtLeast($, 2001300);
     timer?.cancel();
     timer = $.clock.every(1000, () => {
       // A waiting command already refreshes state; never stack ticks behind it.
@@ -720,6 +740,16 @@ export const register: Register = on => {
     if (p.registrationError) return below;
     const mine = argumentSuggestions(e.text.slice(0, e.start), e.token);
     return mine?.length ? { suggestions: [...below.suggestions, ...mine] } : below;
+  });
+  on('prompt.edit', async ($, e, next) => {
+    const box = await next(e);
+    if (!canHint || !box.text.startsWith('/test-progress ') || box.cursor !== box.text.length) return box;
+    await hydrate($);
+    if (p.registrationError) return box;
+    const hint = promptHint(box.text);
+    if (!hint) return box;
+    const at = box.text.length;
+    return { ...box, decorations: [...box.decorations ?? [], { start: at, end: at, virtualText: hint, dimColor: true }] };
   });
   // A RegExp matcher: the literal name type-checks only once the generated MCP types declare this tool.
   on('tool.call', { tool: /^mcp__test-progress__tests$/ }, async ($, e) => {
