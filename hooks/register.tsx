@@ -493,17 +493,33 @@ function argumentSuggestions(before: string, token: string): Suggestion[] | null
   if (args.length > 1 || !['start', 'status', 'logs', 'cancel'].includes(action)) return [];
   return moduleSuggestions(action).filter(row => prefix(row.text) || row.text !== 'all' && named(row.text));
 }
-// A dim hint after the caret on the command's draft, where the typeahead leaves one answer: the
-// module an action waits for, or the rest of the one row the typed start names. The bare command
-// keeps the engine's own argument hint. Paint only: Enter sends what was typed, Tab takes the row.
-const MODULE_ACTIONS = ['start', 'status', 'logs', 'cancel'];
+// A dim hint after the caret on the command's draft: the modules an action reaches, once the action
+// is typed whole, or the rest of the one row the typed start names. The bare command keeps the
+// engine's own argument hint. Paint only: Enter sends what was typed, Tab takes the row.
+const MODULE_ACTIONS: readonly string[] = ['start', 'status', 'logs', 'cancel'];
+// One line: as many IDs as fit, how many more, then `all`.
+const HINT_WIDTH = 60;
+function moduleList(action: Action): string {
+  const rows = moduleSuggestions(action).map(row => row.text);
+  const all = rows.at(-1) === 'all' ? ['all'] : [], ids = all.length ? rows.slice(0, -1) : rows;
+  const shown: string[] = [];
+  for (const id of ids) {
+    if (shown.length && [...shown, id, '…+99', ...all].join(' | ').length > HINT_WIDTH) break;
+    shown.push(id);
+  }
+  const more = ids.length - shown.length;
+  return [...shown, ...more ? [`…+${more}`] : [], ...all].join(' | ');
+}
 function promptHint(text: string): string {
   const start = text.search(/\S*$/), token = text.slice(start);
   const rows = argumentSuggestions(text.slice(0, start), token);
   if (!rows?.length) return '';
-  if (!token) {
-    const args = text.trim().split(/\s+/).slice(1).filter(word => word !== '--text');
-    return args.length === 1 && MODULE_ACTIONS.includes(args[0]!) ? 'módulo | all' : '';
+  const args = text.slice(0, start).trim().split(/\s+/).slice(1).filter(word => word !== '--text');
+  if (!token) return args.length === 1 && MODULE_ACTIONS.includes(args[0]!) ? moduleList(args[0] as Action) : '';
+  // An action typed whole already says what follows it: its modules, past the space still to type.
+  if (!args.length && MODULE_ACTIONS.includes(token)) {
+    const list = moduleList(token as Action);
+    return list ? ` ${list}` : '';
   }
   const wanted = token.toLowerCase(), matches = rows.filter(row => row.text.toLowerCase().startsWith(wanted));
   return matches.length === 1 ? matches[0]!.text.slice(token.length) : '';

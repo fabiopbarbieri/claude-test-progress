@@ -20,7 +20,7 @@ const hint = async ($, text: string) => {
   return (box.decorations ?? []).map(d => d.virtualText).filter(Boolean).join('');
 };
 
-function engine(on, version: string) {
+function engine(on, version: string, modules = { api: module('api', 0, { label: 'Backend' }), web: module('web', 1, { label: 'Frontend' }) }) {
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'owner' }));
   on('session.version', () => ({ value: { version, base: version } }));
@@ -28,18 +28,21 @@ function engine(on, version: string) {
   on('command.list', () => ({ value: [] }));
   on('command.register', () => ({ value: undefined }));
   on('tool.register', () => ({ value: { tool: 'mcp__test-progress__tests' } }));
-  on('process.run', () => response(data({ api: module('api', 0, { label: 'Backend' }), web: module('web', 1, { label: 'Frontend' }) })));
+  on('process.run', () => response(data(modules)));
   on('prompt.edit', ($, e: PromptEditInput) => {
     const text = e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end);
     return { text, cursor: e.start + e.inputText.length };
   });
 }
 
-test('the draft shows the module an action waits for, and the rest of the one row a start names', async ($, on) => {
+test('an action typed whole shows its modules, and a typed start the rest of its one row', async ($, on) => {
   engine(on, '2.1.301');
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
-  expect(await hint($, '/test-progress start ')).toBe('módulo | all');
-  expect(await hint($, '/test-progress logs --text ')).toBe('módulo | all');
+  expect(await hint($, '/test-progress start')).toBe(' api | web | all');
+  expect(await hint($, '/test-progress start ')).toBe('api | web | all');
+  expect(await hint($, '/test-progress logs --text ')).toBe('api | web | all');
+  // No run to stop: cancel names nothing.
+  expect(await hint($, '/test-progress cancel')).toBe('');
   expect(await hint($, '/test-progress star')).toBe('t');
   expect(await hint($, '/test-progress start w')).toBe('eb');
   // Two rows still fit, the bare command keeps the engine's own hint, and other drafts get none.
@@ -54,4 +57,13 @@ test('an engine before 2.1.300 paints no hint', async ($, on) => {
   engine(on, '2.1.299');
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   expect(await hint($, '/test-progress start ')).toBe('');
+});
+
+test('a long catalogue shows the IDs that fit, how many more, then all', async ($, on) => {
+  const ids = ['coletor', 'longos', 'release', 'mod', 'petshop-backend', 'petshop-frontend', 'tao-backend', 'junit'];
+  engine(on, '2.1.301', Object.fromEntries(ids.map((id, i) => [id, module(id, i)])));
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
+  const line = await hint($, '/test-progress start ');
+  expect(line).toBe('coletor | longos | release | mod | …+4 | all');
+  expect(line.length).toBeLessThanOrEqual(60);
 });

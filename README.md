@@ -87,8 +87,10 @@ todos os campos: [configurar seu projeto](docs/USAGE.md#configurar-seu-projeto).
 
 Acrescente `--text` para a saída em texto. O autocomplete do prompt sugere as
 ações e os IDs cadastrados. A partir do Claude Code 2.1.300, o prompt mostra em
-cinza, depois do cursor, o módulo que uma ação espera ou o resto da única opção
-que o texto digitado já define; só o que foi digitado é enviado. No painel, `⇅` alterna a ordem dos
+cinza, depois do cursor, os módulos que uma ação aceita assim que ela é digitada
+(`/test-progress start` → `api | web | all`, cortada com `…+N` quando não cabe)
+ou o resto da única opção que o texto digitado já define; só o que foi digitado
+é enviado. No painel, `⇅` alterna a ordem dos
 módulos (cadastro, nome, recentes, atenção) e `?` mostra a legenda.
 
 Quando todas as execuções terminam e alguma falhou, o painel abre sozinho no log
