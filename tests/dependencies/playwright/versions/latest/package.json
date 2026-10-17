@@ -4,6 +4,6 @@
   "private": true,
   "description": "Isolated browser integration fixture; not a plugin runtime dependency.",
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.64.0"
   }
 }
