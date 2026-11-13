@@ -50,8 +50,8 @@ def main(argv=None):
     if runner not in ("pytest", "unittest"):
         print("test-progress: runner esperado: pytest ou unittest", file=sys.stderr)
         return 2
-    if sys.version_info < (3, 8):
-        print("test-progress: Python 3.8+ é necessário", file=sys.stderr)
+    if sys.version_info < (3, 10):
+        print("test-progress: Python 3.10+ é necessário", file=sys.stderr)
         return 2
 
     # Resolve our adapter before adding the project's directory to import lookup.

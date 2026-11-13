@@ -39,9 +39,9 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
   - package-ecosystem: "pip"
-    directory: "/tests/dependencies/python38"
+    directory: "/tests/dependencies/python310"
     ignore:
-      # pytest 8.4+ dropped Python 3.8, the oldest supported CI job.
+      # Keep the oldest pytest line covered in CI (pytest 7+ is supported).
       - dependency-name: "pytest"
         versions: [">= 8.4"]
     schedule:

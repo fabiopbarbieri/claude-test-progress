@@ -103,7 +103,7 @@ Uma evidência de branch não substitui a do SHA integrado.
 
 ## Verificação local
 
-Requer Git, Python 3.8+ e Node 14+. Não instale Ruby/Java/Karma para verificar
+Requer Git, Python 3.10+ e Node 14+. Não instale Ruby/Java/Karma para verificar
 apenas release/core.
 Use ambientes isolados quando selecionar suites opcionais.
 

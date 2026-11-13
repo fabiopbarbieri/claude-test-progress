@@ -27,7 +27,7 @@ node scripts/check-soak.mjs 900
 ```
 
 Escolha o Node do coletor por `PATH` ou `TEST_PROGRESS_NODE`. Os scripts de
-desenvolvimento usam Python 3.8+; isso não adiciona Python ao bootstrap do plugin.
+desenvolvimento usam Python 3.10+; isso não adiciona Python ao bootstrap do plugin.
 `--pytest` exige pytest no mesmo ambiente Python usado para executar o check.
 Os checks usam projetos e estado temporários e não carregam configurações ou
 credenciais de aplicativos reais.

@@ -43,7 +43,7 @@ Quem tem acesso de escrita também trabalha em branch própria e abre PR.
 ## Dependências e checks locais
 
 O coletor usa **Node 14+**. Os checks básicos abaixo usam também
-**Python 3.8+**, **Bash** e Git em Linux/WSL. Não é necessário instalar pacotes
+**Python 3.10+**, **Bash** e Git em Linux/WSL. Não é necessário instalar pacotes
 npm, Ruby, Rails, Java, Karma ou pytest para esse primeiro passo:
 
 ```bash
@@ -83,7 +83,7 @@ versão escolhida no [workflow Quality](.github/workflows/quality.yml):
 ```bash
 checks_dir=$(mktemp -d)
 python3 -m venv "$checks_dir/venv"
-# Exemplo da combinação Python 3.8 do CI:
+# Exemplo da combinação Python 3.10 do CI:
 "$checks_dir/venv/bin/python" -m pip install 'pytest==8.3.5'
 "$checks_dir/venv/bin/python" scripts/check.py --smoke --pytest
 ```
