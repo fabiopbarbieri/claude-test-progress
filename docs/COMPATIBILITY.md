@@ -36,8 +36,8 @@ O sidecar de prova Windows tem formato próprio (`schema: 1`), independente do
 
 | Integração | Requisito declarado | Testado na CI | Fora do contrato ou sem aceite |
 | --- | --- | --- | --- |
-| [Python / pytest](../adapters/python/README.md) | Python 3.8+, pytest 7+ do app | Python 3.8 / pytest 8.3.5 / Node 14.0.0; Python 3.14 / pytest 9.1.1 / Node 24 | pytest 7 não está na CI; serial, xdist recusado |
-| [Python / unittest](../adapters/python/README.md) | Python 3.8+, biblioteca padrão | Mesmas combinações; sucesso, falha, skip e cancelamento | Runners distribuídos |
+| [Python / pytest](../adapters/python/README.md) | Python 3.10+, pytest 7+ do app | Python 3.10 / pytest 8.3.5 / Node 14.0.0; Python 3.14 / pytest 9.1.1 / Node 24 | pytest 7 não está na CI; serial, xdist recusado |
+| [Python / unittest](../adapters/python/README.md) | Python 3.10+, biblioteca padrão | Mesmas combinações; sucesso, falha, skip e cancelamento | Runners distribuídos |
 | [Ruby / RSpec](../adapters/ruby/README.md) | Ruby 3.1+, RSpec Core 3.13.x | Ruby 3.1, 3.4 e 4.0; rspec-core 3.13.6, rspec 3.13.2, rspec-retry 0.6.2 | Watch, DRb, bisect e runners paralelos |
 | [Rails / Minitest](../adapters/rails/README.md) | Rails 7.2/8.0/8.1; Minitest >=5.20 e <7 | Rails 7.2.4 / Ruby 3.3 / Minitest 5.20.0; Rails 8.0.5.1 e 8.1.4 / Ruby 3.4 / Minitest 5.27.0; Rails 8.1.4 / Ruby 3.4 / Minitest 6.0.6 | Minitest 7; views/system usam `rack_test`, sem Selenium |
 | [JUnit 5](../adapters/junit/README.md) | Java 17+; JUnit 5.14+ (Platform 1.14+) no app | JUnit 5.14.4 / Platform 1.14.4 / Surefire 3.6.0 com Java 17 e 21 | Gradle, reactor multimódulo, Vintage, engines de terceiros e queda da JVM |
@@ -61,7 +61,7 @@ ser tratados como automaticamente integrados.
 | --- | --- |
 | Usuário do core | Claude Code, Node 14+ do coletor e ferramentas do sistema descritas acima |
 | Usuário de uma suíte | Apenas runtime, runner, bibliotecas e browser exigidos pela suíte escolhida, já disponíveis no app |
-| Desenvolvimento / gates | `scripts/check.py` usa Python 3.8+, Node, Bash e Git; `--smoke` também usa unittest; `--pytest` requer pytest nesse Python |
+| Desenvolvimento / gates | `scripts/check.py` usa Python 3.10+, Node, Bash e Git; `--smoke` também usa unittest; `--pytest` requer pytest nesse Python |
 | Gates opcionais | Ruby/RSpec/retry para `check-ruby.py`; Rails/Minitest/Capybara e dependências da fixture para `check-rails.py`; JDK/Maven ou curl para build JUnit; Claude para o test kit; Gitleaks para segredos |
 
 Essas dependências de verificação não são requisitos globais de instalação do

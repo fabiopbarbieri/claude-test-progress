@@ -21,8 +21,8 @@ jobs:
       matrix:
         include:
           - node: '14.0.0'
-            python: '3.8'
-            requirements: tests/dependencies/python38/requirements.txt
+            python: '3.10'
+            requirements: tests/dependencies/python310/requirements.txt
           - node: '24'
             python: '3.14'
             requirements: tests/dependencies/python314/requirements.txt

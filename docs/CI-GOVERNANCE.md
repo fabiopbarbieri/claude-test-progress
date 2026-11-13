@@ -12,7 +12,7 @@ cancelamento de runs anteriores da mesma PR ou branch.
 
 | Workflow | O que exercita |
 | --- | --- |
-| [Quality](../.github/workflows/quality.yml) | Coletor com Node 14.0.0/Python 3.8 e Node 24/Python 3.14: sintaxe, manifests, links, cadastro, estado, lotes e smoke Python; Gitleaks em arquivos e histórico |
+| [Quality](../.github/workflows/quality.yml) | Coletor com Node 14.0.0/Python 3.10 e Node 24/Python 3.14: sintaxe, manifests, links, cadastro, estado, lotes e smoke Python; Gitleaks em arquivos e histórico |
 | [Mod integration](../.github/workflows/mod-integration.yml) | `claude plugin validate --strict` e `claude plugin test` com CLI fixado, sem login nem rede |
 | [Java, Angular and Playwright adapters](../.github/workflows/adapters.yml) | JUnit/Surefire real (Java 17 e 21), Angular 9/18 com Karma e Chrome headless e Playwright Test mínimo (1.44) e recente com Chromium headless |
 | [Ruby](../.github/workflows/ruby.yml) / [Rails](../.github/workflows/rails.yml) | RSpec em Ruby 3.1/3.4/4.0 e Rails 7.2/8.0/8.1 com Minitest |
@@ -44,7 +44,7 @@ Dois rulesets separados se aplicam a `refs/heads/main`:
   por PR. A conta foi identificada pelo ID público `49872514`, tipo `User`.
   Push direto não tem exceção. Colaboradores propõem; o mantenedor integra.
 - [main-quality](https://github.com/fabiopbarbieri/claude-test-progress/rules/24473696):
-  exige PR, os três checks do Quality (`Collector (Node 14.0.0, Python 3.8)`,
+  exige PR, os três checks do Quality (`Collector (Node 14.0.0, Python 3.10)`,
   `Collector (Node 24, Python 3.14)` e `Secrets (tree and history)`), branch atualizada com `main`
   e conversas resolvidas; bloqueia force push e exclusão. Desde 05/10/2026,
   `fabiopbarbieri` pode dispensar essas exigências somente ao mesclar uma PR

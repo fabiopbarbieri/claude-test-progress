@@ -41,7 +41,7 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
-            "context": "Collector (Node 14.0.0, Python 3.8)",
+            "context": "Collector (Node 14.0.0, Python 3.10)",
             "integration_id": 15368
           },
           {

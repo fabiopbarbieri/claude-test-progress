@@ -55,7 +55,7 @@ def static_checks():
         if file.suffix in {".mjs", ".cjs", ".js"}:
             command(["node", "--check", file])
         elif file.suffix == ".py":
-            ast.parse(text, filename=str(relative), feature_version=(3, 8))
+            ast.parse(text, filename=str(relative), feature_version=(3, 10))
         elif file.suffix == ".sh":
             command(["bash", "-n", file])
         elif file.suffix == ".json":

@@ -129,7 +129,7 @@ def run(args, emitter):
     # failfast and version-specific runner options unchanged.
     class ProgressRunner(unittest.TextTestRunner):
         def _makeResult(self):
-            # Match TextTestRunner's result construction across Python 3.8+.
+            # Match TextTestRunner's result construction across Python 3.10+.
             kwargs = {}
             if hasattr(self, "durations"):
                 kwargs["durations"] = self.durations

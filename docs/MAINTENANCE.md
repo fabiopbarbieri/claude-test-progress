@@ -35,7 +35,7 @@ There is no automerge.
 | Inputs | Ignored |
 | --- | --- |
 | Maven | JUnit BOM and `org.junit.platform:*` 6+ (JUnit 5 stays the contract) |
-| `python38` | pytest 8.4+ (no Python 3.8 support) |
+| `python310` | pytest 8.4+ (keeps the oldest pytest line in CI) |
 | `rspec` | `rspec*` 3.14+ (contract is RSpec Core 3.13.x) |
 | `rails72` | Rails 7.3+ and every Minitest update (the job pins the 5.20.0 floor) |
 | `rails80` / `rails81` | Rails outside the job's series; Minitest 6+ |
@@ -52,7 +52,7 @@ explicitly as fixture-only risk instead of suppressing them silently.
 | --- | --- | --- |
 | GitHub Actions | `.github/workflows/*.yml` | Action references in all workflows, including future release/integration workflows |
 | Maven | `adapters/junit/pom.xml`, `tests/dependencies/junit/pom.xml` | Listener build and disposable JUnit/Surefire application |
-| pip | `tests/dependencies/python38/requirements.txt`, `python314/requirements.txt` | Quality: Python 3.8 / Node 14.0.0 and Python 3.14 / Node 24 |
+| pip | `tests/dependencies/python310/requirements.txt`, `python314/requirements.txt` | Quality: Python 3.10 / Node 14.0.0 and Python 3.14 / Node 24 |
 | Bundler | `tests/dependencies/rspec/Gemfile` and lock | RSpec: Ruby 3.1, 3.4 and 4.0 |
 | Bundler | `tests/dependencies/rails72`, `rails80`, `rails81`, `rails81-minitest6` Gemfiles and locks | Rails 7.2 / Ruby 3.3; Rails 8.0 and 8.1 / Ruby 3.4; Rails 8.1 / Minitest 6 / Ruby 3.4 |
 | npm | `tests/dependencies/angular9` and `angular18` package manifests/locks | Angular CLI/Karma/browser fixtures; no npm updates for the dependency-free root package |
@@ -74,7 +74,7 @@ compatibility assumptions inside fixture generators. For example,
 `scripts/check-rails.py` has Minitest, Capybara and Selenium constraints. A major
 upgrade can therefore require a separate adapter/fixture change and an explicit
 matrix decision. Review an oldest-supported-runtime upgrade especially closely:
-new pytest releases may not support Python 3.8. A failing compatibility job is
+new pytest releases may not support Python 3.10. A failing compatibility job is
 not a reason to silently raise the collector's Node minimum.
 
 The npm entry covers only real fixture dependencies; the private root package

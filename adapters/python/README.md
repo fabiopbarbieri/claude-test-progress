@@ -9,7 +9,7 @@ de progresso ao stdout. Mantém a saída normal nos logs e o resultado do runner
 Não instala pacotes, não ativa outro ambiente e não altera arquivos do projeto.
 O coletor continua usando seu próprio Node 14+.
 
-Requisitos: Python **3.8+**; para pytest, **pytest 7+** já disponível nesse mesmo
+Requisitos: Python **3.10+**; para pytest, **pytest 7+** já disponível nesse mesmo
 ambiente. Unittest usa somente a biblioteca padrão. As versões efetivamente
 verificadas estão em [VALIDATION](../../docs/VALIDATION.md).
 
