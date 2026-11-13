@@ -121,9 +121,9 @@ GEM
     matrix (0.4.3)
     mini_mime (1.1.5)
     mini_portile2 (2.8.9)
-    minitest (6.0.6)
+    minitest (6.1.0)
       drb (~> 2.0)
-      prism (~> 1.5)
+      prism (>= 1.5, < 3)
     mutex_m (0.3.0)
     net-imap (0.6.7)
       date
@@ -157,7 +157,15 @@ GEM
     pp (0.6.4)
       prettyprint
     prettyprint (0.2.0)
-    prism (1.9.0)
+    prism (2.1.0)
+    prism (2.1.0-aarch64-linux-gnu)
+    prism (2.1.0-aarch64-linux-musl)
+    prism (2.1.0-arm-linux-gnu)
+    prism (2.1.0-arm-linux-musl)
+    prism (2.1.0-arm64-darwin)
+    prism (2.1.0-x86_64-darwin)
+    prism (2.1.0-x86_64-linux-gnu)
+    prism (2.1.0-x86_64-linux-musl)
     public_suffix (7.0.5)
     racc (1.8.1)
     rack (3.2.7)
@@ -213,7 +221,7 @@ GEM
       io-console (~> 0.5)
     rubyzip (3.7.0)
     securerandom (0.4.1)
-    selenium-webdriver (4.51.0)
+    selenium-webdriver (4.52.0)
       base64 (~> 0.2)
       logger (~> 1.4)
       rubyzip (>= 1.2.2, < 4.0)
@@ -247,10 +255,10 @@ PLATFORMS
 
 DEPENDENCIES
   capybara (= 3.40.0)
-  minitest (= 6.0.6)
+  minitest (= 6.1.0)
   mutex_m (= 0.3.0)
   rails (= 8.1.4)
-  selenium-webdriver (= 4.51.0)
+  selenium-webdriver (= 4.52.0)
 
 BUNDLED WITH
    2.6.9
