@@ -41,7 +41,7 @@ There is no automerge.
 | `rails80` / `rails81` | Rails outside the job's series; Minitest 6+ |
 | `rails81-minitest6` | Rails 8.2+; Minitest outside 6.x |
 | `angular9` | Everything: frozen Node 12 / npm 6 toolchain with a lockfileVersion 1 lock |
-| `angular18` | Majors; TypeScript 5.6+; zone.js 0.15+ (Angular 18 peers) |
+| `angular18` | Majors; `@angular*` 19+ (also blocks security PRs that would pull them); TypeScript 5.6+; zone.js 0.15+ (Angular 18 peers) |
 
 Dependency and version `ignore` conditions also suppress **security** PRs for
 the matched dependencies. For `angular9` this is deliberate: every available fix
