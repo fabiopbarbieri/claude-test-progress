@@ -184,6 +184,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # Keep the fixture on Angular 18. update-types does not stop security
+      # PRs (e.g. a vite fix that pulls build-angular 21); a versions ignore does.
+      - dependency-name: "@angular*"
+        versions: [">= 19.0.0"]
       # Angular 18 peer ranges: TypeScript >=5.4 <5.6, zone.js ~0.14.
       - dependency-name: "typescript"
         versions: [">= 5.6.0"]
