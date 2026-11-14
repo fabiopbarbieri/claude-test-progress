@@ -21,13 +21,27 @@ ilegível no namespace bloqueia novos starts até ser resolvido.
 
 | Componente / sistema | Requisito ou caminho | Testado | Limite |
 | --- | --- | --- | --- |
-| Claude Code | 2.1.296+ (`$.state`, `$.ui.panes`, `$.ui.notify`; `$.tool.register` com `isDeferred` e cwd do agente em `$`), com Mods permitido ([launch.sh](../launch.sh), [launch.ps1](../launch.ps1)) | Test kit do Mod na CI com 2.1.301 (dica em `virtualText` a partir de 2.1.300); painel e faixa em sessão real com 2.1.290 no Linux; notificação nativa só no test kit | Não prova todas as versões posteriores |
+| Claude Code | 2.1.296+ (`$.state`, `$.ui.panes`, `$.ui.notify`; `$.tool.register` com `isDeferred` e cwd do agente em `$`), com Mods permitido ([launch.sh](../launch.sh), [launch.ps1](../launch.ps1)); o mesmo piso em `engines["claude-code"]` do [manifest](../.claude-plugin/plugin.json) | Test kit do Mod na CI com 2.1.301 e 2.1.323 (dica em `virtualText` a partir de 2.1.300); `validate --strict`, com a checagem de tipos, só com 2.1.323; painel e faixa em sessão real com 2.1.290 no Linux; notificação nativa só no test kit | Não prova todas as versões posteriores nem as intermediárias |
 | Claude Desktop | Sessões locais de código; plugin pelo marketplace, recarregado ao reabrir o app | Desktop 2.31226.1 com Claude Code 2.1.295 embutido, na VM Windows 11 ([aceite](../WINDOWS.md#claude-desktop)) | Sem aceite no macOS, no Linux e em máquina física; `/reload-plugins` não recarrega o Mod; notificação nativa pelo notificador do sistema (toast do Windows em nome do app Claude, `notify-send` no Linux); com o 2.1.295 embutido, a ferramenta recusa subagentes, que usam o Bash pela skill; o compositor do app não mostra o autocomplete do comando |
 | Coletor | Node >=14.0.0, sem dependências npm | CI com Node 14.0.0 e 24 | O Node do app é independente |
 | Linux | Bash; GNU `sort -V` para descoberta nvm; recuperação por `/proc` | Todos os workflows em `ubuntu-24.04` | Não é uma matriz de distribuições |
 | WSL | Caminho Linux quando Claude e toolchain rodam dentro do WSL | Roteamento em [hooks/register.tsx](../hooks/register.tsx) | Sem aceite próprio; não misture executáveis Windows com a recuperação Linux |
 | Windows | Windows 10/11 ou Server 2019+; PowerShell 5.1/7; Job Objects | [Matriz](../.github/workflows/windows.yml) PowerShell 5.1/7 × coletor Node 14.0.0/24, app Node 12.22.12, na CI hospedada | Aceite em VM Windows 11 (gates 5.1/7 e Mod no Claude Code); sem aceite em máquina física; veja [WINDOWS](../WINDOWS.md#aceite-em-windows-11) |
 | macOS | Sem suporte operacional declarado | — | Descoberta usa ferramentas GNU; recuperação depende de evidência Linux |
+
+Só o Claude Code 2.1.323+ lê `engines`: fora da faixa, não instala, não atualiza
+nem carrega o plugin, e instalação e atualização escolhem a versão mais nova que
+atende. Um plugin lido de uma pasta local, a cópia de quem o desenvolve, carrega
+mesmo assim, com um aviso. Versões anteriores a 2.1.323 ignoram o campo ao
+carregar (o `validate` da 2.1.301 o trata como campo desconhecido). Como todo
+motor que o lê já passa do piso, hoje ele não recusa nenhuma instalação: o Claude
+Desktop com o Claude Code 2.1.295 embutido ([aceite](../WINDOWS.md#claude-desktop))
+ignora `engines` e segue carregando o plugin com as degradações do próprio Mod
+(a ferramenta recusa subagentes). Por isso as checagens de versão em
+[hooks/register.tsx](../hooks/register.tsx) continuam: ligam a pasta do subagente
+(2.1.296) e a dica no prompt (2.1.300) nos motores que ignoram o campo. Se o piso
+passar de 2.1.323, um motor que lê o campo deixará de carregar o plugin em vez de
+carregá-lo com recursos reduzidos.
 
 O sidecar de prova Windows tem formato próprio (`schema: 1`), independente do
 `schemaVersion` do cadastro. A capa do README é ilustrativa.

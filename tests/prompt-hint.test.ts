@@ -1,32 +1,34 @@
 import { expect, test } from 'claude-code/testing';
-import type { PromptEditInput, PromptEditResult } from 'claude-code';
+import type { Engine } from 'claude-code/testing';
+import type { On, PromptEditInput, PromptEditResult } from 'claude-code';
 
 const module = (id: string, order = 0, overrides = {}) => ({ id, label: 'Suíte', language: 'Python',
   order, enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [], ...overrides });
-const data = (modules = {}) => ({
+const data = (modules: Record<string, ReturnType<typeof module>> = {}) => ({
   schemaVersion: 1, ok: true, modules, jobs: {}, stateDiagnostics: {},
   workspace: { moduleConfig: { status: Object.keys(modules).length ? 'valid' : 'absent',
     schemaVersion: Object.keys(modules).length ? 1 : null,
-    enabledIds: Object.keys(modules).filter(id => modules[id].enabled) }, stateBlocked: false },
+    enabledIds: Object.entries(modules).filter(([, module]) => module.enabled).map(([id]) => id) }, stateBlocked: false },
 });
-const response = value => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value) } });
+const response = (value: { ok: boolean }) => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value),
+  isStdoutTruncated: false, isStderrTruncated: false } });
 // The kit raises the event through `$.prompt.edit`; the typings list it among events, not calls.
 type Edit = (e: PromptEditInput) => Promise<PromptEditResult>;
 // The person types `text`'s last character at the end of the draft before it.
 const typing = (text: string): PromptEditInput => ({ origin: { kind: 'composer' }, text: text.slice(0, -1),
   cursor: text.length - 1, start: text.length - 1, end: text.length - 1, inputText: text.slice(-1) });
-const hint = async ($, text: string) => {
+const hint = async ($: Engine, text: string) => {
   const box = await ($.prompt as unknown as { edit: Edit }).edit(typing(text));
   return (box.decorations ?? []).map(d => d.virtualText).filter(Boolean).join('');
 };
 
-function engine(on, version: string, modules = { api: module('api', 0, { label: 'Backend' }), web: module('web', 1, { label: 'Frontend' }) }) {
+function engine(on: On, version: string, modules: Record<string, ReturnType<typeof module>> = { api: module('api', 0, { label: 'Backend' }), web: module('web', 1, { label: 'Frontend' }) }) {
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'owner' }));
   on('session.version', () => ({ value: { version, base: version } }));
   on('session.start', () => ({ cwd: '/work' }));
   on('command.list', () => ({ value: [] }));
-  on('command.register', () => ({ value: undefined }));
+  on('command.register', ($, e) => ({ value: { command: e.name } }));
   on('tool.register', () => ({ value: { tool: 'mcp__test-progress__tests' } }));
   on('process.run', () => response(data(modules)));
   on('prompt.edit', ($, e: PromptEditInput) => {

@@ -13,7 +13,7 @@ cancelamento de runs anteriores da mesma PR ou branch.
 | Workflow | O que exercita |
 | --- | --- |
 | [Quality](../.github/workflows/quality.yml) | Coletor com Node 14.0.0/Python 3.10 e Node 24/Python 3.14: sintaxe, manifests, links, cadastro, estado, lotes e smoke Python; Gitleaks em arquivos e histórico |
-| [Mod integration](../.github/workflows/mod-integration.yml) | `claude plugin validate --strict` e `claude plugin test` com CLI fixado, sem login nem rede |
+| [Mod integration](../.github/workflows/mod-integration.yml) | Com CLI fixado, sem login nem rede: 2.1.323 roda `claude plugin validate --strict` (manifest com `engines` e checagem de tipos de `hooks/`, `types/` e `tests/`) e `claude plugin test`; 2.1.301, a versão mais antiga exercitada, roda `claude plugin test` e o `validate` sem `--strict`, porque não conhece `engines` |
 | [Java, Angular and Playwright adapters](../.github/workflows/adapters.yml) | JUnit/Surefire real (Java 17 e 21), Angular 9/18 com Karma e Chrome headless e Playwright Test mínimo (1.44) e recente com Chromium headless |
 | [Ruby](../.github/workflows/ruby.yml) / [Rails](../.github/workflows/rails.yml) | RSpec em Ruby 3.1/3.4/4.0 e Rails 7.2/8.0/8.1 com Minitest |
 | [Windows modules](../.github/workflows/windows.yml) | PowerShell 5.1 e 7, coletor Node 14.0.0/24 e app Node 12.22.12 |

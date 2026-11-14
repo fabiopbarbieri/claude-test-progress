@@ -1,23 +1,35 @@
 import { expect, test } from 'claude-code/testing';
+import type { MountTarget } from 'claude-code/testing';
+import type { CommandRunInput, RenderPropsOf, RenderSurface } from 'claude-code';
+import type { TestProgressDiagnostic, TestProgressJob, TestProgressModule, TestProgressWorkspace } from '../types/index.d.ts';
 
-const pane = (surface: 'terminal' | 'desktop', columns = 120) => ({
+type Surface = 'terminal' | 'desktop';
+const pane = (surface: Surface, columns = 120): MountTarget<Surface, 'Pane'> & { props: RenderPropsOf['Pane'] } => ({
   plugin: 'test-progress', component: 'Pane', requestId: 'claude-test-progress', surface,
   viewport: { columns, rows: 25 }, props: { title: 'Test Progress', isFocused: true,
     bodyColumns: columns - 10, placement: 'inline', scroll: { offset: 0, bodyRows: 20 }, view: {} },
 });
-const module = (id: string, order = 0, overrides = {}) => ({ id, label: 'Suíte', language: 'Python',
+// The collector's snapshot carries the run's folder and command beside the state contract.
+type Job = TestProgressJob & { cwd?: string; command?: string[] };
+const module = (id: string, order = 0, overrides: Partial<TestProgressModule> = {}): TestProgressModule => ({ id, label: 'Suíte', language: 'Python',
   order, enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [], ...overrides });
-const job = (moduleId: string, overrides = {}) => ({ schemaVersion: 1, moduleId, runId: `run-${moduleId}`,
+const job = (moduleId: string, overrides: Partial<Job> = {}): Job => ({ schemaVersion: 1, moduleId, runId: `run-${moduleId}`,
   source: 'config', status: 'running', phase: 'executing-tests', total: 4, totalStable: false,
   resolved: 4, passed: 2, failed: 1, skipped: 1, percent: 100, cwd: '/work',
   command: ['python', 'suite.py'], exitCode: null, ...overrides });
-const data = (modules = {}, jobs = {}, stateDiagnostics = {}, stateBlocked = false) => ({
-  schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics,
-  workspace: { moduleConfig: { status: Object.keys(modules).length ? 'valid' : 'absent',
+const data = (modules: Record<string, TestProgressModule> = {}, jobs: Record<string, Job> = {},
+  stateDiagnostics: Record<string, TestProgressDiagnostic[]> = {}, stateBlocked = false) => {
+  const workspace: TestProgressWorkspace = { moduleConfig: { status: Object.keys(modules).length ? 'valid' : 'absent',
     schemaVersion: Object.keys(modules).length ? 1 : null,
-    enabledIds: Object.keys(modules).filter(id => modules[id].enabled) }, stateBlocked },
-});
-const response = value => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value) } });
+    enabledIds: Object.values(modules).filter(module => module.enabled).map(module => module.id) }, stateBlocked };
+  return { schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics, workspace };
+};
+const response = (value: { ok: boolean }) => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value),
+  isStdoutTruncated: false, isStderrTruncated: false } });
+// The kit's $.command.run takes what the engine stamps on a typed command: where it came from and the room it has.
+const run = (args: string): CommandRunInput => ({ command: 'test-progress', args, origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 80 } });
+const listed = { value: [{ name: 'test-progress', description: 'Test Progress', source: 'plugin' as const, plugin: 'test-progress' }] };
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}: 0/1/2/12 modules, stable IDs, native narrow column and bounded starts`, async ($, on) => {
@@ -25,11 +37,11 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const actions: string[] = [];
     on('session.cwd', () => ({ value: '/work' }));
     on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-    on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
+  on('command.list', () => listed);
+    on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(current); });
     for (const size of [0, 1, 2, 12]) {
       current = data(Object.fromEntries(Array.from({ length: size }, (_, i) => [`m${i}`, module(`m${i}`, i)])));
-      await $.command.run({ command: 'test-progress', args: 'list --text' });
+      await $.command.run(run('list --text'));
       const ui = await $.ui.mount(pane(surface, 40));
       if (!size) expect(await ui.find({ type: 'Text', text: 'Nenhum módulo em .claude/test-progress.json' })).toBeDefined();
       for (let i = 0; i < size; i++) {
@@ -60,30 +72,31 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const actions: string[] = [];
     on('session.cwd', () => ({ value: '/work' }));
     on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-    on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
-    await $.command.run({ command: 'test-progress', args: '--text' });
+  on('command.list', () => listed);
+    on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(current); });
+    await $.command.run(run('--text'));
     const ui = await $.ui.mount(pane(surface));
     for (const value of ['✓2 ', '✗1 ', '⊘ 1 ', '~100%', '—']) expect(await ui.find({ type: 'Text', text: value })).toBeDefined();
     // An unknown total draws dashes: glyphs on the terminal, a dashed SVG line on the app.
     if (surface === 'terminal') expect(await ui.find({ type: 'Text', text: '╌╌╌╌╌╌╌╌╌╌╌╌' })).toBeDefined();
-    else expect(await ui.find({ type: 'Svg', alt: 'total desconhecido' })).toBeDefined();
+    else expect((await ui.findAll({ type: 'Svg' })).map(svg => svg.props.alt)).toContain('total desconhecido');
     expect(await ui.find({ type: 'Text', text: /executing-tests/ })).toBeUndefined();
     expect(await ui.find({ key: 'cancel-api' })).toMatchObject({ props: { label: '■' } });
     await ui.press({ key: 'start-all' });
     expect(actions).toEqual(['status']);
+    const lost = job('lost', { status: 'error', recoveryRequired: true, cancellable: false });
     current = data({ api: module('api'), web: module('web', 1, { directoryPresent: false,
       diagnostics: [{ code: 'missing', message: 'Diretório ausente.' }] }) }, { api: job('api', {
       status: 'completed', total: 0, resolved: 0, passed: 0, failed: 0, skipped: 0, percent: null, exitCode: 0 }),
-      lost: job('lost', { status: 'error', recoveryRequired: true, cancellable: false }) });
-    await $.command.run({ command: 'test-progress', args: 'status --text' });
+      lost });
+    await $.command.run(run('status --text'));
     expect(await ui.find({ type: 'Text', text: '-' })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: 'Diretório ausente.' })).toMatchObject({ props: { color: 'error', wrap: 'wrap' } });
     expect(await ui.find({ key: 'cancel-lost' })).toBeUndefined();
     await ui.press({ key: 'start-all' });
     expect(actions).toEqual(['status', 'status']);
-    current.jobs.lost.cancellable = true;
-    await $.command.run({ command: 'test-progress', args: 'status --text' });
+    lost.cancellable = true;
+    await $.command.run(run('status --text'));
     expect(await ui.find({ key: 'cancel-lost' })).toMatchObject({ props: { label: '■' } });
     expect(await ui.find({ type: 'Text', text: 'órfão: processo ainda vivo' })).toBeDefined();
     await ui.unmount();
@@ -94,9 +107,9 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   let current = data({ api: module('api'), web: module('web') }, { api: job('api', { logTail: ['\u001b[31mfirst\u001b[0m'] }), web: job('web', { logTail: ['second'] }) });
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  const answer = await $.command.run({ command: 'test-progress', args: 'logs all --text' });
+  const answer = await $.command.run(run('logs all --text'));
   expect(answer.text).toContain('LOGS · api · run-api\nfirst');
   expect(answer.text).toContain('LOGS · web · run-web\nsecond');
   const ui = await $.ui.mount(pane('terminal'));
@@ -107,7 +120,7 @@ test('logs all has separate text tails and pane asks for a selection; pinned run
   expect(await ui.find({ type: 'Text', text: '│ first' })).toMatchObject({ children: [{ props: { dimColor: true } }, { props: { color: 'red' }, children: ['first'] }] });
   expect(await ui.find({ type: 'Text', text: /LOGS/ })).toBeUndefined();
   current.jobs.api = job('api', { runId: 'new-run', logTail: ['new output'] });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   expect(await ui.find({ type: 'Text', text: '│ first' })).toBeDefined();
   expect(await ui.find({ type: 'Text', text: '│ new output' })).toBeUndefined();
   expect(await ui.find({ key: 'select-current-logs' })).toMatchObject({ props: { label: '↻' } });
@@ -126,9 +139,9 @@ test('removed/disabled terminal jobs disappear, active jobs and state-only locks
     { locked: [{ code: 'corrupt', message: 'Estado ilegível.', blocking: true }], '*': [{ code: 'incompatible', message: 'Estado incompatível.', blocking: true }] }, true);
   const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(current); });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   expect(await ui.find({ key: 'module-disabled' })).toBeUndefined();
   expect(await ui.find({ key: 'module-retired' })).toBeUndefined();
@@ -144,21 +157,21 @@ test('old callback refuses owner and catalogue changes before start; response ch
   let owner = 'A'; let current = data({ api: module('api') });
   const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
-    actions.push(e.argv[2]);
+    actions.push(e.argv[2] ?? '');
     if (actions.length === 4) owner = 'C';
     return response(current);
   });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   owner = 'B'; await ui.press({ key: 'start-api' });
   expect(actions).toEqual(['status']);
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   current = data({ api: module('api', 0, { label: 'Renomeada' }) });
   await ui.press({ key: 'start-api' });
   expect(actions).toEqual(['status', 'status', 'status']);
-  const stale = await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const stale = await $.command.run(run('status --text'));
   expect(stale.text).not.toContain('Renomeada · api');
   expect(stale.text).toContain('sessão mudou');
   await ui.unmount();
@@ -168,11 +181,11 @@ test('fallback text preserves jobs even when action result fails; closing never 
   const actions: string[] = []; const closed: string[] = [];
   const current = { ...data({ api: module('api') }, { api: job('api') }), ok: false, error: 'Configuração inválida.' };
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(current); });
   on('ui.open', () => ({ value: { isPlaced: false, reason: 'no room' } }));
   on('ui.close', ($, e) => { closed.push(e.id); return { value: undefined }; });
-  const answer = await $.command.run({ command: 'test-progress', args: '' });
+  const answer = await $.command.run(run(''));
   expect(answer.text).toContain('runId=run-api'); expect(answer.text).toContain('Configuração inválida.');
   expect(answer.text).toContain('no room');
   const ui = await $.ui.mount(pane('desktop'));
@@ -188,9 +201,9 @@ test('toolbar counts S/E/T and reruns only the failed modules, one start each', 
     cli: job('cli', { status: 'completed', failed: 0 }) });
   const calls: string[][] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => { calls.push(e.argv.slice(2)); return response(current); });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   expect(await ui.find({ key: 'counts' })).toMatchObject({ text: '1/2/4', children: [
     { props: { color: 'success' }, children: ['1'] }, { children: ['/'] }, { props: { color: 'error' }, children: ['2'] },
@@ -202,7 +215,7 @@ test('toolbar counts S/E/T and reruns only the failed modules, one start each', 
   expect(calls.map(argv => argv[0])).toEqual(['status', 'start', 'start']);
   expect(calls.slice(1).map(argv => argv.slice(-1)[0])).toEqual(['api', 'web']);
   current.jobs.api = job('api', { status: 'completed', failed: 0 }); current.jobs.web = job('web', { status: 'completed', failed: 0 });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   expect(await ui.find({ key: 'start-failed' })).toBeUndefined();
   await ui.unmount();
 });
@@ -210,13 +223,13 @@ test('toolbar counts S/E/T and reruns only the failed modules, one start each', 
 test('native start performs preflight then starts exactly the ID; cancelled callback refuses replacement run', async ($, on) => {
   let current = data({ api: module('api'), web: module('web') }); const calls: any[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
     calls.push(e);
     if (e.argv[2] === 'start') current.jobs.api = job('api');
     return response(current);
   });
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  await $.command.run(run('--text'));
   const ui = await $.ui.mount(pane('terminal'));
   await ui.press({ key: 'start-api' });
   expect(calls.map(call => call.argv[2])).toEqual(['status', 'status', 'start']);
@@ -234,9 +247,9 @@ test('invalid catalogue cause and per-ID action errors stay separate from retain
   current.workspace.moduleConfig = { status: 'invalid', schemaVersion: null, enabledIds: [],
     diagnostics: [{ code: 'INVALID_SCHEMA', message: 'O cadastro requer schemaVersion 1.' }] };
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  const answer = await $.command.run({ command: 'test-progress', args: 'cancel api --text' });
+  const answer = await $.command.run(run('cancel api --text'));
   expect(answer.text).toContain('Configuração: O cadastro requer schemaVersion 1.');
   expect(answer.text).toContain('api: Árvore ainda desconhecida.'); expect(answer.text).toContain('runId=run-api');
   const ui = await $.ui.mount(pane('desktop'));
@@ -247,20 +260,22 @@ test('invalid catalogue cause and per-ID action errors stay separate from retain
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`${surface}: pane shows observed duration as a clock, keeps it after completion and omits a missing one`, async ($, on) => {
-    const current = data({ api: module('api') }, { api: job('api', { elapsedMs: 7200000 }) });
+    const api = job('api', { elapsedMs: 7200000 });
+    const current = data({ api: module('api') }, { api });
     on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-    on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+    on('command.list', () => listed);
     on('process.run', () => response(current));
-    const answer = await $.command.run({ command: 'test-progress', args: 'status --text' });
+    const answer = await $.command.run(run('status --text'));
     expect(answer.text).toContain('duração=7200s');
     const ui = await $.ui.mount(pane(surface));
     expect(await ui.find({ type: 'Text', text: '2:00:00' })).toBeDefined();
-    current.jobs.api = { ...current.jobs.api, status: 'completed', phase: 'finished', exitCode: 0 };
-    await $.command.run({ command: 'test-progress', args: 'status --text' });
+    const finished: Job = { ...api, status: 'completed', phase: 'finished', exitCode: 0 };
+    current.jobs.api = finished;
+    await $.command.run(run('status --text'));
     expect(await ui.find({ type: 'Text', text: '2:00:00' })).toBeDefined();
     expect(await ui.find({ type: 'Text', text: /ETA|tempo restante/i })).toBeUndefined();
-    delete current.jobs.api.elapsedMs;
-    await $.command.run({ command: 'test-progress', args: 'status --text' });
+    delete finished.elapsedMs;
+    await $.command.run(run('status --text'));
     expect(await ui.find({ type: 'Text', text: '2:00:00' })).toBeUndefined();
     await ui.unmount();
   });
@@ -270,9 +285,9 @@ test('wide panes keep one line per module; narrow panes move progress to a secon
   const current = data({ api: module('api', 0, { label: 'API' }), web: module('web', 1, { label: 'Web' }) },
     { api: job('api', { total: 6, resolved: 5, passed: 4, failed: 1, skipped: 0, percent: 83.3333, totalStable: true, elapsedMs: 57000 }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const wide = await $.ui.mount(pane('terminal', 120));
   expect(await wide.find({ key: 'progress' })).toBeUndefined();
   expect(await wide.find({ key: 'logs-api' })).toMatchObject({ props: { label: 'API' } });
@@ -290,9 +305,9 @@ test('desktop draws the live bar as an SVG and lets the native run button size i
   const current = data({ api: module('api', 0, { label: 'API' }), web: module('web', 1, { label: 'Web' }) },
     { api: job('api', { total: 4, resolved: 2, passed: 2, failed: 0, skipped: 0, percent: 50 }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const desktop = await $.ui.mount(pane('desktop'));
   // A proportional font widens the bar glyphs past their cells, over the percentage.
   expect(await desktop.find({ type: 'Text', text: /━/ })).toBeUndefined();
@@ -313,9 +328,9 @@ test('desktop draws the live bar as an SVG and lets the native run button size i
 
 test('help toggles a short legend; empty workspace is one line', async ($, on) => {
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(data()));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   expect(await ui.find({ type: 'Text', text: 'Nenhum módulo em .claude/test-progress.json' })).toBeDefined();
   expect(await ui.find({ key: 'start-all' })).toBeUndefined();
@@ -327,15 +342,32 @@ test('help toggles a short legend; empty workspace is one line', async ($, on) =
   await ui.unmount();
 });
 
+test('the legend names the command only while the prompt can take it', async ($, on) => {
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  on('command.list', () => listed);
+  on('process.run', () => response(data()));
+  await $.command.run(run('status --text'));
+  const ui = await $.ui.mount(pane('terminal'));
+  await ui.press({ key: 'help' });
+  // An engine before 2.1.323 sends no isPromptCovered: the prompt counts as reachable.
+  expect(await ui.find({ type: 'Text', text: '/test-progress help lista os comandos.' })).toBeDefined();
+  await ui.redraw({ ...pane('terminal').props, isPromptCovered: true });
+  expect(await ui.find({ type: 'Text', text: /▶ iniciar/ })).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: '/test-progress help lista os comandos.' })).toBeUndefined();
+  await ui.redraw(pane('terminal').props);
+  expect(await ui.find({ type: 'Text', text: '/test-progress help lista os comandos.' })).toBeDefined();
+  await ui.unmount();
+});
+
 test('the sort button cycles orderings and keeps them across a redraw', async ($, on) => {
   const current = data({ web: module('web', 0, { label: 'Web' }), api: module('api', 1, { label: 'API' }),
     docs: module('docs', 2, { label: 'Docs' }) }, {
     web: job('web', { status: 'completed', phase: 'finished', failed: 0, startedAt: '2026-10-08T10:00:00Z' }),
     api: job('api', { status: 'failed', phase: 'finished', failed: 1, startedAt: '2026-10-08T09:00:00Z' }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   // A module with a run shows its name as the log button; one without a run shows plain text.
   const order = async () => [...new Set((await ui.findAll({ text: /^(Web|API|Docs)$/ }))
@@ -364,9 +396,9 @@ test('finished runs read as a result, errors wrap with a next step, and the log 
     web: job('web', { status: 'error', phase: 'finished', total: null, resolved: 0, passed: 0, failed: 0, skipped: 0, percent: null,
       error: 'O comando terminou sem eventos de progresso reconhecidos; nenhum teste foi confirmado.' }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal', 60));
   expect(await ui.find({ key: 'bar' })).toBeUndefined();
   expect(await ui.find({ type: 'Text', text: '· 19' })).toBeDefined();
@@ -385,11 +417,11 @@ test('the wheel scrolls an open log within its tail, then hands the edges to the
   const current = data({ api: module('api') }, { api: job('api', { status: 'completed', phase: 'finished', exitCode: 0,
     logTail: Array.from({ length: 40 }, (_, i) => `line ${i + 1}`) }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
   let paneMoves = 0;
   on('ui.scroll', () => { paneMoves += 1; return {}; });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('terminal'));
   const wheel = (by: number) => $.ui.scroll({ component: 'Pane', requestId: 'claude-test-progress', offset: 0, by,
     bodyRows: 20, contentRows: 20, origin: { kind: 'person' }, pointer: { column: 10, row: 5 } });
@@ -416,9 +448,9 @@ test('on the app the log pages up with a button, since its wheel scrolls the pan
   const current = data({ api: module('api') }, { api: job('api', { status: 'completed', phase: 'finished', exitCode: 0,
     logTail: Array.from({ length: 30 }, (_, i) => `line ${i + 1}`) }) });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   const ui = await $.ui.mount(pane('desktop'));
   await ui.press({ key: 'logs-api' });
   expect(await ui.find({ type: 'Text', text: /últimas 12 de 30 linhas/ })).toBeDefined();
@@ -446,26 +478,26 @@ test('on the app the log pages up with a button, since its wheel scrolls the pan
 test('a bare command closes an open pane instead of reopening it', async ($, on) => {
   const closed: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(data()));
-  on('ui.panes', () => ({ value: [{ id: 'claude-test-progress', title: 'Test Progress' }] }));
+  on('ui.panes', () => ({ value: [{ id: 'claude-test-progress', title: 'Test Progress', isShown: true, isFocused: false, isPlaced: true }] }));
   on('ui.close', ($, e) => { closed.push(e.id); return { value: undefined }; });
-  expect(await $.command.run({ command: 'test-progress', args: '' })).toEqual({});
+  expect(await $.command.run(run(''))).toEqual({});
   expect(closed).toEqual(['claude-test-progress']);
 });
 
 test('command text stays verbatim where the app reads it as Markdown, and plain on the terminal', async ($, on) => {
-  let surfaces: string[] = ['desktop'];
+  let surfaces: RenderSurface[] = ['desktop'];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.surfaces', () => ({ value: surfaces }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(data({ api: module('api', 0, { label: '__init__ *core*' }) })));
-  const app = await $.command.run({ command: 'test-progress', args: 'list' });
+  const app = await $.command.run(run('list'));
   expect(app.text).toMatch(/^\n```text\n/);
   expect(app.text).toMatch(/\n```$/);
   expect(app.text).toContain('__init__ *core*');
   surfaces = ['terminal'];
-  const terminal = await $.command.run({ command: 'test-progress', args: 'list' });
+  const terminal = await $.command.run(run('list'));
   expect(terminal.text).not.toContain('```');
   expect(terminal.text).toContain('__init__ *core*');
 });

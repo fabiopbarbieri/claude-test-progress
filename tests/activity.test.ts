@@ -1,60 +1,72 @@
 import { expect, mock, test } from 'claude-code/testing';
-const running = { schemaVersion: 1, moduleId: 'api', runId: 'fixture-long-job', source: 'config',
+import type { MountTarget } from 'claude-code/testing';
+import type { CommandRunInput, FsEntry, FsStat } from 'claude-code';
+import type { TestProgressJob, TestProgressModule, TestProgressWorkspace } from '../types/index.d.ts';
+// The collector's snapshot carries the heartbeat's age beside the state contract.
+type Job = TestProgressJob & { heartbeatAgeMs?: number };
+const running: Job = { schemaVersion: 1, moduleId: 'api', runId: 'fixture-long-job', source: 'config',
   status: 'running', phase: 'executing-tests', total: 2, totalStable: false, resolved: 1,
   passed: 1, failed: 0, skipped: 0, percent: 50, exitCode: null, logPath: '/tmp/fixture.log',
   elapsedMs: 7200000, heartbeatAt: '2026-01-01T02:00:00.000Z', heartbeatAgeMs: 1000,
   lastOutputAt: '2026-01-01T00:00:01.000Z', lastProgressAt: '2026-01-01T00:00:01.000Z' };
-const module = (id = 'api', label = 'API') => ({ id, label, language: null, order: 0,
+const module = (id = 'api', label = 'API'): TestProgressModule => ({ id, label, language: null, order: 0,
   enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [] });
-const data = (modules = { api: module() }, jobs = { api: running }) => ({ schemaVersion: 1, ok: true,
-  modules, jobs, stateDiagnostics: {}, workspace: { moduleConfig: {
-    status: 'valid', schemaVersion: 1, enabledIds: Object.keys(modules) }, stateBlocked: false } });
-const response = (value = data()) => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify(value) } });
-const pane = { plugin: 'test-progress', component: 'Pane', requestId: 'claude-test-progress', surface: 'terminal',
+const data = (modules: Record<string, TestProgressModule> = { api: module() }, jobs: Record<string, Job> = { api: running }) => {
+  const workspace: TestProgressWorkspace = { moduleConfig: {
+    status: 'valid', schemaVersion: 1, enabledIds: Object.keys(modules) }, stateBlocked: false };
+  return { schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics: {}, workspace };
+};
+const response = (value: object = data()) => ({ value: { exitCode: 0, stderr: '', stdout: JSON.stringify(value),
+  isStdoutTruncated: false, isStderrTruncated: false } });
+const pane: MountTarget<'terminal', 'Pane'> = { plugin: 'test-progress', component: 'Pane', requestId: 'claude-test-progress', surface: 'terminal',
   viewport: { columns: 80, rows: 25 }, props: { title: 'Test Progress', isFocused: true,
     bodyColumns: 70, placement: 'inline', scroll: { offset: 0, bodyRows: 20 }, view: {} } };
+// The kit's $.command.run takes what the engine stamps on a typed command: where it came from and the room it has.
+const run = (args: string): CommandRunInput => ({ command: 'test-progress', args, origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 80 } });
+const listed = { value: [{ name: 'test-progress', description: 'Test Progress', source: 'plugin' as const, plugin: 'test-progress' }] };
 
 test('text status distinguishes quiet activity, uses module flag and short queries; start budget is 60s', async ($, on) => {
   const calls: any[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => { calls.push(e); return response(); });
-  const answer = await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const answer = await $.command.run(run('status --text'));
   for (const value of ['Em execução', '1 resolvidos', 'duração=7200s',
     'último sinal do executor=2026-01-01T02:00:00.000Z',
     'último progresso reconhecido=2026-01-01T00:00:01.000Z', 'exitCode=ainda desconhecido']) expect(answer.text).toContain(value);
   expect(calls[0].argv[2]).toBe('status'); expect(calls[0].init.timeoutMs).toBe(5000);
   expect(calls[0].argv).toContain('--module');
-  await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  await $.command.run(run('start api --text'));
   expect(calls[1].init.timeoutMs).toBe(60000);
 });
 
 test('native Windows uses Module and 15s query budget, with a 60s start budget', async ($, on) => {
   const calls: any[] = [];
   on('session.cwd', () => ({ value: 'C:\\work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('env.get', () => ({ value: undefined }));
   on('process.run', ($, e) => { calls.push(e); return response(); });
-  await $.command.run({ command: 'test-progress', args: 'status api --text' });
+  await $.command.run(run('status api --text'));
   expect(calls[0].argv).toContain('-Module');
   expect(calls[0].init.timeoutMs).toBe(15000);
-  await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  await $.command.run(run('start api --text'));
   expect(calls[1].init.timeoutMs).toBe(60000);
 });
 
 test('failed query retries without implicit start or cancel and an unknown schema is rejected', async ($, on) => {
   const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
-    actions.push(e.argv[2]);
+    actions.push(e.argv[2] ?? '');
     if (actions.length === 1) return { deny: 'fixture query timed out' };
     if (actions.length === 3) return response({ ...data(), schemaVersion: 2 });
     return response();
   });
-  expect((await $.command.run({ command: 'test-progress', args: '--text' })).text).toContain('fixture query timed out');
-  expect((await $.command.run({ command: 'test-progress', args: '--text' })).text).toContain('runId=fixture-long-job');
-  const unknown = await $.command.run({ command: 'test-progress', args: '--text' });
+  expect((await $.command.run(run('--text'))).text).toContain('fixture query timed out');
+  expect((await $.command.run(run('--text'))).text).toContain('runId=fixture-long-job');
+  const unknown = await $.command.run(run('--text'));
   expect(unknown.text).toContain('schemaVersion 1'); expect(unknown.text).toContain('runId=fixture-long-job');
   expect(actions).toEqual(['status', 'status', 'status']);
 });
@@ -67,7 +79,7 @@ test('registration collision does not stop polling and repeated startup keeps on
   on('command.list', () => ({ value: [] }));
   on('command.register', () => { registered++; return { deny: 'name already belongs to another command' }; });
   on('command.run', { command: 'test-progress' }, () => ({ text: 'existing handler response', context: ['existing context'] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(); });
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   await clock.advance(2000); expect(actions).toEqual(['status', 'status', 'status']);
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
@@ -75,7 +87,7 @@ test('registration collision does not stop polling and repeated startup keeps on
   expect(actions).toEqual(['status', 'status', 'status', 'status', 'status']); expect(registered).toBe(2);
   const ui = await $.ui.mount(pane);
   expect(await ui.find({ type: 'Text', text: /Registro:[\s\S]*name already belongs to another command/ })).toBeDefined();
-  const answer = await $.command.run({ command: 'test-progress', args: 'start all --text' });
+  const answer = await $.command.run(run('start all --text'));
   expect(answer.text).toBe('existing handler response'); expect(answer.context).toEqual(['existing context']);
   expect(actions.every(action => action === 'status')).toBe(true);
   await ui.unmount();
@@ -85,15 +97,15 @@ test('polling refreshes the catalogue and all jobs, re-reading only the live sel
   const clock = mock.clock(on); let owner = 'A'; let current = data();
   const calls: any[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => { calls.push(e.argv); return response(current); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   const ui = await $.ui.mount(pane);
   current = data({ api: module('api', 'Renomeada') }, {}); await clock.advance(1000);
   expect(await ui.find({ type: 'Text', text: 'Renomeada' })).toBeDefined();
   current.jobs.api = { ...running, logTail: ['owner A log'] };
-  await $.command.run({ command: 'test-progress', args: 'logs api --text' });
+  await $.command.run(run('logs api --text'));
   current.modules.extra = module('extra', 'Nova'); await clock.advance(1000);
   expect(calls[calls.length - 1][2]).toBe('logs'); expect(calls[calls.length - 1].slice(-2)).toEqual(['--module', 'api']);
   expect(await ui.find({ key: 'module-extra' })).toBeDefined();
@@ -108,14 +120,15 @@ test('polling refreshes the catalogue and all jobs, re-reading only the live sel
 test('AbovePrompt is one line: active first, as many items as the width holds, and it steps aside once nothing is new', async ($, on) => {
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
   const modules = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, module(`m${i}`, `M${i}`)]));
-  const jobs = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, { ...running, moduleId: `m${i}`, runId: `run${i}`, status: i === 11 ? 'running' : 'completed' }]));
+  const numbered = (i: number): Job => ({ ...running, moduleId: `m${i}`, runId: `run${i}`, status: i === 11 ? 'running' : 'completed' });
+  const jobs = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`m${i}`, numbered(i)]));
   let current = data(modules, jobs);
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  await $.command.run(run('--text'));
   const band = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
-    viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
+    viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6,
       bodyColumns: 80, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
   expect(await band.find({ key: 'band' })).toMatchObject({ props: { flexDirection: 'row' } });
   expect(await band.find({ key: 'summary-m11' })).toBeDefined();
@@ -126,7 +139,7 @@ test('AbovePrompt is one line: active first, as many items as the width holds, a
   expect(await band.find({ type: 'Text', text: '  ·  +5' })).toBeDefined();
   // A narrow terminal still shows the first item, with the rest counted.
   const narrow = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
-    viewport: { columns: 30, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
+    viewport: { columns: 30, rows: 25 }, props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6,
       bodyColumns: 30, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
   expect(await narrow.find({ key: 'summary-m11' })).toBeDefined();
   expect(await narrow.find({ key: 'summary-m0' })).toBeUndefined();
@@ -134,22 +147,22 @@ test('AbovePrompt is one line: active first, as many items as the width holds, a
   await narrow.unmount();
   expect(await band.find({ type: 'Text', text: /falha\(s\)|restante/ })).toBeUndefined();
   // Only finished, passing runs: nothing to report.
-  current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' } });
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  current = data(modules, { ...jobs, m11: { ...numbered(11), status: 'completed' } });
+  await $.command.run(run('--text'));
   expect(await band.find({ key: 'band' })).toBeUndefined();
   // An unseen failure shows in red until the pane is opened.
-  current = data(modules, { ...jobs, m11: { ...jobs.m11, status: 'completed' }, m3: { ...jobs.m3, status: 'failed', failed: 2 } });
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  current = data(modules, { ...jobs, m11: { ...numbered(11), status: 'completed' }, m3: { ...numbered(3), status: 'failed', failed: 2 } });
+  await $.command.run(run('--text'));
   expect(await band.find({ type: 'Text', text: ' ✗2' })).toMatchObject({ props: { color: 'error' } });
   // Using the pane acknowledges what it shows; drawing alone never writes.
   const ui = await $.ui.mount(pane);
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  await $.command.run(run('--text'));
   expect(await band.find({ type: 'Text', text: ' ✗2' })).toBeDefined();
   await ui.press({ key: 'help' });
   await ui.unmount();
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  await $.command.run(run('--text'));
   expect(await band.find({ key: 'band' })).toBeUndefined();
-  current = data(modules, {}); await $.command.run({ command: 'test-progress', args: '--text' });
+  current = data(modules, {}); await $.command.run(run('--text'));
   expect(await band.find({ key: 'band' })).toBeUndefined();
   await band.unmount();
 });
@@ -159,13 +172,13 @@ test('existing command of unknown or other ownership is preserved while polling 
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.start', () => ({ cwd: '/work' }));
   on('command.list', () => ({ value: [{ name: 'test-progress', description: 'Other', source: 'plugin', plugin: 'other' }] }));
-  on('command.register', () => { registrations++; return { value: undefined }; });
+  on('command.register', ($, e) => { registrations++; return { value: { command: e.name } }; });
   on('command.run', { command: 'test-progress' }, () => ({ text: 'other plugin response', context: ['other context'] }));
   on('process.run', () => { calls++; return response(); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   await clock.advance(1000);
   expect(registrations).toBe(0); expect(calls).toBe(2);
-  const answer = await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  const answer = await $.command.run(run('start api --text'));
   expect(answer.text).toBe('other plugin response'); expect(answer.context).toEqual(['other context']);
   expect(calls).toBe(2);
 });
@@ -174,12 +187,12 @@ test('poll timer survives clear/resume/branch identity boundaries without implic
   const clock = mock.clock(on); let owner = 'A'; const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
   on('session.start', () => ({ cwd: '/work' })); on('command.list', () => ({ value: [] }));
-  on('command.register', () => ({ value: undefined }));
+  on('command.register', ($, e) => ({ value: { command: e.name } }));
   on('session.end', ($, e) => ({ sessionId: e.sessionId }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(owner === 'A' ? data() : data({}, {})); });
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(owner === 'A' ? data() : data({}, {})); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   for (const reason of ['clear', 'resume', 'other'] as const) {
-    await $.session.end({ reason, sessionId: owner, resume: { sessionId: owner } });
+    await $.session.end({ reason, sessionId: owner, resume: { id: owner } });
     owner = owner === 'A' ? 'B' : 'A'; await clock.advance(1000);
   }
   expect(actions).toEqual(['status', 'status', 'status', 'status']);
@@ -190,18 +203,18 @@ test('poll and commands never overlap; a command waits for a pending request ins
   const calls: string[] = []; let entered: (() => void) | undefined; let inFlight = 0; let maxInFlight = 0;
   const started = new Promise<void>(resolve => { entered = resolve; });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('command.register', () => ({ value: undefined }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.list', () => listed);
+  on('command.register', ($, e) => ({ value: { command: e.name } }));
   on('process.run', async ($, e) => {
-    calls.push(e.argv[2]); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    calls.push(e.argv[2] ?? ''); inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
     if (pending) { pending = false; entered?.(); await new Promise<void>(resolve => { release = resolve; }); }
     inFlight--; return response();
   });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   pending = true;
-  const command = $.command.run({ command: 'test-progress', args: 'status --text' });
+  const command = $.command.run(run('status --text'));
   await started; await clock.advance(2000);
-  const waiting = $.command.run({ command: 'test-progress', args: 'start api --text' });
+  const waiting = $.command.run(run('start api --text'));
   expect(calls).toEqual(['status', 'status']);
   release?.(); await command;
   expect((await waiting).text).not.toContain('ocupado');
@@ -211,33 +224,33 @@ test('poll and commands never overlap; a command waits for a pending request ins
 test('idle workspaces poll every ten seconds and live jobs every second', async ($, on) => {
   const clock = mock.clock(on); let current = data({ api: module() }, {}); const calls: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { calls.push(e.argv[2]); return response(current); });
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { calls.push(e.argv[2] ?? ''); return response(current); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   await clock.advance(9000); expect(calls).toEqual(['status']);
   await clock.advance(1000); expect(calls).toEqual(['status', 'status']);
   current = data();
-  await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  await $.command.run(run('start api --text'));
   await clock.advance(2000); expect(calls).toEqual(['status', 'status', 'start', 'status', 'status']);
 });
 
 test('later queries reuse the bootstrapped collector Node and fall back once when it disappears', async ($, on) => {
   const calls: any[] = []; let deny = false;
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
     calls.push(e);
     if (deny && e.argv[0] === '/opt/node/bin/node') return { deny: 'node removed' };
     return response({ ...data(), collector: { path: '/opt/node/bin/node', source: 'nvm' } });
   });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
+  await $.command.run(run('status --text'));
   expect(calls[0].argv[0]).toBe('bash');
   expect(calls[1].argv[0]).toBe('/opt/node/bin/node'); expect(calls[1].argv[1]).toMatch(/runner\/cli\.mjs$/);
   expect(calls[1].argv[2]).toBe('status'); expect(calls[1].init.env).toEqual({ TEST_PROGRESS_NODE_SOURCE: 'nvm' });
   deny = true;
-  const answer = await $.command.run({ command: 'test-progress', args: 'status --text' });
+  const answer = await $.command.run(run('status --text'));
   expect(answer.text).toContain('runId=fixture-long-job');
   expect(calls.slice(2).map(call => call.argv[0])).toEqual(['/opt/node/bin/node', 'bash']);
 });
@@ -246,13 +259,13 @@ test('ownership taken after registration passes the full result to the new handl
   const clock = mock.clock(on); let plugin = 'test-progress'; const actions: string[] = [];
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.start', () => ({ cwd: '/work' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin }] }));
-  on('command.register', () => ({ value: undefined }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', description: 'Test Progress', source: 'plugin', plugin }] }));
+  on('command.register', ($, e) => ({ value: { command: e.name } }));
   on('command.run', { command: 'test-progress' }, () => ({ text: 'new owner output', context: ['new owner context'] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(); });
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(); });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   plugin = 'other';
-  const answer = await $.command.run({ command: 'test-progress', args: 'start all --text' });
+  const answer = await $.command.run(run('start all --text'));
   expect(answer).toMatchObject({ text: 'new owner output', context: ['new owner context'] });
   await clock.advance(1000);
   expect(actions).toEqual(['status', 'status']);
@@ -262,8 +275,8 @@ test('unavailable ownership metadata passes through without parsing or collectin
   const actions: string[] = [];
   on('command.list', () => ({ deny: 'command inventory unavailable' }));
   on('command.run', { command: 'test-progress' }, () => ({ text: 'host output', context: ['host context'] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(); });
-  const answer = await $.command.run({ command: 'test-progress', args: 'start api --text' });
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(); });
+  const answer = await $.command.run(run('start api --text'));
   expect(answer).toMatchObject({ text: 'host output', context: ['host context'] });
   expect(actions).toEqual([]);
 });
@@ -272,16 +285,16 @@ test('a placed pane acknowledges failed runs and the band steps aside', async ($
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
   const current = data({ api: module() }, { api: { ...running, status: 'failed', failed: 1 } });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', () => response(current));
   on('ui.panes', () => ({ value: [] }));
   on('ui.open', () => ({ value: { isPlaced: true } }));
-  await $.command.run({ command: 'test-progress', args: '--text' });
+  await $.command.run(run('--text'));
   const band = await $.ui.mount({ plugin: 'test-progress', component: 'AbovePrompt', surface: 'terminal',
-    viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isWorking: false, maxRows: 6,
+    viewport: { columns: 80, rows: 25 }, props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6,
       bodyColumns: 80, scroll: { offset: 0, bodyRows: 6 }, view: {} } });
   expect(await band.find({ type: 'Text', text: ' ✗1' })).toBeDefined();
-  await $.command.run({ command: 'test-progress', args: '' });
+  await $.command.run(run(''));
   expect(await band.find({ key: 'band' })).toBeUndefined();
   await band.unmount();
 });
@@ -289,12 +302,12 @@ test('a placed pane acknowledges failed runs and the band steps aside', async ($
 test('when every run has ended, unseen failures open the pane once on the first failed log, without focus', async ($, on) => {
   const clock = mock.clock(on); const opened: any[] = []; const logs: string[] = []; let panes: any[] = [];
   const modules = { api: module(), web: module('web', 'Web') };
-  const failedApi = { ...running, status: 'failed', failed: 1, logTail: ['FAILED test_api - AssertionError'] };
+  const failedApi: Job = { ...running, status: 'failed', failed: 1, logTail: ['FAILED test_api - AssertionError'] };
   let current = data(modules, {});
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { if (e.argv[2] === 'logs') logs.push(e.argv[e.argv.indexOf('--module') + 1]); return response(current); });
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { if (e.argv[2] === 'logs') logs.push(e.argv[e.argv.indexOf('--module') + 1] ?? ''); return response(current); });
   on('ui.panes', () => ({ value: panes }));
   on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: true } }; });
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ children: [] }));
@@ -339,11 +352,11 @@ test('where no native notification goes out, as on the desktop app, the system n
   let current = data(modules, { api: running });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.surfaces', () => ({ value: ['desktop'] }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
     if (e.argv[0] !== 'notify-send') return response(current);
-    system.push(e); return { value: { exitCode: systemExit, stdout: '', stderr: '' } };
+    system.push(e); return { value: { exitCode: systemExit, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } };
   });
   on('ui.panes', () => ({ value: [] }));
   on('ui.open', () => ({ value: { isPlaced: true } }));
@@ -373,9 +386,9 @@ test('a live job streams status from one watcher instead of a query per second, 
   const collector = { path: '/node/bin/node', source: 'path' };
   let current: any = { ...data(), collector };
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { actions.push(e.argv[2]); return response(current); });
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { actions.push(e.argv[2] ?? ''); return response(current); });
   let emit: ((line: string) => void) | undefined, end: (() => void) | undefined;
   on('process.spawn', async function* ($, e) {
     spawned.push([...e.argv]);
@@ -413,12 +426,12 @@ test('idle panels start no Node until a watched file changes, refresh every five
   const clock = mock.clock(on); const calls: string[] = [];
   const sources = { state: '/tmp/state/abc', paths: ['/work/.claude/test-progress.json', '/work/api'] };
   let current: any = { ...data({ api: module() }, {}), sources };
-  let entries = [{ name: 'api.json', kind: 'file', size: 10, mtimeMs: 1, isLink: false }];
-  let config = { kind: 'file', size: 50, mtimeMs: 1, isLink: false }, refuse = false;
+  let entries: FsEntry[] = [{ name: 'api.json', kind: 'file', size: 10, mtimeMs: 1, isLink: false }];
+  let config: FsStat = { kind: 'file', size: 50, mtimeMs: 1, isLink: false }, refuse = false;
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { calls.push(e.argv[2]); return response(current); });
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { calls.push(e.argv[2] ?? ''); return response(current); });
   on('fs.list', ($, e) => refuse ? { deny: 'fixture refuses' } : (e.path === sources.state ? { value: entries } : { deny: 'unexpected' }));
   on('fs.stat', ($, e) => e.path === sources.paths[0] ? { value: config } : { value: { kind: 'dir', size: 0, mtimeMs: Date.now(), isLink: false } });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
@@ -442,9 +455,9 @@ test('a failed idle query is retried after ten seconds even with nothing changed
   const clock = mock.clock(on); const calls: string[] = []; let fail = false;
   const sources = { state: '/tmp/state/abc', paths: [] as string[] };
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('session.start', () => ({ cwd: '/work' })); on('command.register', () => ({ value: undefined }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
-  on('process.run', ($, e) => { calls.push(e.argv[2]); return fail ? { deny: 'fixture timed out' } : response({ ...data({ api: module() }, {}), sources }); });
+  on('session.start', () => ({ cwd: '/work' })); on('command.register', ($, e) => ({ value: { command: e.name } }));
+  on('command.list', () => listed);
+  on('process.run', ($, e) => { calls.push(e.argv[2] ?? ''); return fail ? { deny: 'fixture timed out' } : response({ ...data({ api: module() }, {}), sources }); });
   on('fs.list', () => ({ value: [] }));
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   await clock.advance(2000); expect(calls).toHaveLength(2);
@@ -459,18 +472,18 @@ test('a new session reuses the collector Node kept for the same folder and PATH,
   const calls: any[] = []; let owner = 'A'; let deny = false;
   mock.store(on); mock.env(on, { PATH: '/usr/bin' });
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: owner }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: 'test-progress' }] }));
+  on('command.list', () => listed);
   on('process.run', ($, e) => {
     calls.push(e);
     if (deny && e.argv[0] === '/opt/node/bin/node') return { deny: 'node removed' };
     return response({ ...data(), collector: { path: '/opt/node/bin/node', source: 'nvm' } });
   });
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   expect(calls[0].argv[0]).toBe('bash');
   owner = 'B';
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   expect(calls[1].argv[0]).toBe('/opt/node/bin/node'); expect(calls[1].init.env).toEqual({ TEST_PROGRESS_NODE_SOURCE: 'nvm' });
   owner = 'C'; deny = true;
-  await $.command.run({ command: 'test-progress', args: 'status --text' });
+  await $.command.run(run('status --text'));
   expect(calls.slice(2).map(call => call.argv[0])).toEqual(['/opt/node/bin/node', 'bash']);
 });

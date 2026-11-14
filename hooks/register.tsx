@@ -810,6 +810,11 @@ export const register: Register = on => {
     };
     const bodyColumns = typeof e.props?.bodyColumns === 'number' ? e.props.bodyColumns : 80;
     const narrow = bodyColumns < NARROW_COLUMNS;
+    // While a dialog or a field covers the prompt (2.1.323+; older engines and their generated types
+    // omit the prop), the legend leaves out the line that sends the person to type /test-progress there.
+    const promptCovered = !!e.props && 'isPromptCovered' in e.props && e.props.isPromptCovered === true;
+    const legend = (Svg ? LEGEND.map(line => line.startsWith('A roda') ? APP_SCROLL : line) : LEGEND)
+      .filter(line => !(promptCovered && line.startsWith('/test-progress')));
     // Button has no disabled prop in the native API. Dim and guard instead of inventing HTML attributes.
     const button = (key: string, label: string, action: Action, id = 'all', allowed = true) =>
       <Button key={key} label={label} plain dimColor={p.busy || !allowed}
@@ -964,7 +969,7 @@ export const register: Register = on => {
       {(p.stateDiagnostics['*'] ?? []).map((item, i) => <Text key={`state-${i}`} color="error" wrap="wrap">{`Estado: ${diagnosticText(item)}`}</Text>)}
       {p.lastError ? <Text key="last-error" color="error" wrap="wrap">{p.lastError}</Text> : null}
       {p.registrationError ? <Text key="registration" color="error" wrap="wrap">{`Registro: ${p.registrationError}`}</Text> : null}
-      {p.showHelp ? (Svg ? LEGEND.map(line => line.startsWith('A roda') ? APP_SCROLL : line) : LEGEND).map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
+      {p.showHelp ? legend.map((line, i) => <Text key={`legend-${i}`} dimColor wrap="wrap">{line}</Text>) : null}
     </Box>;
   });
   // With a log open, the wheel moves the log's own window; at its edges, and for the keys, the pane scrolls.

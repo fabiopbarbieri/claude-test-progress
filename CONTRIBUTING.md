@@ -96,12 +96,17 @@ claude plugin validate .claude-plugin/plugin.json --strict
 claude plugin test .
 ```
 
+Use Claude Code 2.1.323+ nos dois `validate --strict`: a 2.1.301 reprova o
+campo `engines` do manifest como desconhecido. Desde 2.1.323, o `validate` também checa
+os tipos de `hooks/`, `types/` e `tests/`, sem ler o `tsconfig.json`; fixtures
+parciais passam por um cast explícito e comentado.
+
 Os testes do Mod simulam respostas do coletor. Não equivalem a olhar ou operar
 o painel em uma sessão real. Tipos em `.claude-plugin/types` são gerados pelo
 Claude; `tsconfig.json` não é um gate independente antes dessa geração. Com os tipos
 gerados, `npx -p typescript@5 tsc -p .` checa `hooks/register.tsx`, o contrato de
 estado em `types/index.d.ts` e `runner/module-presentation.d.mts`; os testes ficam
-fora porque os fixtures são propositalmente parciais.
+fora desse `tsconfig.json`, e o `validate` da 2.1.323+ cobre os tipos deles.
 
 Ao alterar contagem, observe seleção, falhas de preparação/finalização,
 interrupção, total desconhecido e zero testes. Preserve o

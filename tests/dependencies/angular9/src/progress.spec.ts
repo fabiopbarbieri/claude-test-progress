@@ -1,3 +1,6 @@
+// @ts-nocheck
+// Angular and Jasmine types come from this fixture's own install (scripts/check-karma.py); `claude plugin
+// validate` type-checks every file under tests/ without them, so it would only report missing modules.
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 

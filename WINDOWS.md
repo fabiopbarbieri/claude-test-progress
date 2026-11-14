@@ -421,7 +421,9 @@ Limites observados:
   subagente responde a pasta da sessão, então a ferramenta recusa qualquer
   subagente e o manda para o Bash com o próprio `--cwd`, pela skill. A recusa e
   a notificação em nome do Claude foram conferidas no app com o plugin instalado
-  da `main` (`8833fc4`).
+  da `main` (`8833fc4`). O piso em `engines["claude-code"]` do manifest não muda
+  isso: só o Claude Code 2.1.323+ lê o campo, e o 2.1.295 embutido o ignora e
+  carrega o plugin como acima ([compatibilidade](docs/COMPATIBILITY.md)).
 
 ## Fontes e evidências
 

@@ -1,5 +1,6 @@
 import { expect, test } from 'claude-code/testing';
-import type { PromptAutocompleteInput, PromptAutocompleteResult } from 'claude-code';
+import type { Engine } from 'claude-code/testing';
+import type { CommandRunInput, On, PromptAutocompleteInput, PromptAutocompleteResult } from 'claude-code';
 
 const module = (id: string, order = 0, overrides = {}) => ({ id, label: 'Suíte', language: 'Python',
   order, enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [], ...overrides });
@@ -7,23 +8,27 @@ const job = (moduleId: string, overrides = {}) => ({ schemaVersion: 1, moduleId,
   source: 'config', status: 'running', phase: 'executing-tests', total: 4, totalStable: false,
   resolved: 4, passed: 2, failed: 1, skipped: 1, percent: 100, cwd: '/work',
   command: ['python', 'suite.py'], exitCode: null, ...overrides });
-const data = (modules = {}, jobs = {}) => ({
+const data = (modules: Record<string, ReturnType<typeof module>> = {}, jobs: Record<string, ReturnType<typeof job>> = {}) => ({
   schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics: {},
   workspace: { moduleConfig: { status: Object.keys(modules).length ? 'valid' : 'absent',
     schemaVersion: Object.keys(modules).length ? 1 : null,
-    enabledIds: Object.keys(modules).filter(id => modules[id].enabled) }, stateBlocked: false },
+    enabledIds: Object.entries(modules).filter(([, module]) => module.enabled).map(([id]) => id) }, stateBlocked: false },
 });
-const response = value => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value) } });
+const response = (value: { ok: boolean }) => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value),
+  isStdoutTruncated: false, isStderrTruncated: false } });
+// The kit's $.command.run takes what the engine stamps on a typed command: where it came from and the room it has.
+const run = (args: string): CommandRunInput => ({ command: 'test-progress', args, origin: { kind: 'composer' },
+  presentation: { isFullscreen: false, columns: 80 } });
 // The kit raises the event through `$.prompt.autocomplete`; the typings list it among events, not calls.
 type Autocomplete = (e: PromptAutocompleteInput) => Promise<PromptAutocompleteResult>;
 const typed = (text: string) => { const start = text.search(/\S*$/); return { text, cursor: text.length, token: text.slice(start), start }; };
-const offered = async ($, text: string) =>
+const offered = async ($: Engine, text: string) =>
   (await ($.prompt as unknown as { autocomplete: Autocomplete }).autocomplete(typed(text))).suggestions.map(row => row.text);
 
-function engine(on, current, owner = 'test-progress') {
+function engine(on: On, current: () => { ok: boolean }, owner = 'test-progress') {
   on('session.cwd', () => ({ value: '/work' }));
   on('session.id', () => ({ value: 'owner' }));
-  on('command.list', () => ({ value: [{ name: 'test-progress', source: 'plugin', plugin: owner }] }));
+  on('command.list', () => ({ value: [{ name: 'test-progress', description: 'Test Progress', source: 'plugin', plugin: owner }] }));
   on('process.run', () => response(current()));
   on('prompt.autocomplete', () => ({ suggestions: [{ text: 'beneath' }] }));
 }
@@ -32,7 +37,7 @@ test('suggests actions, then the modules each action reaches, with labels beside
   const current = data({ api: module('api', 0, { label: 'Backend' }), web: module('web', 1, { label: 'Frontend' }),
     old: module('old', 2, { enabled: false }) });
   engine(on, () => current);
-  await $.command.run({ command: 'test-progress', args: 'list --text' });
+  await $.command.run(run('list --text'));
   // No run to stop: cancel stays out.
   expect(await offered($, '/test-progress s')).toEqual(['beneath', 'start', 'status']);
   expect(await offered($, '/test-progress c')).toEqual(['beneath']);
@@ -58,7 +63,7 @@ test('cancel appears with a live run and offers only the runs it can stop', asyn
   const current = data({ api: module('api'), web: module('web', 1) }, { api: job('api'),
     web: job('web', { status: 'completed', exitCode: 0 }) });
   engine(on, () => current);
-  await $.command.run({ command: 'test-progress', args: 'list --text' });
+  await $.command.run(run('list --text'));
   expect(await offered($, '/test-progress c')).toEqual(['beneath', 'cancel']);
   expect(await offered($, '/test-progress cancel a')).toEqual(['beneath', 'api', 'all']);
   expect(await offered($, '/test-progress cancel w')).toEqual(['beneath']);
@@ -71,6 +76,6 @@ test('cancel appears with a live run and offers only the runs it can stop', asyn
 test('a command name owned elsewhere gets no suggestions from this plugin', async ($, on) => {
   engine(on, () => data({ api: module('api') }), 'another');
   on('command.run', () => ({}));
-  await $.command.run({ command: 'test-progress', args: 'list --text' });
+  await $.command.run(run('list --text'));
   expect(await offered($, '/test-progress s')).toEqual(['beneath']);
 });
