@@ -26,6 +26,15 @@ claude plugin test .
 node scripts/check-soak.mjs 900
 ```
 
+Os `validate --strict` pedem Claude Code 2.1.323+: a 2.1.301 reprova o campo
+`engines` do manifest como desconhecido (sem `--strict`, só avisa) e não checa
+tipos. Desde 2.1.323,
+o `validate` checa os tipos de todo arquivo TypeScript em `hooks/`, `types/` e
+`tests/` com as opções do próprio Claude (`strict`, `noUncheckedIndexedAccess`),
+sem ler o `tsconfig.json`; as fixtures Angular em `tests/dependencies` levam
+`// @ts-nocheck`, porque os tipos delas só existem na instalação do gate Karma.
+O `plugin test` também roda na 2.1.301, a versão mais antiga exercitada na CI.
+
 Escolha o Node do coletor por `PATH` ou `TEST_PROGRESS_NODE`. Os scripts de
 desenvolvimento usam Python 3.10+; isso não adiciona Python ao bootstrap do plugin.
 `--pytest` exige pytest no mesmo ambiente Python usado para executar o check.

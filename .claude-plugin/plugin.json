@@ -6,6 +6,7 @@
   "homepage": "https://github.com/fabiopbarbieri/claude-test-progress",
   "repository": "https://github.com/fabiopbarbieri/claude-test-progress",
   "license": "MIT",
+  "engines": { "claude-code": ">=2.1.296" },
   "types": "./types/index.d.ts",
   "keywords": ["tests", "progress", "modules", "junit", "maven", "karma", "angular", "pytest", "unittest", "rails", "minitest", "rspec"]
 }

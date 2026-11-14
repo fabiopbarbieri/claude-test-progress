@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing';
+import type { On } from 'claude-code';
 const TOOL = 'mcp__test-progress__tests';
 const module = (id = 'api', overrides = {}) => ({ id, label: 'API', language: null, order: 0,
   enabled: true, directoryPresent: true, origin: 'workspace', diagnostics: [], ...overrides });
@@ -9,17 +10,18 @@ const data = (modules: Record<string, unknown> = { api: module() }, jobs: Record
   schemaVersion: 1, ok: true, modules, jobs, stateDiagnostics: {},
   workspace: { moduleConfig: { status: 'valid', schemaVersion: 1, enabledIds: Object.keys(modules) }, stateBlocked: false },
   sources: { state: '/state', paths: ['/work/.claude/test-progress.json'] }, collector: { path: '/usr/bin/node', source: 'path' }, ...extra });
-const response = (value: { ok: boolean }) => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value) } });
-const session = (on: any, calls: string[][], current: () => unknown) => {
+const response = (value: { ok: boolean }) => ({ value: { exitCode: value.ok ? 0 : 1, stderr: '', stdout: JSON.stringify(value),
+  isStdoutTruncated: false, isStderrTruncated: false } });
+const session = (on: On, calls: string[][], current: () => unknown) => {
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
-  on('process.run', ($: unknown, e: { argv: string[] }) => { calls.push(e.argv); return response(current() as { ok: boolean }); });
+  on('process.run', ($, e) => { calls.push([...e.argv]); return response(current() as { ok: boolean }); });
 };
 const actionsOf = (calls: string[][]) => calls.map(argv => `${argv[2]} ${argv[argv.indexOf('--module') + 1]}`);
 
 test('session.start registers the tool in the prompt list, outside tool search', async ($, on) => {
   const specs: any[] = [];
   session(on, [], () => data());
-  on('session.start', () => ({ cwd: '/work' })); on('command.list', () => ({ value: [] })); on('command.register', () => ({ value: undefined }));
+  on('session.start', () => ({ cwd: '/work' })); on('command.list', () => ({ value: [] })); on('command.register', ($, e) => ({ value: { command: e.name } }));
   on('tool.register', ($, e) => { specs.push(e); return { value: { tool: TOOL } }; });
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   expect(specs).toHaveLength(1);
@@ -73,7 +75,12 @@ test('start refreshes first and refuses what the pane refuses: a live run, diagn
 test('start and cancel follow the permission rules: deny refuses, ask asks the person', async ($, on) => {
   const calls: string[][] = []; let decision = 'deny'; let answer = 'Recusar'; const questions: string[] = [];
   session(on, calls, () => data({ api: module() }, { api: job('api', { status: 'running', exitCode: null, cancellable: true }) }));
-  on('tool.check', ($, e) => { expect(e.tool).toBe(TOOL); return { decision, reason: 'regra do projeto' } as never; });
+  // On 2.1.323 the person's question (AskUserQuestion) passes its own tool.check too (2.1.301 raises none): only this tool's verdict is the test's.
+  let checks = 0;
+  on('tool.check', ($, e, next) => {
+    if (e.tool !== TOOL) return next(e);
+    checks++; return { decision, reason: 'regra do projeto' } as never;
+  });
   on('tool.call', { tool: 'AskUserQuestion' }, ($, e: any) => {
     questions.push(e.questions[0].question);
     return { result: { questions: e.questions, answers: { [e.questions[0].question]: answer } } };
@@ -89,6 +96,7 @@ test('start and cancel follow the permission rules: deny refuses, ask asks the p
   expect(cancelled.result).toBeDefined();
   expect(questions).toEqual(['Cancelar os testes do módulo api?', 'Cancelar os testes do módulo api?']);
   expect(actionsOf(calls)).toEqual(['cancel api']);
+  expect(checks).toBe(3);
 });
 
 test('a refused collector answer still reaches the model with its catalogue; bad input never runs it', async ($, on) => {
@@ -106,7 +114,7 @@ test('a subagent in another folder is refused, one in the pane folder is served,
   const calls: string[][] = []; let cwd = '/work';
   on('session.cwd', () => ({ value: cwd })); on('session.id', () => ({ value: 'owner' }));
   on('session.version', () => ({ value: { version: '2.1.296', base: '2.1.296' } }));
-  on('process.run', ($, e) => { calls.push(e.argv); return response(data()); });
+  on('process.run', ($, e) => { calls.push([...e.argv]); return response(data()); });
   await $.tool.call({ tool: TOOL, action: 'status' } as never);
   cwd = '/work/.claude/worktrees/agent-x';
   const refused = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-x' } as never) as { deny?: string };
@@ -123,7 +131,7 @@ test('before 2.1.296 a subagent is refused even in the pane folder, since its ow
   const calls: string[][] = []; let base = '2.1.295';
   on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
   on('session.version', () => ({ value: { version: base, base } }));
-  on('process.run', ($, e) => { calls.push(e.argv); return response(data()); });
+  on('process.run', ($, e) => { calls.push([...e.argv]); return response(data()); });
   await $.tool.call({ tool: TOOL, action: 'status' } as never);
   const refused = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-x' } as never) as { deny?: string };
   expect(refused.deny).toContain('não informa o diretório de um subagente');

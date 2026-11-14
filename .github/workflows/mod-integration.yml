@@ -14,12 +14,24 @@ concurrency:
 
 jobs:
   native-mod:
-    name: Claude 2.1.301 native mod tests
+    name: Claude ${{ matrix.cli }} native mod tests
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Strict gate: the manifest's engines range and the type check of hooks/ and tests/ (2.1.323+).
+          - cli: 2.1.323
+            strict: true
+          # Oldest exercised test kit. Its validate does not know engines, so it runs without --strict.
+          - cli: 2.1.301
+            strict: false
     env:
       DISABLE_UPDATES: '1'
       DISABLE_AUTOUPDATER: '1'
+      CLI_VERSION: ${{ matrix.cli }}
+      STRICT: ${{ matrix.strict }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,14 +42,16 @@ jobs:
       # Official npm distribution; isolated prefix, no project/global dependency.
       # https://code.claude.com/docs/en/setup#install-with-npm
       - name: Install pinned Claude CLI in runner temporary directory
-        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact @anthropic-ai/claude-code@2.1.301
+        run: npm install --prefix "$RUNNER_TEMP/claude-cli" --no-audit --no-fund --save-exact "@anthropic-ai/claude-code@$CLI_VERSION"
       # Native test kit needs no account, API key, model, or network call.
       # https://code.claude.com/docs/en/plugins/mods/test
       - name: Validate manifest and native mod behavior
         run: |
           export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-test-config"
           cli="$RUNNER_TEMP/claude-cli/node_modules/.bin/claude"
-          test "$("$cli" --version)" = '2.1.301 (Claude Code)'
-          "$cli" plugin validate . --strict
-          "$cli" plugin validate .claude-plugin/plugin.json --strict
+          test "$("$cli" --version)" = "$CLI_VERSION (Claude Code)"
+          strict=()
+          if [ "$STRICT" = true ]; then strict=(--strict); fi
+          "$cli" plugin validate . "${strict[@]}"
+          "$cli" plugin validate .claude-plugin/plugin.json "${strict[@]}"
           "$cli" plugin test .

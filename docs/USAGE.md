@@ -320,7 +320,9 @@ claude plugin update test-progress@test-progress-marketplace --scope user
 Recarregue/reabra o Claude, confira help/list/status e reconsulte paths. Ajuste
 os caminhos de todos os adapters, inclusive o `require` no Karma; o cache pode
 mudar. Para checkout com `--plugin-dir`, após encerrar os jobs, atualize seu clone
-limpo na branch desejada, valide `claude plugin validate . --strict` e reabra.
+limpo na branch desejada, valide `claude plugin validate . --strict` (Claude Code
+2.1.323+; numa versão anterior, sem `--strict`, o campo `engines` só gera aviso)
+e reabra.
 Marketplace e checkout são instalações diferentes: confira qual está carregada.
 
 ## Remover
