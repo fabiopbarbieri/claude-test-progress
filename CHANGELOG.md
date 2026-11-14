@@ -4,6 +4,12 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.15.0] - 2026-11-14
+
+### Funcionalidades
+
+- **mod:** adopt Claude Code 2.1.323 (engines floor, covered-prompt legend) ([5db6ded](https://github.com/fabiopbarbieri/claude-test-progress/commit/5db6dedc4e62312062e14ca28763018757a2c2ec))
+
 ## [0.14.0] - 2026-10-16
 
 ### Funcionalidades
