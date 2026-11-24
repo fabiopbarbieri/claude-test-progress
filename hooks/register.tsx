@@ -1,7 +1,7 @@
 // Claude Code Mods 2.1.296+. No host Node APIs run inside the Mod sandbox.
 import { atom, read } from 'claude-code';
 import type { EngineInterface, Register, Timer } from 'claude-code';
-import type { TestProgressDiagnostic, TestProgressPanel } from '../types';
+import type { TestProgressDiagnostic, TestProgressJob, TestProgressPanel } from '../types';
 import { ACTIVE, labels, validateEnvelope, parseCommand, visibleModuleIds, moduleTitle, countSummary, diagnosticText,
   sanitizeText, sanitizeTail, plainTail, ansiSpans, statusGlyph, progressBar, progressSvg, outcomeText, summaryCounts, finishedWithFailure, compactPercent, compactCounts, clock,
   configStatus, SORTS, sortLabels, nextSort, sortModuleIds } from '../runner/module-presentation.mjs';
@@ -135,6 +135,7 @@ async function applyWatched($: $, self: Watcher, line: string) {
   let data;
   try { data = validateEnvelope(JSON.parse(line)); } catch { return; }
   applyEnvelope(data);
+  await recordHistory($, self.identity.split('\n')[0] ?? '', data.jobs);
   p.lastError = data.ok ? '' : data.error ?? 'O coletor encerrou a observação.';
   if (await paneShown($)) acknowledge();
   else await autoOpen($);
@@ -215,6 +216,63 @@ async function forgetCollector($: $, key: string | null) {
   if (!(key in all)) return;
   delete all[key];
   await $.store.set(COLLECTORS, all).catch(() => {});
+}
+// Run history: each finished run (completed or failed) of a folder, kept between sessions in the store,
+// because the collector's state lives under the temp folder and only per session. The tool's history
+// action answers it as named series, a shape the built-in easel mod charts under the result unasked.
+// Cancelled and error runs say nothing about the suite and stay out.
+const HISTORY = 'history', HISTORY_RUNS = 50, HISTORY_FOLDERS = 32;
+type HistoryRun = { runId: string; endedAt: string; status: 'completed' | 'failed'; passed: number; failed: number; skipped: number; durationMs: number | null };
+type HistoryFolder = Record<string, HistoryRun[]>;
+const recorded = new Set<string>();
+const historyOf = (value: unknown) =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, HistoryFolder> : {};
+const count = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+function historyRun(job: TestProgressJob): HistoryRun | null {
+  if (job.status !== 'completed' && job.status !== 'failed') return null;
+  const ended = Date.parse(job.endedAt ?? ''), started = Date.parse(job.startedAt ?? '');
+  if (!Number.isFinite(ended)) return null;
+  return { runId: job.runId, endedAt: new Date(ended).toISOString(), status: job.status, passed: count(job.passed),
+    failed: count(job.failed), skipped: count(job.skipped), durationMs: Number.isFinite(started) && ended >= started ? ended - started : null };
+}
+// Writes only runs this module has not recorded yet, so the once-a-second refresh reads the store once per run.
+// A failed read writes nothing: an empty read written back would erase every folder. Two sessions writing
+// at the same moment can still lose one run, and it is not written again.
+async function recordHistory($: $, cwd: string, jobs: Record<string, TestProgressJob>) {
+  if (!cwd) return;
+  const fresh = Object.values(jobs).flatMap(job => {
+    const run = historyRun(job), key = `${cwd}\n${job.moduleId}\n${job.runId}`;
+    return run && !recorded.has(key) ? [{ key, moduleId: job.moduleId, run }] : [];
+  });
+  if (!fresh.length) return;
+  try {
+    const all = historyOf(await $.store.get(HISTORY));
+    const folder: HistoryFolder = { ...all[cwd] };
+    for (const { key, moduleId, run } of fresh) {
+      recorded.add(key);
+      const runs = Array.isArray(folder[moduleId]) ? folder[moduleId].filter(item => item?.runId !== run.runId) : [];
+      folder[moduleId] = [...runs, run].sort((a, b) => a.endedAt.localeCompare(b.endedAt)).slice(-HISTORY_RUNS);
+    }
+    // The newest 32 folders stay, the one just written last.
+    const kept = Object.entries(all).filter(([entry]) => entry !== cwd).slice(-(HISTORY_FOLDERS - 1));
+    await $.store.set(HISTORY, Object.fromEntries([...kept, [cwd, folder]]));
+  } catch (error) {
+    for (const { key } of fresh) recorded.delete(key);
+    $.ui.log(`Histórico não gravado: ${errorText(error)}`, { to: 'debug' });
+  }
+}
+async function historyAnswer($: $, moduleId: string) {
+  const folder = historyOf(await $.store.get(HISTORY).catch(() => undefined))[await $.session.cwd()] ?? {};
+  const modules = (moduleId === 'all' ? Object.keys(folder).sort() : [moduleId])
+    .flatMap(id => { const runs = folder[id]; return Array.isArray(runs) && runs.length ? [{ id, runs }] : []; });
+  if (!modules.length) return `Sem histórico ${moduleId === 'all' ? 'neste diretório' : `do módulo ${moduleId}`}: ` +
+    'só execuções concluídas (completed ou failed) entram, a partir desta versão do Test Progress.';
+  const metrics = ['passed', 'failed', 'skipped'] as const;
+  const series = modules.flatMap(({ id, runs }) => metrics
+    // Skipped tests are drawn only where some run had any.
+    .filter(metric => metric !== 'skipped' || runs.some(run => run[metric] > 0))
+    .map(metric => ({ name: moduleId === 'all' ? `${id} ${metric}` : metric, data: runs.map(run => [run.endedAt, run[metric]]) })));
+  return JSON.stringify({ series });
 }
 const duration = (ms: number | undefined) => typeof ms === 'number' ? `${Math.floor(ms / 1000)}s` : 'desconhecida';
 function startAllowed(id: string) {
@@ -326,6 +384,7 @@ async function collect($: $, action: Action = 'status', moduleId = 'all'): Promi
   }
   // Error envelopes still carry the valid catalogue and persistent jobs.
   applyEnvelope(data);
+  await recordHistory($, context.cwd, data.jobs);
   settle(data.ok && response.exitCode === 0);
   if (!data.ok || response.exitCode !== 0) {
     const actionErrors = Object.entries(data.actionResults ?? {}).filter(([, result]) => !result.ok)
@@ -562,7 +621,7 @@ async function autoOpen($: $) {
 // The model's own tool: the same collector, queue and state as the pane, without Bash. Its schema is
 // listed from the first prompt (isDeferred: false); the run-tests skill stays as the Bash fallback.
 const TOOL = 'tests', TOOL_NAME = 'mcp__test-progress__tests';
-const TOOL_ACTIONS = ['list', 'start', 'status', 'logs', 'cancel'] as const;
+const TOOL_ACTIONS = ['list', 'start', 'status', 'logs', 'cancel', 'history'] as const;
 type ToolAction = typeof TOOL_ACTIONS[number];
 const TOOL_SPEC = {
   name: TOOL,
@@ -572,7 +631,10 @@ const TOOL_SPEC = {
     'start: inicia um ID ou all; um módulo em preparing/running não reinicia, acompanhe-o. status: repita, espaçado ' +
     'pelo porte da suíte, até jobs.<id>.status sair de preparing/running; relate passed, failed, skipped, total e ' +
     'exitCode. logs: jobs.<id>.logTail, para citar falhas. cancel: cancela; confirme com status. Responde o JSON do ' +
-    'coletor. Diagnóstico, cadastro ou recoveryRequired: carregue a skill test-progress:configure.',
+    'coletor. history: as últimas 50 execuções concluídas de um ID ou de all neste diretório, guardadas entre sessões, como ' +
+    'séries de passed, failed e skipped por fim da execução. A partir de 3 execuções o Claude Code pode desenhar o ' +
+    'gráfico embaixo do resultado sem avisar você: não diga se houve gráfico; resuma em poucas linhas a última ' +
+    'execução e a tendência de cada módulo. Diagnóstico, cadastro ou recoveryRequired: carregue a skill test-progress:configure.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', enum: TOOL_ACTIONS },
     module: { type: 'string', description: 'ID do módulo ou "all" (padrão). list ignora.' },
@@ -635,7 +697,7 @@ async function toolPermission($: $, tool: string, input: { action: ToolAction; m
     return `Sem confirmação da pessoa (diálogo fechado ou sessão sem interface). Libere ${TOOL_NAME} nas permissões ou use o painel.`;
   }
 }
-function serveTool($: $, action: ToolAction, moduleId: string) {
+function serveTool($: $, action: Exclude<ToolAction, 'history'>, moduleId: string) {
   return serialized(async () => {
     await hydrate($);
     p.busy = true; await publish($);
@@ -775,8 +837,10 @@ export const register: Register = on => {
     let moduleId = 'all';
     try {
       if (input.module !== undefined && typeof input.module !== 'string') throw new Error('module deve ser um ID ou "all".');
-      if (action !== 'list') moduleId = parseCommand(`${action} ${input.module ?? 'all'}`).moduleId;
+      if (action !== 'list') moduleId = parseCommand(`${action === 'history' ? 'status' : action} ${input.module ?? 'all'}`).moduleId;
     } catch (error) { return { deny: errorText(error) }; }
+    // History only reads the store for the asking agent's folder: no collector, no pane identity, no permission.
+    if (action === 'history') return { result: await historyAnswer($, moduleId) };
     if (input.agentId) {
       // A subagent's $ answers its own folder (2.1.296); another folder would replace the pane's identity.
       if (!await knowsAgentFolder($)) return { deny: SUBAGENT_UNKNOWN };

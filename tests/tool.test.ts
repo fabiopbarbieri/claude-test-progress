@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing';
+import { expect, mock, test } from 'claude-code/testing';
 import type { On } from 'claude-code';
 const TOOL = 'mcp__test-progress__tests';
 const module = (id = 'api', overrides = {}) => ({ id, label: 'API', language: null, order: 0,
@@ -26,7 +26,7 @@ test('session.start registers the tool in the prompt list, outside tool search',
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' });
   expect(specs).toHaveLength(1);
   expect(specs[0]).toMatchObject({ name: 'tests', isDeferred: false,
-    inputSchema: { required: ['action'], properties: { action: { enum: ['list', 'start', 'status', 'logs', 'cancel'] } } } });
+    inputSchema: { required: ['action'], properties: { action: { enum: ['list', 'start', 'status', 'logs', 'cancel', 'history'] } } } });
 });
 
 test('reading needs no permission, uses the session folder and owner, and answers the envelope without bookkeeping', async ($, on) => {
@@ -139,4 +139,70 @@ test('before 2.1.296 a subagent is refused even in the pane folder, since its ow
   base = '2.1.296';
   const served = await $.tool.call({ tool: TOOL, action: 'status', agentId: 'agent-x' } as never) as { result?: string };
   expect(served.result).toBeDefined();
+});
+
+test('history keeps each finished run between sessions and answers it as named series, without the collector', async ($, on) => {
+  const calls: string[][] = []; let cwd = '/work';
+  mock.store(on);
+  on('session.cwd', () => ({ value: cwd })); on('session.id', () => ({ value: 'owner' }));
+  let current = data({ api: module(), web: module('web') }, {
+    api: job('api', { runId: 'r1', passed: 40, failed: 2, startedAt: '2026-11-20T10:00:00.000Z', endedAt: '2026-11-20T10:05:00.000Z' }),
+    web: job('web', { status: 'running', exitCode: null, endedAt: null }) });
+  on('process.run', ($, e) => { calls.push([...e.argv]); return response(current); });
+  const history = async (module?: string) =>
+    (await $.tool.call({ tool: TOOL, action: 'history', ...(module ? { module } : {}) } as never) as { result: string }).result;
+  expect(await history('api')).toContain('Sem histórico do módulo api');
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  // A refresh that sees the same run again records it once; cancelled, error and running runs stay out.
+  current = data({ api: module(), web: module('web') }, {
+    api: job('api', { runId: 'r1', passed: 40, failed: 2, startedAt: '2026-11-20T10:00:00.000Z', endedAt: '2026-11-20T10:05:00.000Z' }),
+    web: job('web', { runId: 'w1', status: 'cancelled', endedAt: '2026-11-20T11:00:00.000Z' }) });
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  current = data({ api: module(), web: module('web') }, {
+    api: job('api', { runId: 'r2', passed: 43, failed: 0, skipped: 0, endedAt: '2026-11-21T10:00:00.000Z' }),
+    web: job('web', { runId: 'w2', status: 'error', endedAt: '2026-11-21T11:00:00.000Z' }) });
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  const before = calls.length;
+  expect(JSON.parse(await history('api'))).toEqual({ series: [
+    { name: 'passed', data: [['2026-11-20T10:05:00.000Z', 40], ['2026-11-21T10:00:00.000Z', 43]] },
+    { name: 'failed', data: [['2026-11-20T10:05:00.000Z', 2], ['2026-11-21T10:00:00.000Z', 0]] }] });
+  expect(calls).toHaveLength(before);
+  expect(await history('web')).toContain('Sem histórico do módulo web');
+  // all names each series by module; skipped appears where some run skipped tests.
+  current = data({ api: module(), web: module('web') }, { web: job('web', { runId: 'w3', passed: 5, skipped: 1, endedAt: '2026-11-22T09:00:00.000Z' }) });
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  expect(JSON.parse(await history()).series.map((item: { name: string }) => item.name))
+    .toEqual(['api passed', 'api failed', 'web passed', 'web failed', 'web skipped']);
+  // Another folder has its own history.
+  cwd = '/other';
+  expect(await history()).toContain('Sem histórico neste diretório');
+});
+
+test('history keeps the newest 50 runs of a module', async ($, on) => {
+  mock.store(on);
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  let index = 0;
+  on('process.run', () => response(data({ api: module() }, { api: job('api', { runId: `r${index}`, passed: index,
+    endedAt: new Date(Date.UTC(2026, 10, 1) + index * 60000).toISOString() }) })));
+  for (; index < 55; index++) await $.tool.call({ tool: TOOL, action: 'status', module: 'api' } as never);
+  const passed = JSON.parse((await $.tool.call({ tool: TOOL, action: 'history', module: 'api' } as never) as { result: string }).result).series[0].data;
+  expect(passed).toHaveLength(50);
+  expect(passed[0][1]).toBe(5); expect(passed[49][1]).toBe(54);
+});
+
+test('a store read that fails records nothing and erases nothing; the next refresh records the run', async ($, on) => {
+  const kept: Record<string, unknown> = {}; let failRead = false;
+  on('store.get', ($, e) => { if (failRead) throw new Error('store unavailable'); return { value: kept[e.key] }; });
+  on('store.set', ($, e) => { kept[e.key] = e.value; return { value: undefined }; });
+  on('session.cwd', () => ({ value: '/work' })); on('session.id', () => ({ value: 'owner' }));
+  let current = data({ api: module() }, { api: job('api', { runId: 'r1', passed: 1, endedAt: '2026-11-20T10:00:00.000Z' }) });
+  on('process.run', () => response(current));
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  failRead = true;
+  current = data({ api: module() }, { api: job('api', { runId: 'r2', passed: 2, endedAt: '2026-11-21T10:00:00.000Z' }) });
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  expect((kept.history as any)['/work'].api.map((run: { runId: string }) => run.runId)).toEqual(['r1']);
+  failRead = false;
+  await $.tool.call({ tool: TOOL, action: 'status' } as never);
+  expect((kept.history as any)['/work'].api.map((run: { runId: string }) => run.runId)).toEqual(['r1', 'r2']);
 });

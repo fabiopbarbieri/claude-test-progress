@@ -47,9 +47,22 @@ pedir para rodar os testes, o Claude os inicia pelo coletor, para o run
 aparecer no painel: pela ferramenta `mcp__test-progress__tests`, que o Mod
 registra em cada sessão, ou pela skill `test-progress:run-tests` via Bash
 onde a ferramenta não alcança (subagente em outro diretório, `claude -p` sem o
-Mod). `list`, `status` e `logs` não pedem permissão; `start` e `cancel` seguem
-as suas regras de permissão para `mcp__test-progress__tests` e, sem regra,
-perguntam antes.
+Mod). `list`, `status`, `logs` e `history` não pedem permissão; `start` e
+`cancel` seguem as suas regras de permissão para `mcp__test-progress__tests` e,
+sem regra, perguntam antes.
+
+### Histórico
+
+O Mod guarda as últimas 50 execuções concluídas (`completed` ou `failed`) de
+cada módulo, por diretório, no armazenamento do plugin
+(`~/.claude/plugins/store/`), e elas valem entre sessões. Execuções canceladas
+ou com erro ficam de fora. Peça ao Claude o histórico dos testes: a ação
+`history` da ferramenta responde com séries de `passed`, `failed` e `skipped`
+pela data de fim de cada execução, e o mod embutido easel do Claude Code
+desenha o gráfico embaixo da resposta (assinatura claude.ai, macOS ou Linux;
+**Auto charts** em `/config`). Só entram execuções que o Mod viu terminar a
+partir desta versão. O gráfico só aparece a partir de 3 execuções
+do módulo; com menos, o Claude resume os números.
 
 O cadastro fica em `.claude/test-progress.json`, no diretório em que você abriu
 a sessão. Exemplo para um app Maven com `mvnw` na raiz:

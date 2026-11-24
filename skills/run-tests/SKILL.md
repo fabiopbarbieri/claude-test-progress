@@ -8,7 +8,7 @@ user-invocable: false
 
 Só um run iniciado pelo coletor aparece no painel e na faixa acima do prompt. Rodar o comando da suíte direto dá o resultado, mas o painel não vê o run e ele pode disputar recursos com um run do mesmo módulo em andamento.
 
-**Use a ferramenta `mcp__test-progress__tests` quando ela estiver na sua lista.** Ela faz `list`, `start`, `status`, `logs` e `cancel` com o mesmo coletor e o mesmo estado do painel, sem Bash, e já sabe o diretório e o id da sessão. As etapas abaixo valem igual; só troque o comando por `action` e `module`.
+**Use a ferramenta `mcp__test-progress__tests` quando ela estiver na sua lista.** Ela faz `list`, `start`, `status`, `logs` e `cancel` com o mesmo coletor e o mesmo estado do painel, sem Bash, e já sabe o diretório e o id da sessão. As etapas abaixo valem igual; só troque o comando por `action` e `module`. Para a tendência das últimas execuções, use `action: "history"`. A resposta são séries por data de fim. A partir de 3 execuções o Claude Code pode desenhar o gráfico embaixo do resultado sem te avisar (easel; não no Windows nem com Auto charts desligado). Por isso não afirme se houve gráfico: resuma em poucas linhas, por módulo, a última execução e a tendência (ex.: as falhas zeraram desde terça).
 
 **Sem a ferramenta, use o Bash.** Isso acontece num subagente em outro diretório (a ferramenta recusa e manda para cá), num `claude -p` sem o Mod ou com Claude Code anterior a 2.1.296. **Raiz do plugin** = dois níveis acima do diretório base desta skill:
 
