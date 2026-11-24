@@ -4,6 +4,12 @@ Gerado por `scripts/release.py` a partir dos commits (gitmoji + Conventional
 Commits). A versão em `.claude-plugin/plugin.json` identifica o plugin
 distribuído; `package.json` acompanha esse valor.
 
+## [0.16.0] - 2026-11-24
+
+### Funcionalidades
+
+- **tool:** keep finished runs as a charted history ([54830eb](https://github.com/fabiopbarbieri/claude-test-progress/commit/54830eb837ba7ba4587f55ce4e733952fd39d453))
+
 ## [0.15.0] - 2026-11-14
 
 ### Funcionalidades
