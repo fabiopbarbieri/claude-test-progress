@@ -14,6 +14,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "maven"
     directories:
       - "/adapters/junit"
@@ -38,6 +41,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "pip"
     directory: "/tests/dependencies/python310"
     ignore:
@@ -55,6 +61,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "pip"
     directory: "/tests/dependencies/python314"
     schedule:
@@ -68,6 +77,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rspec"
     ignore:
@@ -85,6 +97,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rails72"
     ignore:
@@ -104,6 +119,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rails80"
     ignore:
@@ -123,6 +141,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rails81"
     ignore:
@@ -141,6 +162,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "bundler"
     directory: "/tests/dependencies/rails81-minitest6"
     ignore:
@@ -160,6 +184,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "npm"
     directory: "/tests/dependencies/angular9"
     ignore:
@@ -204,6 +231,9 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: "npm"
     directory: "/tests/dependencies/playwright/versions/minimum"
     ignore:
@@ -232,3 +262,6 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]

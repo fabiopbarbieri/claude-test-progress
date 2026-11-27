@@ -23,12 +23,17 @@ hosted run. How to reproduce each gate is in [VALIDATION](VALIDATION.md).
 ## Configured update coverage
 
 [Dependabot configuration](../.github/dependabot.yml) checks on Mondays at
-09:00 America/Sao_Paulo. Each of its ten update entries allows three open
+09:00 America/Sao_Paulo. Each of its thirteen update entries allows three open
 version-update PRs. CI jobs with different compatibility limits have their own
 entry. Minor and patch version updates are grouped within each entry; major
-updates remain individual PRs. Security updates remain individual and are not
-delayed by the weekly version-update schedule or governed by its PR limit.
-There is no automerge.
+updates remain individual PRs. Security updates are grouped too, one PR per
+entry (`security` group), so one advisory no longer opens a PR per dependency.
+They are not delayed by the weekly version-update schedule or governed by its
+PR limit. Grouping cannot span entries: `group-by: dependency-name` covers
+version updates only, and `ignore` applies to every directory of an entry, so
+the Rails series keep separate entries and separate PRs. The frozen Angular 9
+and Playwright minimum fixtures ignore every dependency, so they get no security
+PRs at all. There is no automerge.
 
 `ignore` rules keep each CI job inside the supported matrix:
 
